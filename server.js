@@ -172,14 +172,23 @@ async function fetchCampaignStats() {
 async function updateBudget(campaignId, newBudget) {
   const token = await getAccessToken();
   const profileId = await getProfileId();
-  const res = await axios.put(
-    'https://advertising-api-eu.amazon.com/v2/sp/campaigns',
-    [{ campaignId: campaignId, dailyBudget: newBudget }],
-    {
-      headers: Object.assign({}, getHeaders(profileId, token), { 'Content-Type': 'application/json' })
-    }
-  );
-  return res.data;
+  const headers = Object.assign({}, getHeaders(profileId, token), {
+    'Content-Type': 'application/vnd.spCampaign.v3+json',
+    'Accept': 'application/vnd.spCampaign.v3+json'
+  });
+  try {
+    // Try v3 first
+    const res = await axios.put(
+      'https://advertising-api-eu.amazon.com/sp/campaigns',
+      { campaigns: [{ campaignId: String(campaignId), budget: { budget: newBudget, budgetType: 'DAILY' } }] },
+      { headers: headers }
+    );
+    console.log('Budget updated v3: ' + JSON.stringify(res.data).substring(0, 200));
+    return res.data;
+  } catch(e) {
+    console.error('Budget update error: ' + e.response?.status + ' ' + JSON.stringify(e.response?.data));
+    throw e;
+  }
 }
 
 // ── Google Chat ───────────────────────────────────────────────────────────
@@ -555,8 +564,11 @@ app.post('/api/sync', function(req, res) {
 app.post('/api/campaigns/:id/budget', async function(req, res) {
   const id = req.params.id;
   const amount = parseFloat(req.body.amount || 0);
-  const campaign = state.campaigns.find(function(c) { return String(c.campaignId) === String(id); });
-  if (!campaign) return res.status(404).json({ error: 'Not found' });
+  const campaign = state.campaigns.find(function(c) { 
+    return String(c.campaignId) === String(id) || c.campaignId == id;
+  });
+  console.log('Budget request for id: ' + id + ', found: ' + (campaign ? campaign.name : 'NOT FOUND') + ', total campaigns: ' + state.campaigns.length);
+  if (!campaign) return res.status(404).json({ error: 'Campaign not found: ' + id });
   try {
     const newBudget = campaign.dailyBudget + amount;
     await updateBudget(id, newBudget);
