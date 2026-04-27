@@ -78,7 +78,6 @@ async function fetchCampaigns() {
     );
     const campaigns = res.data.campaigns || res.data || [];
     console.log('Campaigns fetched: ' + campaigns.length);
-    if (campaigns.length > 0) console.log('Sample campaign budget field:', JSON.stringify(campaigns[0].budget));
     return campaigns.map(function(c) {
       return Object.assign({}, c, { cost: 0, attributedSales14d: 0, clicks: 0, impressions: 0 });
     });
@@ -129,8 +128,8 @@ async function analyseCampaigns(campaigns) {
 
   for (let i = 0; i < campaigns.length; i++) {
     const c = campaigns[i];
-    const budget = parseFloat(c.dailyBudget || c.budget || c.budgetAmount || (c.budget && c.budget.budget) || 0);
-    const spend = parseFloat(c.cost || c.spend || 0);
+    const budget = parseFloat((c.budget && c.budget.budget) || c.dailyBudget || 0);
+    const spend = parseFloat(c.cost || 0);
     const sales = parseFloat(c.attributedSales14d || 0);
     const acos = sales > 0 ? (spend / sales) * 100 : 0;
     const remaining = Math.max(0, budget - spend);
@@ -227,8 +226,8 @@ async function syncCampaigns() {
     await fetchPortfolios();
     const raw = await fetchCampaigns();
     const campaigns = raw.map(function(c) {
-      const budget = parseFloat(c.dailyBudget || c.budget || c.budgetAmount || (c.budget && c.budget.budget) || 0);
-      const spend = parseFloat(c.cost || c.spend || 0);
+      const budget = parseFloat((c.budget && c.budget.budget) || c.dailyBudget || 0);
+      const spend = parseFloat(c.cost || 0);
       const sales = parseFloat(c.attributedSales14d || 0);
       const acos = sales > 0 ? Math.round((spend / sales) * 1000) / 10 : 0;
       const remaining = Math.max(0, budget - spend);
@@ -332,7 +331,5 @@ app.listen(PORT, '0.0.0.0', function() {
     syncCampaigns().catch(function(err) { console.error('Initial sync failed:', err.message); });
   }, 30000);
 });
-
-
 
 
