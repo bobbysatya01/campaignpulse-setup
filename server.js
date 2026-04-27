@@ -130,6 +130,7 @@ async function fetchCampaignStats() {
     const campaigns = res.data.campaigns || res.data || [];
     console.log('Extended data fetched for ' + campaigns.length + ' campaigns');
     if (campaigns.length > 0) console.log('Sample keys: ' + JSON.stringify(Object.keys(campaigns[0])));
+    if (campaigns.length > 0) console.log('Sample extendedData: ' + JSON.stringify(campaigns[0].extendedData));
     const statsMap = {};
     campaigns.forEach(function(c) {
       // Try all possible field locations
@@ -360,6 +361,7 @@ app.listen(PORT, '0.0.0.0', function() {
     syncCampaigns().catch(function(err) { console.error('Initial sync failed:', err.message); });
   }, 30000);
 });
+
 
 
 
