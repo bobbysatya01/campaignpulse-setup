@@ -497,7 +497,7 @@ function renderAlerts() {
     <div class="alert-banner">
       <span>⚠</span>
       <div class="alert-banner-text"><strong>${a.name}</strong> ran out of budget at ${a.time}. Portfolio: ${a.portfolio || 'N/A'}. Agent: ${a.agent || 'N/A'}. ACOS: ${a.acos}%.</div>
-      <button class="btn btn-green" onclick="approveBudget('${a.campaignId}', 40)">+£40</button>
+      <button class="btn btn-green" onclick="approveBudget('${a.campaignId}', 40)">Add budget</button>
       <button class="btn btn-ghost" onclick="this.closest('.alert-banner').remove()">Dismiss</button>
     </div>
   `).join('');
@@ -519,7 +519,7 @@ function renderCampaignTable(tableId, campaigns, showAction) {
     else if (budgetLow) statusBadge = '<span class="badge badge-amber"><span class="dot" style="background:var(--amber)"></span>Budget low</span>';
     let action = '<button class="btn btn-ghost" style="font-size:11px">View</button>';
     if (showAction) {
-      if (outOfBudget) action = '<div class="ag"><button class="btn btn-green" onclick="approveBudget(\''+c.campaignId+'\',40)">+£40</button><button class="btn btn-ghost" style="font-size:11px">Skip</button></div>';
+      if (outOfBudget) action = '<div class="ag"><button class="btn btn-green" onclick="approveBudget(\''+c.campaignId+'\',40)">Add budget</button><button class="btn btn-ghost" style="font-size:11px">Skip</button></div>';
       else if (acosHigh) action = '<div class="ag"><button class="btn btn-amber" style="font-size:11px">Fix bids</button></div>';
       else if (budgetLow) action = '<div class="ag"><button class="btn btn-green" onclick="approveBudget(\''+c.campaignId+'\',30)">+£30</button></div>';
       else action = '<button class="btn btn-ghost" style="font-size:11px">Scale ↗</button>';
@@ -557,7 +557,14 @@ function filterCamps(type, btn) {
 }
 
 // ── Budget approval ────────────────────────────────────────────────────────
-async function approveBudget(campaignId, amount) {
+async function approveBudget(campaignId, suggestedAmount) {
+  // Find campaign to show current budget
+  const camp = allCampaigns.find(function(c) { return String(c.campaignId) === String(campaignId); });
+  const currentBudget = camp ? camp.dailyBudget : 0;
+  const input = prompt('Campaign: ' + (camp ? camp.name : campaignId) + '\nCurrent daily budget: £' + currentBudget + '\n\nHow much would you like to add? (£)', suggestedAmount || '');
+  if (input === null) return; // cancelled
+  const amount = parseFloat(input);
+  if (isNaN(amount) || amount <= 0) { alert('Please enter a valid amount'); return; }
   try {
     const res = await fetch('/api/campaigns/' + campaignId + '/budget', {
       method: 'POST',
@@ -566,7 +573,7 @@ async function approveBudget(campaignId, amount) {
     });
     const data = await res.json();
     if (data.success) {
-      alert('Budget increased by £' + amount + '. New budget: £' + data.newBudget.toFixed(2));
+      alert('Done! Budget increased by £' + amount + '.\nNew daily budget: £' + data.newBudget.toFixed(2));
       setTimeout(fetchData, 2000);
     } else {
       alert('Error: ' + (data.error || 'Unknown error'));
