@@ -306,6 +306,9 @@ async function syncCampaigns() {
 
     state.campaigns = campaigns;
     await analyseCampaigns(campaigns);
+    // Check search term report in background
+    checkSearchTermReport().catch(function(e){ console.error('KW check error: ' + e.message); });
+    requestSearchTermReport().catch(function(e){ console.error('KW request error: ' + e.message); });
     state.lastSync = new Date().toTimeString().slice(0, 8);
     state.error = null;
     console.log('Sync done. ' + campaigns.length + ' campaigns.');
@@ -335,6 +338,209 @@ app.get('/api/dashboard', function(req, res) {
     lastSync: state.lastSync,
     error: state.error
   });
+});
+
+// AI analysis endpoint
+app.post('/api/ai/analyse', async function(req, res) {
+  try {
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) return res.json({ error: 'No API key', suggestions: null });
+    const allCamps = state.campaigns;
+    const lowAcos = allCamps.filter(function(c) { return c.acos > 0 && c.acos < 15 && c.dailyBudget > 0; });
+    const highAcos = allCamps.filter(function(c) { return c.acos > 35 && c.spend > 5; });
+    const outOfBudget = allCamps.filter(function(c) { return c.budgetRemaining <= 0.01 && c.dailyBudget > 0; });
+    const prompt = 'You are an Amazon Advertising expert for FK Sports UK. Give 4 specific recommendations based on: Total campaigns: ' + allCamps.length + ', Out of budget: ' + outOfBudget.length + ' (' + outOfBudget.slice(0,3).map(function(c){return c.name;}).join(', ') + '), High ACOS >35%: ' + highAcos.length + ' (' + highAcos.slice(0,3).map(function(c){return c.name + ' ' + c.acos + '%';}).join(', ') + '), Scale opportunities ACOS<15%: ' + lowAcos.length + ' (' + lowAcos.slice(0,3).map(function(c){return c.name + ' ' + c.acos + '%';}).join(', ') + '. Return ONLY JSON array of 4 objects with fields: type, title, campaign, detail, impact, action. No other text.';
+    const aiRes = await axios.post('https://api.anthropic.com/v1/messages', {
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 1000,
+      messages: [{ role: 'user', content: prompt }]
+    }, {
+      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' }
+    });
+    const text = aiRes.data.content[0].text;
+    const clean = text.replace(/```json|```/g, '').trim();
+    res.json({ suggestions: JSON.parse(clean) });
+  } catch(e) {
+    console.error('AI error: ' + e.message);
+    res.json({ error: e.message, suggestions: null });
+  }
+});
+
+
+// ── Keyword Intelligence ─────────────────────────────────────────────────
+let keywordState = {
+  reportId: null,
+  requested: 0,
+  data: null,
+  analysis: null,
+  lastAnalysed: 0
+};
+
+async function requestSearchTermReport() {
+  const now = Date.now();
+  // Only request new report once per week
+  if (keywordState.reportId || (now - keywordState.requested) < 7 * 24 * 60 * 60 * 1000) {
+    return;
+  }
+  const token = await getAccessToken();
+  const profileId = await getProfileId();
+  const headers = getHeaders(profileId, token);
+  const today = new Date().toISOString().split('T')[0];
+  const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+  try {
+    const res = await axios.post(
+      'https://advertising-api-eu.amazon.com/reporting/reports',
+      {
+        name: 'CampaignPulse Search Terms ' + today,
+        startDate: weekAgo,
+        endDate: today,
+        configuration: {
+          adProduct: 'SPONSORED_PRODUCTS',
+          groupBy: ['searchTerm'],
+          columns: ['campaignId', 'campaignName', 'adGroupId', 'adGroupName', 'keywordId', 'keyword', 'matchType', 'searchTerm', 'cost', 'clicks', 'impressions', 'purchases14d', 'sales14d'],
+          reportTypeId: 'spSearchTerm',
+          timeUnit: 'SUMMARY',
+          format: 'GZIP_JSON'
+        }
+      },
+      { headers: Object.assign({}, headers, { 'Content-Type': 'application/json', 'Accept': 'application/json' }) }
+    );
+    keywordState.reportId = res.data.reportId;
+    keywordState.requested = now;
+    console.log('Search term report requested: ' + keywordState.reportId);
+  } catch(e) {
+    console.error('Search term report error: ' + e.message);
+  }
+}
+
+async function checkSearchTermReport() {
+  if (!keywordState.reportId) return;
+  const token = await getAccessToken();
+  const profileId = await getProfileId();
+  const headers = getHeaders(profileId, token);
+  try {
+    const statusRes = await axios.get(
+      'https://advertising-api-eu.amazon.com/reporting/reports/' + keywordState.reportId,
+      { headers: Object.assign({}, headers, { 'Accept': 'application/json' }) }
+    );
+    const status = statusRes.data.status;
+    console.log('Search term report status: ' + status);
+    if (status === 'COMPLETED') {
+      const downloadRes = await axios.get(statusRes.data.url, { responseType: 'arraybuffer' });
+      const zlib = require('zlib');
+      const decompressed = zlib.gunzipSync(Buffer.from(downloadRes.data));
+      keywordState.data = JSON.parse(decompressed.toString());
+      keywordState.reportId = null;
+      console.log('Search term report downloaded: ' + keywordState.data.length + ' records');
+      await analyseKeywords();
+    } else if (status === 'FAILED') {
+      console.log('Search term report failed');
+      keywordState.reportId = null;
+    }
+  } catch(e) {
+    console.error('Search term check error: ' + e.message);
+    keywordState.reportId = null;
+  }
+}
+
+async function analyseKeywords() {
+  if (!keywordState.data || !keywordState.data.length) return;
+  if (!process.env.ANTHROPIC_API_KEY) {
+    console.log('No Anthropic API key — skipping AI keyword analysis');
+    // Still do rule-based analysis
+    keywordState.analysis = ruleBasedKeywordAnalysis(keywordState.data);
+    return;
+  }
+  try {
+    const data = keywordState.data;
+    // Find wasters — spend > 0, zero purchases
+    const wasters = data.filter(function(r) {
+      return parseFloat(r.cost || 0) > 1 && parseInt(r.purchases14d || 0) === 0;
+    }).sort(function(a,b) { return parseFloat(b.cost||0) - parseFloat(a.cost||0); }).slice(0, 20);
+    // Find converters — high purchases, not yet as exact match keyword
+    const converters = data.filter(function(r) {
+      return parseInt(r.purchases14d || 0) > 0 && r.matchType !== 'EXACT';
+    }).sort(function(a,b) { return parseInt(b.purchases14d||0) - parseInt(a.purchases14d||0); }).slice(0, 20);
+    // High spend, low conversion rate
+    const inefficient = data.filter(function(r) {
+      const spend = parseFloat(r.cost||0);
+      const purchases = parseInt(r.purchases14d||0);
+      const sales = parseFloat(r.sales14d||0);
+      return spend > 5 && purchases > 0 && spend > sales;
+    }).sort(function(a,b) { return parseFloat(b.cost||0) - parseFloat(a.cost||0); }).slice(0, 20);
+
+    const prompt = 'You are an Amazon Advertising expert for FK Sports UK (sports equipment seller). Analyse this search term data and provide specific actionable recommendations.\n\nTop wasting search terms (spend, zero conversions):\n' +
+      wasters.slice(0,10).map(function(r){ return r.searchTerm + ' | spend: £' + parseFloat(r.cost||0).toFixed(2) + ' | campaign: ' + r.campaignName; }).join('\n') +
+      '\n\nTop converting search terms (not yet exact match keywords):\n' +
+      converters.slice(0,10).map(function(r){ return r.searchTerm + ' | purchases: ' + r.purchases14d + ' | sales: £' + parseFloat(r.sales14d||0).toFixed(2) + ' | campaign: ' + r.campaignName; }).join('\n') +
+      '\n\nTotal search terms analysed: ' + data.length +
+      '\n\nProvide analysis in this JSON format only:\n{"wasteReduction":{"totalWasted":"£X","topWasters":[{"searchTerm":"","campaign":"","spend":"£X","recommendation":"Add as negative keyword","reason":""}],"estimatedSaving":"£X/week"},"newKeywords":{"totalOpportunities":0,"topOpportunities":[{"searchTerm":"","campaign":"","purchases":0,"sales":"£X","recommendation":"Add as exact match keyword","estimatedImpact":""}]},"bidChanges":[{"keyword":"","campaign":"","currentIssue":"","recommendation":"","expectedOutcome":""}],"portfolioInsights":{"patterns":"","topPerforming":"","needsAttention":""},"summary":"","estimatedWeeklyImpact":"£X"}';
+
+    const aiRes = await axios.post('https://api.anthropic.com/v1/messages', {
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 2000,
+      messages: [{ role: 'user', content: prompt }]
+    }, {
+      headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' }
+    });
+
+    const text = aiRes.data.content[0].text;
+    const clean = text.replace(/```json|```/g, '').trim();
+    keywordState.analysis = JSON.parse(clean);
+    keywordState.lastAnalysed = Date.now();
+    console.log('Keyword AI analysis complete');
+  } catch(e) {
+    console.error('Keyword analysis error: ' + e.message);
+    keywordState.analysis = ruleBasedKeywordAnalysis(keywordState.data);
+  }
+}
+
+function ruleBasedKeywordAnalysis(data) {
+  const wasters = data.filter(function(r) {
+    return parseFloat(r.cost||0) > 1 && parseInt(r.purchases14d||0) === 0;
+  }).sort(function(a,b) { return parseFloat(b.cost||0) - parseFloat(a.cost||0); }).slice(0, 10);
+  const converters = data.filter(function(r) {
+    return parseInt(r.purchases14d||0) > 0 && r.matchType !== 'EXACT';
+  }).sort(function(a,b) { return parseInt(b.purchases14d||0) - parseInt(a.purchases14d||0); }).slice(0, 10);
+  const totalWasted = wasters.reduce(function(s,r){ return s + parseFloat(r.cost||0); }, 0);
+  return {
+    wasteReduction: {
+      totalWasted: '£' + totalWasted.toFixed(2),
+      topWasters: wasters.map(function(r){ return { searchTerm: r.searchTerm, campaign: r.campaignName, spend: '£' + parseFloat(r.cost||0).toFixed(2), recommendation: 'Add as negative keyword', reason: 'Zero conversions after £' + parseFloat(r.cost||0).toFixed(2) + ' spend' }; }),
+      estimatedSaving: '£' + totalWasted.toFixed(2) + '/week'
+    },
+    newKeywords: {
+      totalOpportunities: converters.length,
+      topOpportunities: converters.map(function(r){ return { searchTerm: r.searchTerm, campaign: r.campaignName, purchases: r.purchases14d, sales: '£' + parseFloat(r.sales14d||0).toFixed(2), recommendation: 'Add as exact match keyword', estimatedImpact: 'Lower ACOS, more targeted traffic' }; })
+    },
+    bidChanges: [],
+    portfolioInsights: { patterns: 'Analysis based on last 7 days of search term data', topPerforming: converters[0] ? converters[0].campaignName : 'N/A', needsAttention: wasters[0] ? wasters[0].campaignName : 'N/A' },
+    summary: 'Found ' + wasters.length + ' wasting search terms and ' + converters.length + ' new keyword opportunities.',
+    estimatedWeeklyImpact: '£' + totalWasted.toFixed(2) + ' saved'
+  };
+}
+
+// Keyword intelligence API endpoints
+app.get('/api/keywords/status', function(req, res) {
+  res.json({
+    reportId: keywordState.reportId,
+    hasData: !!keywordState.data,
+    dataSize: keywordState.data ? keywordState.data.length : 0,
+    hasAnalysis: !!keywordState.analysis,
+    lastAnalysed: keywordState.lastAnalysed,
+    requested: keywordState.requested
+  });
+});
+
+app.get('/api/keywords/analysis', function(req, res) {
+  res.json({ analysis: keywordState.analysis, dataSize: keywordState.data ? keywordState.data.length : 0 });
+});
+
+app.post('/api/keywords/refresh', async function(req, res) {
+  keywordState.requested = 0; // Force new request
+  keywordState.reportId = null;
+  await requestSearchTermReport();
+  res.json({ success: true, reportId: keywordState.reportId });
 });
 
 app.get('/api/health', function(req, res) {
@@ -380,6 +586,7 @@ app.listen(PORT, '0.0.0.0', function() {
     syncCampaigns().catch(function(err) { console.error('Initial sync failed:', err.message); });
   }, 30000);
 });
+
 
 
 
