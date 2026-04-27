@@ -82,16 +82,24 @@ async function fetchCampaignStats() {
     'Amazon-Advertising-API-ClientId': process.env.AMAZON_CLIENT_ID.trim(),
     'Amazon-Advertising-API-Scope': String(profileId)
   };
-  try {
-    const res = await axios.get('https://advertising-api-eu.amazon.com/v2/sp/campaigns', {
-      headers,
-      params: { stateFilter: 'enabled,paused' }
-    });
-    console.log('Campaigns fetched:', res.data.length);
-    return res.data.map(c => ({ ...c, cost: 0, attributedSales14d: 0, clicks: 0, impressions: 0 }));
+try {
+    const res = await axios.post('https://advertising-api-eu.amazon.com/sp/campaigns/list',
+      { stateFilter: { include: ['ENABLED', 'PAUSED'] } },
+      {
+        headers: {
+          ...headers,
+          'Content-Type': 'application/vnd.spCampaign.v3+json',
+          'Accept': 'application/vnd.spCampaign.v3+json'
+        }
+      }
+    );
+    console.log('Campaigns fetched:', JSON.stringify(res.data).substring(0, 300));
+    const campaigns = res.data.campaigns || res.data || [];
+    return campaigns.map(c => ({ ...c, cost: 0, attributedSales14d: 0, clicks: 0, impressions: 0 }));
   } catch(e) {
     console.error('Campaign fetch error:', e.response?.status, JSON.stringify(e.response?.data));
     throw e;
+  }
   }
 }
 
