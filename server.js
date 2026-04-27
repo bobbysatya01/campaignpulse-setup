@@ -129,25 +129,24 @@ async function fetchCampaignStats() {
     );
     const campaigns = res.data.campaigns || res.data || [];
     console.log('Extended data fetched for ' + campaigns.length + ' campaigns');
+    if (campaigns.length > 0) console.log('Sample keys: ' + JSON.stringify(Object.keys(campaigns[0])));
     const statsMap = {};
     campaigns.forEach(function(c) {
-      if (c.extendedData) {
-        statsMap[c.campaignId] = {
-          cost: c.extendedData.cost || 0,
-          sales14d: c.extendedData.attributedSales14d || 0,
-          clicks: c.extendedData.clicks || 0,
-          impressions: c.extendedData.impressions || 0
-        };
-      }
+      // Try all possible field locations
+      const ext = c.extendedData || c.statistics || c.metrics || c;
+      statsMap[c.campaignId] = {
+        cost: ext.cost || ext.spend || ext.impressionsCost || 0,
+        sales14d: ext.attributedSales14d || ext.sales14d || ext.sales || 0,
+        clicks: ext.clicks || 0,
+        impressions: ext.impressions || 0
+      };
     });
     const result = Object.keys(statsMap).map(function(id) {
       return Object.assign({ campaignId: id }, statsMap[id]);
     });
-    if (result.length > 0) {
-      statsCache = { data: result, lastFetched: now };
-      console.log('Stats loaded: ' + result.length + ' campaigns');
-    }
-    return result.length > 0 ? result : null;
+    statsCache = { data: result, lastFetched: now };
+    console.log('Stats mapped: ' + result.length + ' campaigns, sample: ' + JSON.stringify(result[0]));
+    return result;
   } catch(e) {
     console.error('Stats fetch error: ' + e.message + (e.response ? ' ' + JSON.stringify(e.response.data) : ''));
     return statsCache.data || null;
@@ -361,6 +360,7 @@ app.listen(PORT, '0.0.0.0', function() {
     syncCampaigns().catch(function(err) { console.error('Initial sync failed:', err.message); });
   }, 30000);
 });
+
 
 
 
