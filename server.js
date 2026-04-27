@@ -99,7 +99,7 @@ async function fetchCampaigns() {
   return campaigns;
 }
 
-// ── Fetch spend/revenue via v3 stats endpoint ────────────────────────────
+// ── Fetch spend/revenue via v3 reporting API ─────────────────────────────
 let statsCache = { data: null, lastFetched: 0 };
 
 async function fetchCampaignStats() {
@@ -108,48 +108,63 @@ async function fetchCampaignStats() {
     console.log('Using cached stats (' + Math.round((now - statsCache.lastFetched)/60000) + ' min old)');
     return statsCache.data;
   }
-  console.log('Requesting campaign stats...');
+  console.log('Requesting stats report...');
 
   const token = await getAccessToken();
   const profileId = await getProfileId();
+  const headers = getHeaders(profileId, token);
   const today = new Date().toISOString().split('T')[0];
-  const headers = Object.assign({}, getHeaders(profileId, token), {
-    'Content-Type': 'application/vnd.spCampaign.v3+json',
-    'Accept': 'application/vnd.spCampaign.v3+json'
-  });
 
   try {
-    const res = await axios.post(
-      'https://advertising-api-eu.amazon.com/sp/campaigns/list',
+    const reportRes = await axios.post(
+      'https://advertising-api-eu.amazon.com/reporting/reports',
       {
-        stateFilter: { include: ['ENABLED'] },
-        includeExtendedDataFields: true
+        name: 'CampaignPulse Stats ' + today,
+        startDate: today,
+        endDate: today,
+        configuration: {
+          adProduct: 'SPONSORED_PRODUCTS',
+          groupBy: ['campaign'],
+          columns: ['campaignId', 'campaignName', 'portfolioId', 'cost', 'sales14d', 'clicks', 'impressions', 'purchases14d'],
+          reportTypeId: 'spCampaigns',
+          timeUnit: 'SUMMARY',
+          format: 'GZIP_JSON'
+        }
       },
-      { headers: headers }
+      { headers: Object.assign({}, headers, { 'Content-Type': 'application/json', 'Accept': 'application/json' }) }
     );
-    const campaigns = res.data.campaigns || res.data || [];
-    console.log('Extended data fetched for ' + campaigns.length + ' campaigns');
-    if (campaigns.length > 0) console.log('Sample keys: ' + JSON.stringify(Object.keys(campaigns[0])));
-    if (campaigns.length > 0) console.log('Sample extendedData: ' + JSON.stringify(campaigns[0].extendedData));
-    const statsMap = {};
-    campaigns.forEach(function(c) {
-      // Try all possible field locations
-      const ext = c.extendedData || c.statistics || c.metrics || c;
-      statsMap[c.campaignId] = {
-        cost: ext.cost || ext.spend || ext.impressionsCost || 0,
-        sales14d: ext.attributedSales14d || ext.sales14d || ext.sales || 0,
-        clicks: ext.clicks || 0,
-        impressions: ext.impressions || 0
-      };
-    });
-    const result = Object.keys(statsMap).map(function(id) {
-      return Object.assign({ campaignId: id }, statsMap[id]);
-    });
-    statsCache = { data: result, lastFetched: now };
-    console.log('Stats mapped: ' + result.length + ' campaigns, sample: ' + JSON.stringify(result[0]));
-    return result;
+
+    const reportId = reportRes.data.reportId;
+    console.log('Report requested: ' + reportId);
+
+    // Poll for up to 3 minutes
+    for (let i = 0; i < 36; i++) {
+      await new Promise(function(r) { setTimeout(r, 5000); });
+      const statusRes = await axios.get(
+        'https://advertising-api-eu.amazon.com/reporting/reports/' + reportId,
+        { headers: Object.assign({}, headers, { 'Accept': 'application/json' }) }
+      );
+      const status = statusRes.data.status;
+      console.log('Report status: ' + status);
+      if (status === 'COMPLETED') {
+        const downloadRes = await axios.get(statusRes.data.url, {
+          responseType: 'arraybuffer'
+        });
+        const zlib = require('zlib');
+        const decompressed = zlib.gunzipSync(Buffer.from(downloadRes.data));
+        const reportData = JSON.parse(decompressed.toString());
+        console.log('Report ready: ' + reportData.length + ' records. Sample: ' + JSON.stringify(reportData[0]));
+        statsCache = { data: reportData, lastFetched: now };
+        return reportData;
+      }
+      if (status === 'FAILED') {
+        console.log('Report failed: ' + JSON.stringify(statusRes.data));
+        break;
+      }
+    }
+    return statsCache.data || null;
   } catch(e) {
-    console.error('Stats fetch error: ' + e.message + (e.response ? ' ' + JSON.stringify(e.response.data) : ''));
+    console.error('Stats error: ' + e.message + (e.response ? ' ' + JSON.stringify(e.response.data) : ''));
     return statsCache.data || null;
   }
 }
@@ -253,7 +268,12 @@ async function syncCampaigns() {
     const statsMap = {};
     if (stats && stats.length) {
       stats.forEach(function(s) {
-        statsMap[s.campaignId] = { spend: s.cost || 0, sales: s.sales14d || 0, clicks: s.clicks || 0, impressions: s.impressions || 0 };
+        statsMap[s.campaignId] = {
+          spend: parseFloat(s.cost || s.spend || s['Spend'] || 0),
+          sales: parseFloat(s.sales14d || s['7 Day Total Sales'] || s.sales || 0),
+          clicks: parseInt(s.clicks || s['Clicks'] || 0),
+          impressions: parseInt(s.impressions || s['Impressions'] || 0)
+        };
       });
       console.log('Stats loaded for ' + Object.keys(statsMap).length + ' campaigns');
     }
@@ -361,6 +381,8 @@ app.listen(PORT, '0.0.0.0', function() {
     syncCampaigns().catch(function(err) { console.error('Initial sync failed:', err.message); });
   }, 30000);
 });
+
+
 
 
 
