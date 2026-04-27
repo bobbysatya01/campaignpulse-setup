@@ -56,38 +56,114 @@ async function getProfileId() {
   return state.profileId;
 }
 
-async function fetchPortfolios() {
-  console.log('Portfolios loaded from campaign data');
-}
-
-async function fetchCampaigns() {
-  const token = await getAccessToken();
-  const profileId = await getProfileId();
-  const headers = {
+function getHeaders(profileId, token) {
+  return {
     'Authorization': 'Bearer ' + token,
     'Amazon-Advertising-API-ClientId': process.env.AMAZON_CLIENT_ID.trim(),
-    'Amazon-Advertising-API-Scope': String(profileId),
-    'Content-Type': 'application/vnd.spCampaign.v3+json',
-    'Accept': 'application/vnd.spCampaign.v3+json'
+    'Amazon-Advertising-API-Scope': String(profileId)
   };
+}
+
+// ── Fetch portfolios ──────────────────────────────────────────────────────
+async function fetchPortfolios() {
+  const token = await getAccessToken();
+  const profileId = await getProfileId();
   try {
-    const res = await axios.post(
-      'https://advertising-api-eu.amazon.com/sp/campaigns/list',
-      { stateFilter: { include: ['ENABLED'] } },
-      { headers: headers }
-    );
-    const campaigns = res.data.campaigns || res.data || [];
-    console.log('Campaigns fetched: ' + campaigns.length);
-    return campaigns.map(function(c) {
-      return Object.assign({}, c, { cost: 0, attributedSales14d: 0, clicks: 0, impressions: 0 });
+    const res = await axios.get('https://advertising-api-eu.amazon.com/v2/portfolios', {
+      headers: getHeaders(profileId, token)
     });
+    const map = {};
+    res.data.forEach(function(p) { map[p.portfolioId] = p.name; });
+    state.portfolios = map;
+    console.log('Portfolios fetched: ' + Object.keys(map).length);
   } catch(e) {
-    const errData = e.response ? e.response.status + ' ' + JSON.stringify(e.response.data) : e.message;
-    console.error('Campaign fetch error: ' + errData);
-    throw e;
+    console.log('Portfolios from campaign data only');
   }
 }
 
+// ── Fetch campaigns ───────────────────────────────────────────────────────
+async function fetchCampaigns() {
+  const token = await getAccessToken();
+  const profileId = await getProfileId();
+  const headers = Object.assign({}, getHeaders(profileId, token), {
+    'Content-Type': 'application/vnd.spCampaign.v3+json',
+    'Accept': 'application/vnd.spCampaign.v3+json'
+  });
+  const res = await axios.post(
+    'https://advertising-api-eu.amazon.com/sp/campaigns/list',
+    { stateFilter: { include: ['ENABLED'] } },
+    { headers: headers }
+  );
+  const campaigns = res.data.campaigns || res.data || [];
+  console.log('Campaigns fetched: ' + campaigns.length);
+  return campaigns;
+}
+
+// ── Fetch spend/revenue via reporting API ─────────────────────────────────
+async function fetchCampaignStats() {
+  const token = await getAccessToken();
+  const profileId = await getProfileId();
+  const headers = getHeaders(profileId, token);
+  const today = new Date().toISOString().split('T')[0];
+
+  try {
+    // Request a report
+    const reportRes = await axios.post(
+      'https://advertising-api-eu.amazon.com/reporting/reports',
+      {
+        name: 'CampaignPulse Daily Stats',
+        startDate: today,
+        endDate: today,
+        configuration: {
+          adProduct: 'SPONSORED_PRODUCTS',
+          groupBy: ['campaign'],
+          columns: ['campaignId', 'campaignName', 'cost', 'sales14d', 'clicks', 'impressions'],
+          reportTypeId: 'spCampaigns',
+          timeUnit: 'SUMMARY',
+          format: 'GZIP_JSON'
+        }
+      },
+      { headers: Object.assign({}, headers, { 'Content-Type': 'application/json' }) }
+    );
+
+    const reportId = reportRes.data.reportId;
+    console.log('Report requested: ' + reportId);
+
+    // Poll for report completion (max 30 seconds)
+    let reportData = null;
+    for (let i = 0; i < 6; i++) {
+      await new Promise(function(r) { setTimeout(r, 5000); });
+      const statusRes = await axios.get(
+        'https://advertising-api-eu.amazon.com/reporting/reports/' + reportId,
+        { headers: headers }
+      );
+      console.log('Report status: ' + statusRes.data.status);
+      if (statusRes.data.status === 'COMPLETED') {
+        // Download report
+        const downloadRes = await axios.get(statusRes.data.url, {
+          responseType: 'arraybuffer',
+          headers: { 'Accept': 'application/octet-stream' }
+        });
+        // Decompress gzip
+        const zlib = require('zlib');
+        const decompressed = zlib.gunzipSync(Buffer.from(downloadRes.data));
+        reportData = JSON.parse(decompressed.toString());
+        console.log('Report downloaded: ' + reportData.length + ' records');
+        break;
+      }
+      if (statusRes.data.status === 'FAILED') {
+        console.log('Report failed');
+        break;
+      }
+    }
+    return reportData;
+  } catch(e) {
+    console.error('Stats fetch error: ' + e.message);
+    return null;
+  }
+}
+
+// ── Update campaign budget ────────────────────────────────────────────────
 async function updateBudget(campaignId, newBudget) {
   const token = await getAccessToken();
   const profileId = await getProfileId();
@@ -95,17 +171,13 @@ async function updateBudget(campaignId, newBudget) {
     'https://advertising-api-eu.amazon.com/v2/sp/campaigns',
     [{ campaignId: campaignId, dailyBudget: newBudget }],
     {
-      headers: {
-        'Authorization': 'Bearer ' + token,
-        'Amazon-Advertising-API-ClientId': process.env.AMAZON_CLIENT_ID.trim(),
-        'Amazon-Advertising-API-Scope': String(profileId),
-        'Content-Type': 'application/json'
-      }
+      headers: Object.assign({}, getHeaders(profileId, token), { 'Content-Type': 'application/json' })
     }
   );
   return res.data;
 }
 
+// ── Google Chat ───────────────────────────────────────────────────────────
 async function sendGoogleChat(message) {
   if (!process.env.GOOGLE_CHAT_WEBHOOK) return;
   await new Promise(function(resolve) { setTimeout(resolve, 1000); });
@@ -117,6 +189,7 @@ async function sendGoogleChat(message) {
   }
 }
 
+// ── Analyse campaigns ─────────────────────────────────────────────────────
 async function analyseCampaigns(campaigns) {
   const acosCritical = parseFloat(process.env.ACOS_CRITICAL_THRESHOLD || 35);
   const budgetLowPct = parseFloat(process.env.BUDGET_LOW_PERCENT || 20);
@@ -128,9 +201,9 @@ async function analyseCampaigns(campaigns) {
 
   for (let i = 0; i < campaigns.length; i++) {
     const c = campaigns[i];
-    const budget = parseFloat((c.budget && c.budget.budget) || c.dailyBudget || 0);
-    const spend = parseFloat(c.cost || 0);
-    const sales = parseFloat(c.attributedSales14d || 0);
+    const budget = c.dailyBudget || 0;
+    const spend = c.spend || 0;
+    const sales = c.sales || 0;
     const acos = sales > 0 ? (spend / sales) * 100 : 0;
     const remaining = Math.max(0, budget - spend);
     const remainingPct = budget > 0 ? (remaining / budget) * 100 : 100;
@@ -146,78 +219,36 @@ async function analyseCampaigns(campaigns) {
     if (alreadyAlerted) continue;
 
     const name = c.name || 'Unknown';
-    const portfolioName = c.portfolioId ? (state.portfolios[c.portfolioId] || 'No portfolio') : 'No portfolio';
+    const portfolioName = c.portfolio || 'No portfolio';
     const agent = portfolioName.replace('@', '').split(' ')[0];
 
-    state.alerts.push({
-      campaignId: c.campaignId,
-      name: name,
-      portfolio: portfolioName,
-      agent: agent,
-      type: alertType,
-      time: timeStr,
-      date: dateStr,
-      budget: budget,
-      acos: Math.round(acos * 10) / 10
-    });
+    state.alerts.push({ campaignId: c.campaignId, name: name, portfolio: portfolioName, agent: agent, type: alertType, time: timeStr, date: dateStr, budget: budget, acos: Math.round(acos * 10) / 10 });
 
     const dashUrl = process.env.DASHBOARD_URL || 'https://campaignpulse-setup-production.up.railway.app';
 
-    if (outOfBudget) {
+    if (outOfBudget && chatCount < maxChats) {
       const hoursLeft = (23 * 60 + 59 - now.getHours() * 60 - now.getMinutes()) / 60;
       const roas = spend > 0 ? sales / spend : 0;
       const hourly = spend / Math.max(now.getHours(), 1);
       const missed = Math.round(hourly * hoursLeft * roas);
-      state.exhaustionLog.unshift({
-        date: now.toLocaleDateString('en-GB'),
-        time: timeStr,
-        campaign: name,
-        portfolio: portfolioName,
-        agent: agent,
-        budget: 'GBP' + budget.toFixed(2),
-        acos: acos.toFixed(1) + '%',
-        missed: 'GBP' + missed,
-        added: 'Pending',
-        action: 'Pending'
-      });
-      if (chatCount < maxChats) {
-        const msg = '⚠ *OUT OF BUDGET — Action needed*\n\n' +
-          '*Campaign:* ' + name + '\n' +
-          '*Portfolio:* ' + portfolioName + '\n' +
-          '*Agent:* ' + agent + '\n' +
-          '*Ran out at:* ' + timeStr + '\n' +
-          '*Budget was:* £' + budget.toFixed(2) + '\n' +
-          '*ACOS:* ' + acos.toFixed(1) + '%\n' +
-          '*Est. missed revenue:* ~£' + missed + '\n\n' +
-          'Approve at: ' + dashUrl;
-        await sendGoogleChat(msg);
-        chatCount++;
-      }
+      state.exhaustionLog.unshift({ date: now.toLocaleDateString('en-GB'), time: timeStr, campaign: name, portfolio: portfolioName, agent: agent, budget: '£' + budget.toFixed(2), acos: acos.toFixed(1) + '%', missed: '£' + missed, added: 'Pending', action: 'Pending' });
+      const msg = '⚠ *OUT OF BUDGET*\n*Campaign:* ' + name + '\n*Portfolio:* ' + portfolioName + '\n*Agent:* ' + agent + '\n*Time:* ' + timeStr + '\n*Budget:* £' + budget.toFixed(2) + '\n*ACOS:* ' + acos.toFixed(1) + '%\n*Est. missed:* ~£' + missed + '\n\n' + dashUrl;
+      await sendGoogleChat(msg);
+      chatCount++;
     } else if (acosHigh && chatCount < maxChats) {
-      const msg = '📈 *HIGH ACOS — Action needed*\n\n' +
-        '*Campaign:* ' + name + '\n' +
-        '*Portfolio:* ' + portfolioName + '\n' +
-        '*Agent:* ' + agent + '\n' +
-        '*ACOS:* ' + acos.toFixed(1) + '% (limit: ' + acosCritical + '%)\n' +
-        '*Spend:* £' + spend.toFixed(2) + '\n\n' +
-        'Review at: ' + dashUrl;
+      const msg = '📈 *HIGH ACOS*\n*Campaign:* ' + name + '\n*Portfolio:* ' + portfolioName + '\n*Agent:* ' + agent + '\n*ACOS:* ' + acos.toFixed(1) + '%\n*Spend:* £' + spend.toFixed(2) + '\n\n' + dashUrl;
       await sendGoogleChat(msg);
       chatCount++;
     } else if (budgetLow && chatCount < maxChats) {
-      const msg = '⚡ *BUDGET LOW — Action needed*\n\n' +
-        '*Campaign:* ' + name + '\n' +
-        '*Portfolio:* ' + portfolioName + '\n' +
-        '*Agent:* ' + agent + '\n' +
-        '*Remaining:* £' + remaining.toFixed(2) + ' (' + remainingPct.toFixed(0) + '%)\n' +
-        '*ACOS:* ' + acos.toFixed(1) + '%\n\n' +
-        'Review at: ' + dashUrl;
+      const msg = '⚡ *BUDGET LOW*\n*Campaign:* ' + name + '\n*Portfolio:* ' + portfolioName + '\n*Agent:* ' + agent + '\n*Remaining:* £' + remaining.toFixed(2) + ' (' + remainingPct.toFixed(0) + '%)\n\n' + dashUrl;
       await sendGoogleChat(msg);
       chatCount++;
     }
   }
-  if (chatCount > 0) console.log('Sent ' + chatCount + ' Google Chat alerts');
+  if (chatCount > 0) console.log('Sent ' + chatCount + ' alerts');
 }
 
+// ── Main sync ─────────────────────────────────────────────────────────────
 async function syncCampaigns() {
   if (state.syncing) return;
   state.syncing = true;
@@ -225,10 +256,22 @@ async function syncCampaigns() {
   try {
     await fetchPortfolios();
     const raw = await fetchCampaigns();
+
+    // Fetch spend/revenue stats
+    const stats = await fetchCampaignStats();
+    const statsMap = {};
+    if (stats && stats.length) {
+      stats.forEach(function(s) {
+        statsMap[s.campaignId] = { spend: s.cost || 0, sales: s.sales14d || 0, clicks: s.clicks || 0, impressions: s.impressions || 0 };
+      });
+      console.log('Stats loaded for ' + Object.keys(statsMap).length + ' campaigns');
+    }
+
     const campaigns = raw.map(function(c) {
       const budget = parseFloat((c.budget && c.budget.budget) || c.dailyBudget || 0);
-      const spend = parseFloat(c.cost || 0);
-      const sales = parseFloat(c.attributedSales14d || 0);
+      const s = statsMap[c.campaignId] || {};
+      const spend = parseFloat(s.spend || 0);
+      const sales = parseFloat(s.sales || 0);
       const acos = sales > 0 ? Math.round((spend / sales) * 1000) / 10 : 0;
       const remaining = Math.max(0, budget - spend);
       const pct = budget > 0 ? Math.round((spend / budget) * 100) : 0;
@@ -244,12 +287,13 @@ async function syncCampaigns() {
         spend: Math.round(spend * 100) / 100,
         sales: Math.round(sales * 100) / 100,
         acos: acos,
-        clicks: c.clicks || 0,
-        impressions: c.impressions || 0,
+        clicks: s.clicks || 0,
+        impressions: s.impressions || 0,
         budgetRemaining: Math.round(remaining * 100) / 100,
         budgetPct: pct
       };
     });
+
     state.campaigns = campaigns;
     await analyseCampaigns(campaigns);
     state.lastSync = new Date().toTimeString().slice(0, 8);
@@ -263,6 +307,7 @@ async function syncCampaigns() {
   }
 }
 
+// ── API Routes ────────────────────────────────────────────────────────────
 app.get('/api/dashboard', function(req, res) {
   const campaigns = state.campaigns;
   const totalRevenue = campaigns.reduce(function(s, c) { return s + (c.sales || 0); }, 0);
@@ -273,13 +318,7 @@ app.get('/api/dashboard', function(req, res) {
     return c.budgetRemaining <= 0.01 || c.acos > parseFloat(process.env.ACOS_CRITICAL_THRESHOLD || 35) || c.budgetPct >= 80;
   }).length;
   res.json({
-    metrics: {
-      totalRevenue: totalRevenue.toFixed(2),
-      totalSpend: totalSpend.toFixed(2),
-      blendedAcos: blendedAcos,
-      activeCampaigns: active,
-      needsAction: needsAction
-    },
+    metrics: { totalRevenue: totalRevenue.toFixed(2), totalSpend: totalSpend.toFixed(2), blendedAcos: blendedAcos, activeCampaigns: active, needsAction: needsAction },
     campaigns: campaigns,
     alerts: state.alerts.slice(-20),
     exhaustionLog: state.exhaustionLog,
@@ -307,7 +346,7 @@ app.post('/api/campaigns/:id/budget', async function(req, res) {
     await updateBudget(id, newBudget);
     const log = state.exhaustionLog.find(function(e) { return e.campaign === campaign.name && e.action === 'Pending'; });
     if (log) { log.added = '+£' + amount; log.action = 'Budget added'; }
-    await sendGoogleChat('✅ *Budget approved*\n*Campaign:* ' + campaign.name + '\n*Portfolio:* ' + (campaign.portfolio || 'N/A') + '\n*Agent:* ' + (campaign.agent || 'N/A') + '\n+£' + amount + ' added. New budget: £' + newBudget.toFixed(2));
+    await sendGoogleChat('✅ *Budget approved*\n*Campaign:* ' + campaign.name + '\n*Portfolio:* ' + (campaign.portfolio || 'N/A') + '\n+£' + amount + ' added. New budget: £' + newBudget.toFixed(2));
     syncCampaigns();
     res.json({ success: true, newBudget: newBudget });
   } catch(e) {
@@ -331,5 +370,3 @@ app.listen(PORT, '0.0.0.0', function() {
     syncCampaigns().catch(function(err) { console.error('Initial sync failed:', err.message); });
   }, 30000);
 });
-
-
