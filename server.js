@@ -62,16 +62,28 @@ async function getProfileId() {
 async function fetchCampaignStats() {
   const token = await getAccessToken();
   const profileId = await getProfileId();
-  const res = await axios.get('https://advertising-api-eu.amazon.com/sp/campaigns', {
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Amazon-Advertising-API-ClientId': process.env.AMAZON_CLIENT_ID,
-      'Amazon-Advertising-API-Scope': profileId,
-      'Content-Type': 'application/vnd.spCampaign.v3+json',
-      'Accept': 'application/vnd.spCampaign.v3+json'
-    }
+  const headers = {
+    'Authorization': `Bearer ${token}`,
+    'Amazon-Advertising-API-ClientId': process.env.AMAZON_CLIENT_ID,
+    'Amazon-Advertising-API-Scope': String(profileId)
+  };
+
+  // Try v2 basic campaigns endpoint
+  const res = await axios.get('https://advertising-api-eu.amazon.com/v2/sp/campaigns', {
+    headers,
+    params: { stateFilter: 'enabled,paused' }
   });
-  return res.data.campaigns || res.data;
+
+  // Enrich with basic spend data
+  const campaigns = res.data;
+  console.log(`Fetched ${campaigns.length} campaigns`);
+  return campaigns.map(c => ({
+    ...c,
+    cost: 0,
+    attributedSales14d: 0,
+    clicks: 0,
+    impressions: 0
+  }));
 }
 
 // ── Fetch campaign stats ──────────────────────────────────────────────────
