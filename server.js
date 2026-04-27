@@ -100,14 +100,22 @@ async function fetchCampaigns() {
 }
 
 // ── Fetch spend/revenue via reporting API ─────────────────────────────────
+let statsCache = { data: null, lastFetched: 0 };
+
 async function fetchCampaignStats() {
+  // Only fetch new report every 60 minutes
+  const now = Date.now();
+  if (statsCache.data && (now - statsCache.lastFetched) < 60 * 60 * 1000) {
+    console.log('Using cached stats');
+    return statsCache.data;
+  }
+
   const token = await getAccessToken();
   const profileId = await getProfileId();
   const headers = getHeaders(profileId, token);
   const today = new Date().toISOString().split('T')[0];
 
   try {
-    // Request a report
     const reportRes = await axios.post(
       'https://advertising-api-eu.amazon.com/reporting/reports',
       {
@@ -129,7 +137,7 @@ async function fetchCampaignStats() {
     const reportId = reportRes.data.reportId;
     console.log('Report requested: ' + reportId);
 
-    // Poll for report completion (max 2 minutes)
+    // Poll for up to 2 minutes
     let reportData = null;
     for (let i = 0; i < 24; i++) {
       await new Promise(function(r) { setTimeout(r, 5000); });
@@ -139,16 +147,15 @@ async function fetchCampaignStats() {
       );
       console.log('Report status: ' + statusRes.data.status);
       if (statusRes.data.status === 'COMPLETED') {
-        // Download report
         const downloadRes = await axios.get(statusRes.data.url, {
           responseType: 'arraybuffer',
           headers: { 'Accept': 'application/octet-stream' }
         });
-        // Decompress gzip
         const zlib = require('zlib');
         const decompressed = zlib.gunzipSync(Buffer.from(downloadRes.data));
         reportData = JSON.parse(decompressed.toString());
         console.log('Report downloaded: ' + reportData.length + ' records');
+        statsCache = { data: reportData, lastFetched: now };
         break;
       }
       if (statusRes.data.status === 'FAILED') {
@@ -159,7 +166,7 @@ async function fetchCampaignStats() {
     return reportData;
   } catch(e) {
     console.error('Stats fetch error: ' + e.message);
-    return null;
+    return statsCache.data || null;
   }
 }
 
@@ -370,4 +377,5 @@ app.listen(PORT, '0.0.0.0', function() {
     syncCampaigns().catch(function(err) { console.error('Initial sync failed:', err.message); });
   }, 30000);
 });
+
 
