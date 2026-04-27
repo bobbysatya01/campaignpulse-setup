@@ -99,11 +99,12 @@ async function updateBudget(campaignId, newBudget) {
   );
   return res.data;
 }
-
 async function sendGoogleChat(message) {
   if (!process.env.GOOGLE_CHAT_WEBHOOK) return;
+  await new Promise(resolve => setTimeout(resolve, 1000));
   await axios.post(process.env.GOOGLE_CHAT_WEBHOOK, { text: message });
   console.log('Google Chat sent');
+}
 }
 
 async function analyseCampaigns(campaigns) {
