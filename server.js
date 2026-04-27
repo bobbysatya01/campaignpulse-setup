@@ -64,42 +64,21 @@ async function fetchCampaignStats() {
   const profileId = await getProfileId();
   const headers = {
     'Authorization': `Bearer ${token}`,
-    'Amazon-Advertising-API-ClientId': process.env.AMAZON_CLIENT_ID,
+    'Amazon-Advertising-API-ClientId': process.env.AMAZON_CLIENT_ID.trim(),
     'Amazon-Advertising-API-Scope': String(profileId)
   };
-
-  // Try v2 basic campaigns endpoint
-  const res = await axios.get('https://advertising-api-eu.amazon.com/v2/sp/campaigns', {
-    headers,
-    params: { stateFilter: 'enabled,paused' }
-  });
-
-  // Enrich with basic spend data
-  const campaigns = res.data;
-  console.log(`Fetched ${campaigns.length} campaigns`);
-  return campaigns.map(c => ({
-    ...c,
-    cost: 0,
-    attributedSales14d: 0,
-    clicks: 0,
-    impressions: 0
-  }));
+  try {
+    const res = await axios.get('https://advertising-api-eu.amazon.com/v2/sp/campaigns', {
+      headers,
+      params: { stateFilter: 'enabled,paused' }
+    });
+    console.log('Campaigns fetched:', JSON.stringify(res.data).substring(0, 200));
+    return res.data.map(c => ({ ...c, cost: 0, attributedSales14d: 0, clicks: 0, impressions: 0 }));
+  } catch(e) {
+    console.error('Campaign fetch error:', e.response?.status, JSON.stringify(e.response?.data));
+    throw e;
+  }
 }
-
-// ── Fetch campaign stats ──────────────────────────────────────────────────
-async function fetchCampaignStats() {
-  const token = await getAccessToken();
-  const profileId = await getProfileId();
-  const today = new Date().toISOString().split('T')[0].replace(/-/g, '');
-  const res = await axios.get('https://advertising-api-eu.amazon.com/v2/sp/campaigns/extended', {
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Amazon-Advertising-API-ClientId': process.env.AMAZON_CLIENT_ID,
-      'Amazon-Advertising-API-Scope': profileId
-    },
-    params: { startDate: today, endDate: today, stateFilter: 'enabled,paused' }
-  });
-  return res.data;
 }
 
 // ── Update campaign budget ────────────────────────────────────────────────
@@ -215,7 +194,7 @@ async function syncCampaigns() {
     state.lastSync = new Date().toISOString();
     console.log(`Sync complete. ${state.campaigns.length} campaigns loaded.`);
   } catch (e) {
-    console.error('Sync error:', e.message);
+    console.error('Sync error:', e.message, e.response?.data);
   } finally {
     state.syncing = false;
   }
