@@ -1,1 +1,394 @@
-<!DOCTYPE html><html><head><meta charset="UTF-8"><title>FK Sports</title></head><body><h1>Working</h1></body></html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CampaignPulse — Amazon API Setup</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #0a0c10;
+    color: #f0f2f5;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  .card {
+    background: #111318;
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 16px;
+    padding: 36px 40px;
+    max-width: 560px;
+    width: 100%;
+  }
+  .logo { font-size: 18px; font-weight: 600; margin-bottom: 6px; }
+  .logo span { color: #818cf8; }
+  .subtitle { font-size: 13px; color: #5a6378; margin-bottom: 28px; }
+  .step { margin-bottom: 24px; }
+  .step-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #5a6378;
+    margin-bottom: 8px;
+  }
+  .step-title { font-size: 14px; font-weight: 600; color: #f0f2f5; margin-bottom: 4px; }
+  .step-desc { font-size: 13px; color: #8a92a6; line-height: 1.6; margin-bottom: 10px; }
+  input {
+    width: 100%;
+    background: #181c24;
+    border: 1px solid rgba(255,255,255,0.1);
+    color: #f0f2f5;
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    margin-bottom: 8px;
+  }
+  input:focus { outline: none; border-color: #6366f1; }
+  input::placeholder { color: #3a4055; }
+  .btn {
+    width: 100%;
+    padding: 12px;
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+    font-family: inherit;
+    transition: all 0.15s;
+  }
+  .btn-primary { background: #6366f1; color: white; }
+  .btn-primary:hover { background: #818cf8; }
+  .btn-primary:disabled { background: #2a2d3a; color: #5a6378; cursor: not-allowed; }
+  .divider { height: 1px; background: rgba(255,255,255,0.06); margin: 24px 0; }
+  .result-box {
+    background: #181c24;
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 10px;
+    padding: 16px;
+    margin-top: 10px;
+    display: none;
+  }
+  .result-box.show { display: block; }
+  .result-label { font-size: 11px; color: #5a6378; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
+  .result-value {
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 12px;
+    color: #22c55e;
+    word-break: break-all;
+    line-height: 1.6;
+    background: #0d1117;
+    padding: 10px 12px;
+    border-radius: 6px;
+    margin-bottom: 8px;
+  }
+  .copy-btn {
+    font-size: 12px;
+    padding: 5px 12px;
+    border-radius: 6px;
+    border: 1px solid rgba(255,255,255,0.1);
+    background: transparent;
+    color: #8a92a6;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .copy-btn:hover { background: #1e2330; color: #f0f2f5; }
+  .copy-btn.copied { color: #22c55e; border-color: rgba(34,197,94,0.3); }
+  .status { font-size: 13px; padding: 10px 14px; border-radius: 8px; margin-top: 10px; display: none; }
+  .status.show { display: block; }
+  .status.error { background: rgba(239,68,68,0.1); color: #ef4444; border: 1px solid rgba(239,68,68,0.2); }
+  .status.success { background: rgba(34,197,94,0.1); color: #22c55e; border: 1px solid rgba(34,197,94,0.2); }
+  .status.loading { background: rgba(99,102,241,0.1); color: #818cf8; border: 1px solid rgba(99,102,241,0.2); }
+  .note { font-size: 12px; color: #5a6378; margin-top: 8px; line-height: 1.6; }
+  .note a { color: #818cf8; }
+  .profile-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    background: #0d1117;
+    border-radius: 6px;
+    margin-bottom: 6px;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: all 0.15s;
+  }
+  .profile-item:hover { border-color: #6366f1; }
+  .profile-item.selected { border-color: #22c55e; background: rgba(34,197,94,0.05); }
+  .profile-name { font-size: 13px; font-weight: 500; }
+  .profile-meta { font-size: 11px; color: #5a6378; font-family: monospace; }
+  .profile-id { font-size: 12px; font-family: monospace; color: #818cf8; }
+  .hidden { display: none; }
+  .step-number {
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    background: #1e2330;
+    color: #818cf8;
+    font-size: 11px;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 8px;
+  }
+  .step-number.done { background: rgba(34,197,94,0.15); color: #22c55e; }
+</style>
+</head>
+<body>
+
+<div class="card">
+  <div class="logo">Campaign<span>Pulse</span></div>
+  <div class="subtitle">Amazon Advertising API — one-time setup</div>
+
+  <!-- PHASE 1: Enter credentials -->
+  <div id="phase1">
+    <div class="step">
+      <div class="step-label"><span class="step-number" id="n1">1</span>Your LWA credentials</div>
+      <div class="step-desc">Enter your Client ID and Client Secret from developer.amazon.com. These are used only in your browser to generate the OAuth URL — they are never sent to any server.</div>
+      <input type="text" id="clientId" placeholder="amzn1.application-oa2-client.xxxxxxxx" value="amzn1.application-oa2-client.db5315dce1004430a56e6d6bd7e0b75c" />
+      <input type="password" id="clientSecret" placeholder="Your Client Secret (2:xxxx:xxxx format)" />
+      <div class="note">⚠ Your secret stays in your browser only. This page has no backend server.</div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="step">
+      <div class="step-label"><span class="step-number" id="n2">2</span>Authorise with Amazon</div>
+      <div class="step-desc">Click the button below. Amazon will ask you to log in and click Allow. After that, you'll be redirected back to this page automatically with your tokens.</div>
+      <div class="note" style="margin-bottom:12px;">Make sure you're logged into the Amazon account that owns FK Sports ads.</div>
+      <button class="btn btn-primary" id="authBtn" onclick="startAuth()">Connect to Amazon Ads →</button>
+      <div class="status" id="authStatus"></div>
+    </div>
+  </div>
+
+  <!-- PHASE 2: Exchange code for tokens -->
+  <div id="phase2" class="hidden">
+    <div class="step">
+      <div class="step-label"><span class="step-number done">✓</span>Amazon authorised</div>
+      <div class="step-desc">Exchanging your authorisation code for tokens. Enter your Client Secret to complete the exchange.</div>
+      <input type="password" id="clientSecret2" placeholder="Enter your Client Secret again" />
+      <button class="btn btn-primary" id="exchangeBtn" onclick="exchangeToken()">Get my tokens →</button>
+      <div class="status" id="exchangeStatus"></div>
+    </div>
+  </div>
+
+  <!-- PHASE 3: Show results -->
+  <div id="phase3" class="hidden">
+    <div class="step">
+      <div class="step-label"><span class="step-number done">✓</span>Setup complete</div>
+      <div class="step-desc">Save these values somewhere safe — you'll need them to configure the CampaignPulse backend.</div>
+
+      <div class="result-box show">
+        <div class="result-label">Refresh Token</div>
+        <div class="result-value" id="refreshTokenVal"></div>
+        <button class="copy-btn" onclick="copyVal('refreshTokenVal', this)">Copy</button>
+      </div>
+
+      <div class="result-box show" style="margin-top:10px">
+        <div class="result-label">Access Token (valid 1 hour)</div>
+        <div class="result-value" id="accessTokenVal"></div>
+        <button class="copy-btn" onclick="copyVal('accessTokenVal', this)">Copy</button>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="step">
+      <div class="step-label"><span class="step-number done">✓</span>Your UK Profile ID</div>
+      <div class="step-desc">Click your FK Sports UK profile below to select it.</div>
+      <div id="profileList"></div>
+      <div class="result-box" id="profileResult">
+        <div class="result-label">Selected Profile ID</div>
+        <div class="result-value" id="profileIdVal"></div>
+        <button class="copy-btn" onclick="copyVal('profileIdVal', this)">Copy</button>
+      </div>
+      <div class="status" id="profileStatus"></div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="note" style="color:#8a92a6">
+      ✓ Save your Refresh Token, Client ID, Client Secret, and Profile ID in a text file.<br>
+      ✓ Share only the Profile ID with Claude — never the tokens or secrets.<br>
+      ✓ Your Refresh Token is long-lived and will auto-renew access tokens.
+    </div>
+  </div>
+</div>
+
+<script>
+  // ── Read URL params on load ─────────────────────────────────────────────
+  window.addEventListener('load', () => {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
+    const error = params.get('error');
+
+    if (error) {
+      showStatus('authStatus', 'error', 'Amazon returned an error: ' + error);
+      return;
+    }
+
+    if (code) {
+      // We have a code — show phase 2
+      window.authCode = code;
+      document.getElementById('phase1').classList.add('hidden');
+      document.getElementById('phase2').classList.remove('hidden');
+
+      // Try to restore client ID
+      const savedId = sessionStorage.getItem('cp_client_id');
+      if (savedId) document.getElementById('clientId') && null;
+      window.clientId = savedId || 'amzn1.application-oa2-client.db5315dce1004430a56e6d6bd7e0b75c';
+    }
+  });
+
+  // ── Start OAuth flow ────────────────────────────────────────────────────
+  function startAuth() {
+    const clientId = document.getElementById('clientId').value.trim();
+    const secret = document.getElementById('clientSecret').value.trim();
+
+    if (!clientId) { showStatus('authStatus', 'error', 'Please enter your Client ID'); return; }
+    if (!secret) { showStatus('authStatus', 'error', 'Please enter your Client Secret'); return; }
+
+    // Save to session so we can use after redirect
+    sessionStorage.setItem('cp_client_id', clientId);
+    sessionStorage.setItem('cp_client_secret', secret);
+
+    window.clientId = clientId;
+
+    // Build redirect URI — this page itself
+    const redirectUri = window.location.origin + window.location.pathname;
+    const authUrl = `https://www.amazon.co.uk/ap/oa?client_id=${encodeURIComponent(clientId)}&scope=advertising::campaign_management&response_type=code&redirect_uri=${encodeURIComponent(redirectUri)}`;
+
+    showStatus('authStatus', 'loading', 'Redirecting to Amazon login...');
+
+    setTimeout(() => { window.location.href = authUrl; }, 800);
+  }
+
+  // ── Exchange code for tokens ────────────────────────────────────────────
+  async function exchangeToken() {
+    const secret = document.getElementById('clientSecret2').value.trim();
+    if (!secret) { showStatus('exchangeStatus', 'error', 'Please enter your Client Secret'); return; }
+
+    const clientId = sessionStorage.getItem('cp_client_id') || 'amzn1.application-oa2-client.db5315dce1004430a56e6d6bd7e0b75c';
+    const redirectUri = window.location.origin + window.location.pathname;
+    const code = window.authCode;
+
+    showStatus('exchangeStatus', 'loading', 'Exchanging code for tokens with Amazon...');
+    document.getElementById('exchangeBtn').disabled = true;
+
+    try {
+      const body = new URLSearchParams({
+        grant_type: 'authorization_code',
+        code: code,
+        redirect_uri: redirectUri,
+        client_id: clientId,
+        client_secret: secret
+      });
+
+      const response = await fetch('https://api.amazon.co.uk/auth/o2/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: body.toString()
+      });
+
+      const data = await response.json();
+
+      if (data.error) {
+        showStatus('exchangeStatus', 'error', `Error: ${data.error_description || data.error}`);
+        document.getElementById('exchangeBtn').disabled = false;
+        return;
+      }
+
+      window.accessToken = data.access_token;
+      window.refreshToken = data.refresh_token;
+      window.clientSecret = secret;
+
+      // Show phase 3
+      document.getElementById('phase2').classList.add('hidden');
+      document.getElementById('phase3').classList.remove('hidden');
+      document.getElementById('refreshTokenVal').textContent = data.refresh_token;
+      document.getElementById('accessTokenVal').textContent = data.access_token;
+
+      // Fetch profiles
+      fetchProfiles(data.access_token, clientId);
+
+    } catch(e) {
+      showStatus('exchangeStatus', 'error', 'Network error: ' + e.message);
+      document.getElementById('exchangeBtn').disabled = false;
+    }
+  }
+
+  // ── Fetch profiles ──────────────────────────────────────────────────────
+  async function fetchProfiles(accessToken, clientId) {
+    showStatus('profileStatus', 'loading', 'Fetching your advertising profiles...');
+
+    try {
+      const response = await fetch('https://advertising-api-eu.amazon.com/v2/profiles', {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Amazon-Advertising-API-ClientId': clientId
+        }
+      });
+
+      const profiles = await response.json();
+
+      if (!Array.isArray(profiles)) {
+        showStatus('profileStatus', 'error', 'Could not fetch profiles: ' + JSON.stringify(profiles));
+        return;
+      }
+
+      document.getElementById('profileStatus').classList.remove('show');
+      const list = document.getElementById('profileList');
+      list.innerHTML = '';
+
+      profiles.forEach(p => {
+        const isUK = p.countryCode === 'GB' || p.countryCode === 'UK';
+        const div = document.createElement('div');
+        div.className = 'profile-item' + (isUK ? ' selected' : '');
+        div.innerHTML = `
+          <div>
+            <div class="profile-name">${p.accountInfo?.name || 'Unknown'} ${isUK ? '🇬🇧' : ''}</div>
+            <div class="profile-meta">${p.countryCode} · ${p.accountInfo?.type || ''}</div>
+          </div>
+          <div class="profile-id">${p.profileId}</div>
+        `;
+        div.onclick = () => selectProfile(p.profileId, div);
+        list.appendChild(div);
+
+        if (isUK) selectProfile(p.profileId, div);
+      });
+
+    } catch(e) {
+      showStatus('profileStatus', 'error', 'Error fetching profiles: ' + e.message);
+    }
+  }
+
+  function selectProfile(profileId, el) {
+    document.querySelectorAll('.profile-item').forEach(i => i.classList.remove('selected'));
+    el.classList.add('selected');
+    document.getElementById('profileIdVal').textContent = profileId;
+    document.getElementById('profileResult').classList.add('show');
+  }
+
+  // ── Helpers ─────────────────────────────────────────────────────────────
+  function showStatus(id, type, msg) {
+    const el = document.getElementById(id);
+    el.className = `status show ${type}`;
+    el.textContent = msg;
+  }
+
+  function copyVal(id, btn) {
+    const text = document.getElementById(id).textContent;
+    navigator.clipboard.writeText(text).then(() => {
+      btn.textContent = 'Copied ✓';
+      btn.classList.add('copied');
+      setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2000);
+    });
+  }
+</script>
+</body>
+</html>
