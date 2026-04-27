@@ -129,9 +129,9 @@ async function fetchCampaignStats() {
     const reportId = reportRes.data.reportId;
     console.log('Report requested: ' + reportId);
 
-    // Poll for report completion (max 30 seconds)
+    // Poll for report completion (max 2 minutes)
     let reportData = null;
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 24; i++) {
       await new Promise(function(r) { setTimeout(r, 5000); });
       const statusRes = await axios.get(
         'https://advertising-api-eu.amazon.com/reporting/reports/' + reportId,
@@ -370,3 +370,4 @@ app.listen(PORT, '0.0.0.0', function() {
     syncCampaigns().catch(function(err) { console.error('Initial sync failed:', err.message); });
   }, 30000);
 });
+
