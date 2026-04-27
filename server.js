@@ -99,7 +99,7 @@ async function fetchCampaigns() {
   return campaigns;
 }
 
-// ── Fetch spend/revenue via v2 report API ────────────────────────────────
+// ── Fetch spend/revenue via v3 stats endpoint ────────────────────────────
 let statsCache = { data: null, lastFetched: 0 };
 
 async function fetchCampaignStats() {
@@ -108,52 +108,46 @@ async function fetchCampaignStats() {
     console.log('Using cached stats (' + Math.round((now - statsCache.lastFetched)/60000) + ' min old)');
     return statsCache.data;
   }
-  console.log('Requesting v2 stats report...');
+  console.log('Requesting campaign stats...');
 
   const token = await getAccessToken();
   const profileId = await getProfileId();
-  const headers = getHeaders(profileId, token);
-  const today = new Date().toISOString().split('T')[0].replace(/-/g, '');
+  const today = new Date().toISOString().split('T')[0];
+  const headers = Object.assign({}, getHeaders(profileId, token), {
+    'Content-Type': 'application/vnd.spCampaign.v3+json',
+    'Accept': 'application/vnd.spCampaign.v3+json'
+  });
 
   try {
-    const reportRes = await axios.post(
-      'https://advertising-api-eu.amazon.com/v2/sp/campaigns/report',
+    const res = await axios.post(
+      'https://advertising-api-eu.amazon.com/sp/campaigns/list',
       {
-        reportDate: today,
-        metrics: 'campaignId,campaignName,cost,attributedSales14d,clicks,impressions'
+        stateFilter: { include: ['ENABLED'] },
+        includeExtendedDataFields: true
       },
-      { headers: Object.assign({}, headers, { 'Content-Type': 'application/json' }) }
+      { headers: headers }
     );
-
-    const reportId = reportRes.data.reportId;
-    console.log('V2 report requested: ' + reportId);
-
-    let reportData = null;
-    for (let i = 0; i < 12; i++) {
-      await new Promise(function(r) { setTimeout(r, 5000); });
-      const statusRes = await axios.get(
-        'https://advertising-api-eu.amazon.com/v2/reports/' + reportId,
-        { headers: headers }
-      );
-      console.log('Report status: ' + statusRes.data.status);
-      if (statusRes.data.status === 'SUCCESS') {
-        const downloadRes = await axios.get(statusRes.data.location, {
-          responseType: 'arraybuffer',
-          headers: headers
-        });
-        const zlib = require('zlib');
-        const decompressed = zlib.gunzipSync(Buffer.from(downloadRes.data));
-        reportData = JSON.parse(decompressed.toString());
-        console.log('V2 report downloaded: ' + reportData.length + ' records');
-        statsCache = { data: reportData, lastFetched: now };
-        break;
+    const campaigns = res.data.campaigns || res.data || [];
+    console.log('Extended data fetched for ' + campaigns.length + ' campaigns');
+    const statsMap = {};
+    campaigns.forEach(function(c) {
+      if (c.extendedData) {
+        statsMap[c.campaignId] = {
+          cost: c.extendedData.cost || 0,
+          sales14d: c.extendedData.attributedSales14d || 0,
+          clicks: c.extendedData.clicks || 0,
+          impressions: c.extendedData.impressions || 0
+        };
       }
-      if (statusRes.data.status === 'FAILURE') {
-        console.log('V2 report failed: ' + JSON.stringify(statusRes.data));
-        break;
-      }
+    });
+    const result = Object.keys(statsMap).map(function(id) {
+      return Object.assign({ campaignId: id }, statsMap[id]);
+    });
+    if (result.length > 0) {
+      statsCache = { data: result, lastFetched: now };
+      console.log('Stats loaded: ' + result.length + ' campaigns');
     }
-    return reportData;
+    return result.length > 0 ? result : null;
   } catch(e) {
     console.error('Stats fetch error: ' + e.message + (e.response ? ' ' + JSON.stringify(e.response.data) : ''));
     return statsCache.data || null;
@@ -367,6 +361,7 @@ app.listen(PORT, '0.0.0.0', function() {
     syncCampaigns().catch(function(err) { console.error('Initial sync failed:', err.message); });
   }, 30000);
 });
+
 
 
 
