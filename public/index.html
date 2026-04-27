@@ -1,601 +1,958 @@
-const express = require('express');
-const axios = require('axios');
-const cron = require('node-cron');
-const path = require('path');
-require('dotenv').config();
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FK Sports — CampaignPulse</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #05080f;
+  --surface: #0c1018;
+  --surface2: #131820;
+  --surface3: #1a2030;
+  --border: rgba(255,255,255,0.06);
+  --border2: rgba(255,255,255,0.1);
+  --text: #e8edf5;
+  --text2: #7a8499;
+  --text3: #3d4a60;
+  --green: #00d084;
+  --green-bg: rgba(0,208,132,0.08);
+  --amber: #ffb340;
+  --amber-bg: rgba(255,179,64,0.08);
+  --red: #ff4d6a;
+  --red-bg: rgba(255,77,106,0.08);
+  --blue: #4d9fff;
+  --blue-bg: rgba(77,159,255,0.08);
+  --purple: #9f7aea;
+  --purple-bg: rgba(159,122,234,0.08);
+  --accent: #ff6b35;
+  --accent2: #ff8c5a;
+  --mono: 'JetBrains Mono', monospace;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; font-size: 13px; }
 
-const app = express();
-app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
+/* Layout */
+.shell { display: flex; min-height: 100vh; }
+.sidebar { width: 220px; flex-shrink: 0; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
+.main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 
-let state = {
-  accessToken: null,
-  tokenExpiry: null,
-  profileId: null,
-  campaigns: [],
-  portfolios: {},
-  alerts: [],
-  exhaustionLog: [],
-  lastSync: null,
-  syncing: false,
-  error: null
+/* Sidebar */
+.logo { padding: 20px 18px 16px; border-bottom: 1px solid var(--border); }
+.logo-brand { font-size: 11px; font-weight: 700; letter-spacing: 0.15em; text-transform: uppercase; color: var(--accent); margin-bottom: 2px; }
+.logo-product { font-size: 16px; font-weight: 600; color: var(--text); letter-spacing: -0.3px; }
+.nav { padding: 10px 8px; flex: 1; }
+.nav-section { font-size: 10px; font-weight: 600; color: var(--text3); letter-spacing: 0.1em; text-transform: uppercase; padding: 12px 10px 6px; }
+.nav-item { display: flex; align-items: center; gap: 9px; padding: 8px 10px; border-radius: 7px; cursor: pointer; color: var(--text2); font-size: 12.5px; font-weight: 400; transition: all 0.12s; border: none; background: none; width: 100%; text-align: left; }
+.nav-item:hover { background: var(--surface2); color: var(--text); }
+.nav-item.active { background: var(--surface3); color: var(--text); font-weight: 500; }
+.nav-badge { margin-left: auto; background: var(--red); color: white; font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 20px; min-width: 18px; text-align: center; }
+.nav-badge.amber { background: var(--amber); color: #000; }
+.nav-badge.green { background: var(--green); color: #000; }
+.sidebar-footer { padding: 14px 16px; border-top: 1px solid var(--border); }
+.profile-row { display: flex; align-items: center; gap: 10px; }
+.avatar { width: 28px; height: 28px; border-radius: 50%; background: var(--accent); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: white; flex-shrink: 0; }
+.profile-name { font-size: 12px; font-weight: 600; color: var(--text); }
+.profile-role { font-size: 11px; color: var(--text3); }
+
+/* Topbar */
+.topbar { background: var(--surface); border-bottom: 1px solid var(--border); padding: 12px 24px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 10; }
+.page-title { font-size: 14px; font-weight: 600; color: var(--text); }
+.topbar-right { display: flex; align-items: center; gap: 10px; }
+.sync-info { font-family: var(--mono); font-size: 11px; color: var(--text3); display: flex; align-items: center; gap: 6px; }
+.sync-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
+.sync-dot.syncing { animation: pulse 1s infinite; }
+@keyframes pulse { 0%,100%{opacity:1}50%{opacity:0.3} }
+.btn { padding: 7px 14px; border-radius: 7px; font-size: 12px; font-weight: 500; cursor: pointer; transition: all 0.12s; border: 1px solid var(--border2); font-family: 'Inter', sans-serif; }
+.btn-ghost { background: transparent; color: var(--text2); }
+.btn-ghost:hover { background: var(--surface2); color: var(--text); }
+.btn-primary { background: var(--accent); color: white; border-color: transparent; }
+.btn-primary:hover { background: var(--accent2); }
+.btn-green { background: var(--green-bg); color: var(--green); border-color: rgba(0,208,132,0.2); }
+.btn-green:hover { background: rgba(0,208,132,0.15); }
+.btn-red { background: var(--red-bg); color: var(--red); border-color: rgba(255,77,106,0.2); }
+.btn-amber { background: var(--amber-bg); color: var(--amber); border-color: rgba(255,179,64,0.2); }
+
+/* Pages */
+.page { padding: 22px 24px; display: none; flex: 1; }
+.page.active { display: block; }
+
+/* Metrics */
+.metrics-grid { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 12px; margin-bottom: 22px; }
+.metric-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; }
+.metric-card.alert { border-color: rgba(255,77,106,0.25); background: rgba(255,77,106,0.03); }
+.metric-label { font-size: 10.5px; color: var(--text3); font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+.metric-value { font-size: 24px; font-weight: 700; color: var(--text); letter-spacing: -0.5px; font-family: var(--mono); }
+.metric-delta { font-size: 11px; margin-top: 5px; color: var(--text3); }
+.delta-up { color: var(--green); }
+.delta-down { color: var(--red); }
+
+/* Alert banner */
+.alert-banner { background: rgba(255,77,106,0.06); border: 1px solid rgba(255,77,106,0.2); border-radius: 9px; padding: 11px 16px; margin-bottom: 18px; display: flex; align-items: center; gap: 12px; }
+.alert-banner-text { font-size: 12.5px; color: var(--text); flex: 1; line-height: 1.5; }
+.alert-banner-text strong { color: var(--red); }
+
+/* Section */
+.section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.section-title { font-size: 13px; font-weight: 600; color: var(--text); }
+.section-sub { font-size: 11px; color: var(--text3); margin-top: 2px; }
+
+/* Table */
+.table-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin-bottom: 22px; }
+table { width: 100%; border-collapse: collapse; }
+thead th { font-size: 10.5px; font-weight: 600; color: var(--text3); text-transform: uppercase; letter-spacing: 0.07em; padding: 10px 14px; text-align: left; background: var(--surface2); border-bottom: 1px solid var(--border); white-space: nowrap; }
+tbody td { padding: 11px 14px; border-bottom: 1px solid var(--border); font-size: 12.5px; color: var(--text); vertical-align: middle; }
+tbody tr:last-child td { border-bottom: none; }
+tbody tr:hover { background: rgba(255,255,255,0.02); }
+.camp-name { font-weight: 500; font-size: 12.5px; }
+.camp-meta { font-size: 11px; color: var(--text3); margin-top: 1px; }
+.mono { font-family: var(--mono); }
+
+/* Badge */
+.badge { font-size: 10.5px; font-weight: 500; padding: 3px 8px; border-radius: 5px; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.badge-green { background: var(--green-bg); color: var(--green); }
+.badge-red { background: var(--red-bg); color: var(--red); }
+.badge-amber { background: var(--amber-bg); color: var(--amber); }
+.badge-blue { background: var(--blue-bg); color: var(--blue); }
+.badge-purple { background: var(--purple-bg); color: var(--purple); }
+.dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
+
+/* Progress */
+.prog { width: 70px; height: 3px; background: var(--surface3); border-radius: 3px; overflow: hidden; margin-top: 5px; }
+.prog-fill { height: 100%; border-radius: 3px; }
+
+/* Action group */
+.ag { display: flex; gap: 5px; flex-wrap: wrap; }
+
+/* Report page */
+.report-filters { display: flex; gap: 8px; margin-bottom: 18px; flex-wrap: wrap; align-items: center; }
+.filter-select { background: var(--surface); border: 1px solid var(--border2); color: var(--text); padding: 7px 10px; border-radius: 7px; font-size: 12px; font-family: 'Inter',sans-serif; cursor: pointer; }
+.filter-select:focus { outline: none; border-color: var(--accent); }
+.report-summary { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; margin-bottom: 20px; }
+
+/* AI card */
+.ai-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; margin-bottom: 12px; }
+.ai-header { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 10px; }
+.ai-icon { width: 30px; height: 30px; border-radius: 8px; background: var(--purple-bg); border: 1px solid rgba(159,122,234,0.2); display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; }
+.ai-title { font-size: 13px; font-weight: 600; color: var(--text); }
+.ai-sub { font-size: 11px; color: var(--text3); margin-top: 2px; }
+.ai-desc { font-size: 12.5px; color: var(--text2); line-height: 1.6; margin-bottom: 12px; }
+.ai-impact { background: var(--green-bg); border: 1px solid rgba(0,208,132,0.15); border-radius: 7px; padding: 8px 12px; font-size: 12px; color: var(--green); margin-bottom: 12px; }
+.kw-list { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 12px; }
+.kw-pill { font-size: 11px; padding: 3px 9px; border-radius: 5px; background: var(--blue-bg); color: var(--blue); border: 1px solid rgba(77,159,255,0.15); font-family: var(--mono); }
+.kw-pill.neg { background: var(--red-bg); color: var(--red); border-color: rgba(255,77,106,0.15); }
+
+/* Loading */
+.loading { display: flex; align-items: center; justify-content: center; padding: 60px; color: var(--text3); font-size: 13px; gap: 10px; }
+.spinner { width: 16px; height: 16px; border: 2px solid var(--border2); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Empty state */
+.empty { text-align: center; padding: 50px; color: var(--text3); font-size: 13px; }
+
+/* Tabs */
+.tabs { display: flex; gap: 3px; margin-bottom: 18px; background: var(--surface2); padding: 3px; border-radius: 8px; width: fit-content; }
+.tab-btn { padding: 6px 14px; border-radius: 6px; font-size: 12px; font-weight: 500; cursor: pointer; border: none; background: transparent; color: var(--text3); font-family: 'Inter',sans-serif; transition: all 0.12s; }
+.tab-btn.active { background: var(--surface3); color: var(--text); }
+
+/* Insight box */
+.insight-box { background: var(--surface); border: 1px solid rgba(159,122,234,0.25); border-radius: 10px; padding: 14px 18px; margin-bottom: 20px; }
+.insight-title { font-size: 12px; font-weight: 600; color: var(--purple); margin-bottom: 6px; }
+.insight-text { font-size: 12.5px; color: var(--text2); line-height: 1.7; }
+
+/* Settings */
+.settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.settings-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; }
+.settings-title { font-size: 12.5px; font-weight: 600; color: var(--text); margin-bottom: 14px; }
+.settings-row { display: flex; align-items: center; justify-content: space-between; padding: 9px 0; border-bottom: 1px solid var(--border); }
+.settings-row:last-child { border-bottom: none; }
+.settings-label { font-size: 12.5px; color: var(--text); }
+.settings-sub { font-size: 11px; color: var(--text3); margin-top: 1px; }
+.toggle { width: 34px; height: 18px; background: var(--surface3); border-radius: 18px; position: relative; cursor: pointer; transition: background 0.2s; border: none; flex-shrink: 0; }
+.toggle.on { background: var(--accent); }
+.toggle::after { content:''; position:absolute; width:12px; height:12px; background:white; border-radius:50%; top:3px; left:3px; transition:left 0.2s; }
+.toggle.on::after { left:19px; }
+.input-sm { background: var(--surface2); border: 1px solid var(--border2); color: var(--text); padding: 5px 9px; border-radius: 6px; font-size: 12px; width: 70px; font-family:'Inter',sans-serif; }
+
+/* AI thinking */
+.ai-thinking { display: flex; align-items: center; gap: 8px; color: var(--text3); font-size: 12px; padding: 12px 0; }
+</style>
+</head>
+<body>
+<div class="shell">
+
+<!-- SIDEBAR -->
+<nav class="sidebar">
+  <div class="logo">
+    <div class="logo-brand">FK Sports</div>
+    <div class="logo-product">CampaignPulse</div>
+  </div>
+  <div class="nav">
+    <div class="nav-section">Monitor</div>
+    <button class="nav-item active" onclick="showPage('dashboard',this)">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/><rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>
+      Dashboard
+      <span class="nav-badge" id="nb-action" style="display:none">0</span>
+    </button>
+    <button class="nav-item" onclick="showPage('campaigns',this)">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 4h14M1 8h10M1 12h6"/></svg>
+      All campaigns
+    </button>
+    <button class="nav-item" onclick="showPage('ai',this)">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M6 8l1.5 1.5L10 6"/></svg>
+      AI analysis
+      <span class="nav-badge amber">Live</span>
+    </button>
+    <button class="nav-item" onclick="showPage('keywords',this)">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="5" r="2"/><path d="M8 7v8M5 10h6"/></svg>
+      Keyword intelligence
+      <span class="nav-badge green">AI</span>
+    </button>
+    <div class="nav-section">Reports</div>
+    <button class="nav-item" onclick="showPage('report',this)">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="12" height="12" rx="1"/><path d="M5 8h6M5 11h4M5 5h3"/></svg>
+      Budget report
+    </button>
+    <button class="nav-item" onclick="showPage('activity',this)">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 5v3l2 2"/></svg>
+      Activity log
+    </button>
+    <div class="nav-section">Admin</div>
+    <button class="nav-item" onclick="showPage('settings',this)">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="2.5"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2"/></svg>
+      Settings
+    </button>
+  </div>
+  <div class="sidebar-footer">
+    <div class="profile-row">
+      <div class="avatar">B</div>
+      <div><div class="profile-name">Bobby</div><div class="profile-role">Account owner</div></div>
+    </div>
+  </div>
+</nav>
+
+<!-- MAIN -->
+<div class="main">
+  <div class="topbar">
+    <div class="page-title" id="page-title">Dashboard</div>
+    <div class="topbar-right">
+      <div class="sync-info"><div class="sync-dot" id="sync-dot"></div><span id="sync-time">Loading...</span></div>
+      <button class="btn btn-ghost" onclick="exportCSV()">Export CSV</button>
+      <button class="btn btn-primary" onclick="refreshData()">Refresh data</button>
+    </div>
+  </div>
+
+  <!-- DASHBOARD -->
+  <div class="page active" id="page-dashboard">
+    <div id="alert-container"></div>
+    <div class="metrics-grid" id="metrics-grid">
+      <div class="metric-card"><div class="metric-label">Today's revenue</div><div class="metric-value" id="m-revenue"><div class="spinner"></div></div><div class="metric-delta" id="m-revenue-d"></div></div>
+      <div class="metric-card"><div class="metric-label">Total ad spend</div><div class="metric-value" id="m-spend"></div><div class="metric-delta" id="m-spend-d"></div></div>
+      <div class="metric-card"><div class="metric-label">Blended ACOS</div><div class="metric-value" id="m-acos"></div><div class="metric-delta" id="m-acos-d"></div></div>
+      <div class="metric-card alert"><div class="metric-label">Needs action</div><div class="metric-value" id="m-action"></div><div class="metric-delta delta-down" id="m-action-d"></div></div>
+    </div>
+    <div class="section-header">
+      <div><div class="section-title">Live campaigns</div><div class="section-sub" id="camp-sub">Loading...</div></div>
+      <button class="btn btn-ghost" onclick="showPage('campaigns',document.querySelectorAll('.nav-item')[1])">View all →</button>
+    </div>
+    <div class="table-card">
+      <div style="overflow-x:auto"><table>
+        <thead><tr><th>Campaign</th><th>Portfolio</th><th>Budget left</th><th>ACOS</th><th>Revenue</th><th>Spend</th><th>Status</th><th>Action</th></tr></thead>
+        <tbody id="dash-table"><tr><td colspan="8"><div class="loading"><div class="spinner"></div> Loading campaigns...</div></td></tr></tbody>
+      </table></div>
+    </div>
+  </div>
+
+  <!-- ALL CAMPAIGNS -->
+  <div class="page" id="page-campaigns">
+    <div class="tabs">
+      <button class="tab-btn active" onclick="filterCamps('all',this)">All (<span id="t-all">0</span>)</button>
+      <button class="tab-btn" onclick="filterCamps('action',this)">Needs action (<span id="t-action">0</span>)</button>
+      <button class="tab-btn" onclick="filterCamps('healthy',this)">Healthy (<span id="t-healthy">0</span>)</button>
+    </div>
+    <div class="table-card">
+      <div style="overflow-x:auto"><table>
+        <thead><tr><th>Campaign</th><th>Portfolio / Agent</th><th>Daily budget</th><th>Spent</th><th>Budget left</th><th>ACOS</th><th>Revenue</th><th>Status</th><th>Action</th></tr></thead>
+        <tbody id="all-table"><tr><td colspan="9"><div class="loading"><div class="spinner"></div> Loading...</div></td></tr></tbody>
+      </table></div>
+    </div>
+  </div>
+
+  <!-- AI ANALYSIS -->
+  <div class="page" id="page-ai">
+    <div class="metrics-grid" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+      <div class="metric-card"><div class="metric-label">Est. revenue gain</div><div class="metric-value" id="ai-gain">—</div><div class="metric-delta delta-up">If all suggestions approved</div></div>
+      <div class="metric-card"><div class="metric-label">Wasted spend</div><div class="metric-value" id="ai-waste">—</div><div class="metric-delta delta-down">High ACOS campaigns</div></div>
+      <div class="metric-card"><div class="metric-label">Scale opportunities</div><div class="metric-value" id="ai-opps">—</div><div class="metric-delta delta-up">Low ACOS, budget headroom</div></div>
+    </div>
+    <div id="ai-container"><div class="loading"><div class="spinner"></div> Analysing your campaigns with AI...</div></div>
+  </div>
+
+  <!-- BUDGET REPORT -->
+  <div class="page" id="page-report">
+    <div class="report-filters">
+      <select class="filter-select" id="rf-period">
+        <option value="today">Today</option>
+        <option value="7">Last 7 days</option>
+        <option value="30" selected>Last 30 days</option>
+      </select>
+      <select class="filter-select" id="rf-type">
+        <option value="all">All events</option>
+        <option value="out_of_budget">Out of budget</option>
+        <option value="budget_low">Budget low</option>
+        <option value="acos_high">High ACOS</option>
+      </select>
+      <button class="btn btn-ghost" onclick="exportReportCSV()">📥 Export CSV</button>
+      <button class="btn btn-ghost" onclick="exportReportPDF()">📄 Export PDF</button>
+      <button class="btn btn-primary" onclick="renderReport()">Generate report</button>
+    </div>
+    <div class="report-summary">
+      <div class="metric-card alert"><div class="metric-label">Exhaustion events</div><div class="metric-value" id="rpt-events">—</div><div class="metric-delta delta-down" id="rpt-events-d"></div></div>
+      <div class="metric-card"><div class="metric-label">Est. missed revenue</div><div class="metric-value" id="rpt-missed">—</div><div class="metric-delta delta-down">From budget exhaustion</div></div>
+      <div class="metric-card"><div class="metric-label">Avg exhaustion time</div><div class="metric-value" id="rpt-avg-time">—</div><div class="metric-delta">Most alerts today</div></div>
+    </div>
+    <div class="insight-box" id="rpt-insight" style="display:none">
+      <div class="insight-title">✦ AI Pattern Insight</div>
+      <div class="insight-text" id="rpt-insight-text"></div>
+    </div>
+    <div class="section-header">
+      <div><div class="section-title">Exhaustion event log</div><div class="section-sub">Every incident with time, budget, ACOS and action taken</div></div>
+    </div>
+    <div class="table-card">
+      <div style="overflow-x:auto"><table>
+        <thead><tr><th>Date</th><th>Time</th><th>Campaign</th><th>Portfolio</th><th>Agent</th><th>Budget set</th><th>ACOS</th><th>Est. missed rev.</th><th>Budget added</th><th>Action taken</th></tr></thead>
+        <tbody id="report-table"><tr><td colspan="10"><div class="empty">No events recorded yet. Events appear here when campaigns run out of budget or trigger alerts.</div></td></tr></tbody>
+      </table></div>
+    </div>
+  </div>
+
+  <!-- ACTIVITY LOG -->
+  <div class="page" id="page-activity">
+    <div class="table-card" style="padding:0 18px">
+      <div id="activity-log"><div class="loading"><div class="spinner"></div> Loading activity...</div></div>
+    </div>
+  </div>
+
+  <!-- SETTINGS -->
+  <div class="page" id="page-settings">
+    <div class="settings-grid">
+      <div class="settings-card">
+        <div class="settings-title">Alert thresholds</div>
+        <div class="settings-row"><div><div class="settings-label">ACOS critical (%)</div><div class="settings-sub">Trigger Google Chat alert</div></div><input class="input-sm" type="number" value="35" id="s-acos-crit"/></div>
+        <div class="settings-row"><div><div class="settings-label">ACOS warning (%)</div><div class="settings-sub">Show warning badge</div></div><input class="input-sm" type="number" value="25" id="s-acos-warn"/></div>
+        <div class="settings-row"><div><div class="settings-label">Budget low (%)</div><div class="settings-sub">Alert when % remaining</div></div><input class="input-sm" type="number" value="20" id="s-budget-low"/></div>
+        <div class="settings-row"><div><div class="settings-label">Poll interval (min)</div><div class="settings-sub">How often to sync</div></div><input class="input-sm" type="number" value="15" id="s-poll"/></div>
+      </div>
+      <div class="settings-card">
+        <div class="settings-title">Notifications</div>
+        <div class="settings-row"><div><div class="settings-label">Google Chat alerts</div><div class="settings-sub">Out of budget + high ACOS</div></div><button class="toggle on" onclick="this.classList.toggle('on')"></button></div>
+        <div class="settings-row"><div><div class="settings-label">Include portfolio name</div><div class="settings-sub">Show in every alert</div></div><button class="toggle on" onclick="this.classList.toggle('on')"></button></div>
+        <div class="settings-row"><div><div class="settings-label">Include agent name</div><div class="settings-sub">From portfolio</div></div><button class="toggle on" onclick="this.classList.toggle('on')"></button></div>
+        <div class="settings-row"><div><div class="settings-label">Max alerts per sync</div><div class="settings-sub">Prevent flooding</div></div><input class="input-sm" type="number" value="5" id="s-max-alerts"/></div>
+      </div>
+      <div class="settings-card">
+        <div class="settings-title">Auto-actions</div>
+        <div class="settings-row"><div><div class="settings-label">Auto-pause at ACOS > 50%</div><div class="settings-sub">No approval needed</div></div><button class="toggle" onclick="this.classList.toggle('on')"></button></div>
+        <div class="settings-row"><div><div class="settings-label">Auto-add budget (ACOS &lt; 15%)</div><div class="settings-sub">When out of budget</div></div><button class="toggle" onclick="this.classList.toggle('on')"></button></div>
+        <div class="settings-row"><div><div class="settings-label">Max auto-add per event (£)</div><div class="settings-sub">Hard cap</div></div><input class="input-sm" type="number" value="50" id="s-max-add"/></div>
+      </div>
+      <div class="settings-card">
+        <div class="settings-title">AI analysis</div>
+        <div class="settings-row"><div><div class="settings-label">Keyword gap analysis</div><div class="settings-sub">Daily via Claude AI</div></div><button class="toggle on" onclick="this.classList.toggle('on')"></button></div>
+        <div class="settings-row"><div><div class="settings-label">Scale recommendations</div><div class="settings-sub">When ACOS stable 7+ days</div></div><button class="toggle on" onclick="this.classList.toggle('on')"></button></div>
+        <div class="settings-row"><div><div class="settings-label">Negative keyword suggestions</div><div class="settings-sub">Zero-conversion terms</div></div><button class="toggle on" onclick="this.classList.toggle('on')"></button></div>
+        <div class="settings-row"><div><div class="settings-label">Bid optimisation</div><div class="settings-sub">Weekly per keyword</div></div><button class="toggle" onclick="this.classList.toggle('on')"></button></div>
+      </div>
+    </div>
+    <div style="margin-top:14px;display:flex;gap:8px">
+      <button class="btn btn-primary">Save settings</button>
+      <button class="btn btn-ghost">Reset to defaults</button>
+    </div>
+  </div>
+
+
+  <!-- KEYWORD INTELLIGENCE PAGE -->
+  <div class="page" id="page-keywords">
+    <div class="metrics-grid" style="grid-template-columns:repeat(4,minmax(0,1fr))">
+      <div class="metric-card"><div class="metric-label">Search terms analysed</div><div class="metric-value" id="kw-total">—</div><div class="metric-delta">Last 7 days</div></div>
+      <div class="metric-card alert"><div class="metric-label">Wasted spend found</div><div class="metric-value" id="kw-waste">—</div><div class="metric-delta delta-down">Zero conversion terms</div></div>
+      <div class="metric-card"><div class="metric-label">New keyword opps</div><div class="metric-value" id="kw-opps">—</div><div class="metric-delta delta-up">Converting search terms</div></div>
+      <div class="metric-card"><div class="metric-label">Est. weekly impact</div><div class="metric-value" id="kw-impact">—</div><div class="metric-delta delta-up">If all actioned</div></div>
+    </div>
+
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <div>
+        <div class="section-title">Keyword Intelligence</div>
+        <div class="section-sub" id="kw-status">Checking report status...</div>
+      </div>
+      <button class="btn btn-primary" onclick="refreshKeywords()">Request fresh analysis</button>
+    </div>
+
+    <div id="kw-container">
+      <div class="loading"><div class="spinner"></div> Loading keyword analysis...</div>
+    </div>
+  </div>
+
+</div>
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+let appData = { metrics: {}, campaigns: [], alerts: [], exhaustionLog: [], lastSync: null };
+let allCampaigns = [];
+let currentFilter = 'all';
+
+const pageTitles = {
+  dashboard: 'Dashboard', campaigns: 'All campaigns', ai: 'AI analysis',
+  report: 'Budget exhaustion report',
+  keywords: 'Keyword Intelligence', activity: 'Activity log', settings: 'Settings'
 };
 
-async function getAccessToken() {
-  if (state.accessToken && state.tokenExpiry && Date.now() < state.tokenExpiry - 60000) {
-    return state.accessToken;
-  }
-  console.log('Refreshing access token...');
-  const res = await axios.post('https://api.amazon.co.uk/auth/o2/token',
-    new URLSearchParams({
-      grant_type: 'refresh_token',
-      refresh_token: process.env.AMAZON_REFRESH_TOKEN.trim(),
-      client_id: process.env.AMAZON_CLIENT_ID.trim(),
-      client_secret: process.env.AMAZON_CLIENT_SECRET.trim()
-    }),
-    { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
-  );
-  state.accessToken = res.data.access_token;
-  state.tokenExpiry = Date.now() + (res.data.expires_in * 1000);
-  console.log('Token refreshed OK');
-  return state.accessToken;
+// ── Navigation ─────────────────────────────────────────────────────────────
+function showPage(name, btn) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  if (btn) btn.classList.add('active');
+  document.getElementById('page-title').textContent = pageTitles[name] || name;
+  if (name === 'campaigns') renderAllCampaigns();
+  if (name === 'report') renderReport();
+  if (name === 'activity') renderActivity();
+  if (name === 'ai') runAI();
+  if (name === 'keywords') loadKeywords();
 }
 
-async function getProfileId() {
-  if (state.profileId) return state.profileId;
-  const token = await getAccessToken();
-  const res = await axios.get('https://advertising-api-eu.amazon.com/v2/profiles', {
-    headers: {
-      'Authorization': 'Bearer ' + token,
-      'Amazon-Advertising-API-ClientId': process.env.AMAZON_CLIENT_ID.trim()
-    }
-  });
-  const uk = res.data.find(function(p) { return p.countryCode === 'GB' || p.countryCode === 'UK'; }) || res.data[0];
-  state.profileId = uk.profileId;
-  console.log('Profile ID: ' + state.profileId);
-  return state.profileId;
-}
-
-function getHeaders(profileId, token) {
-  return {
-    'Authorization': 'Bearer ' + token,
-    'Amazon-Advertising-API-ClientId': process.env.AMAZON_CLIENT_ID.trim(),
-    'Amazon-Advertising-API-Scope': String(profileId)
-  };
-}
-
-// ── Fetch portfolios ──────────────────────────────────────────────────────
-async function fetchPortfolios() {
-  const token = await getAccessToken();
-  const profileId = await getProfileId();
+// ── Fetch data ─────────────────────────────────────────────────────────────
+async function fetchData() {
   try {
-    const res = await axios.get('https://advertising-api-eu.amazon.com/v2/portfolios', {
-      headers: getHeaders(profileId, token)
-    });
-    const map = {};
-    res.data.forEach(function(p) { map[p.portfolioId] = p.name; });
-    state.portfolios = map;
-    console.log('Portfolios fetched: ' + Object.keys(map).length);
+    const res = await fetch('/api/dashboard');
+    if (!res.ok) throw new Error('API error');
+    appData = await res.json();
+    allCampaigns = appData.campaigns || [];
+    renderDashboard();
+    updateSyncTime();
   } catch(e) {
-    console.log('Portfolios from campaign data only');
+    console.error('Fetch error:', e.message);
+    document.getElementById('sync-time').textContent = 'Retrying...';
+    setTimeout(fetchData, 5000);
   }
 }
 
-// ── Fetch campaigns ───────────────────────────────────────────────────────
-async function fetchCampaigns() {
-  const token = await getAccessToken();
-  const profileId = await getProfileId();
-  const headers = Object.assign({}, getHeaders(profileId, token), {
-    'Content-Type': 'application/vnd.spCampaign.v3+json',
-    'Accept': 'application/vnd.spCampaign.v3+json'
-  });
-  const res = await axios.post(
-    'https://advertising-api-eu.amazon.com/sp/campaigns/list',
-    { stateFilter: { include: ['ENABLED'] } },
-    { headers: headers }
-  );
-  const campaigns = res.data.campaigns || res.data || [];
-  console.log('Campaigns fetched: ' + campaigns.length);
-  return campaigns;
+function updateSyncTime() {
+  const el = document.getElementById('sync-time');
+  el.textContent = appData.lastSync ? 'Synced ' + appData.lastSync : 'Synced just now';
+  document.getElementById('sync-dot').classList.remove('syncing');
 }
 
-// ── Async report system — request now, download next cycle ───────────────
-let reportState = { pendingReportId: null, data: null, lastFetched: 0, requested: 0 };
-
-async function fetchCampaignStats() {
-  const now = Date.now();
-  const token = await getAccessToken();
-  const profileId = await getProfileId();
-  const headers = getHeaders(profileId, token);
-  const today = new Date().toISOString().split('T')[0];
-
-  // If we have a pending report, check if it's ready
-  if (reportState.pendingReportId) {
-    try {
-      const statusRes = await axios.get(
-        'https://advertising-api-eu.amazon.com/reporting/reports/' + reportState.pendingReportId,
-        { headers: Object.assign({}, headers, { 'Accept': 'application/json' }) }
-      );
-      const status = statusRes.data.status;
-      console.log('Pending report status: ' + status);
-      if (status === 'COMPLETED') {
-        const downloadRes = await axios.get(statusRes.data.url, { responseType: 'arraybuffer' });
-        const zlib = require('zlib');
-        const decompressed = zlib.gunzipSync(Buffer.from(downloadRes.data));
-        const reportData = JSON.parse(decompressed.toString());
-        console.log('Report downloaded: ' + reportData.length + ' records');
-        reportState.data = reportData;
-        reportState.lastFetched = now;
-        reportState.pendingReportId = null;
-      } else if (status === 'FAILED') {
-        console.log('Report failed, will retry next cycle');
-        reportState.pendingReportId = null;
-      }
-    } catch(e) {
-      console.error('Report check error: ' + e.message);
-      reportState.pendingReportId = null;
-    }
-  }
-
-  // Request a new report if we dont have one pending and data is older than 1 hour
-  if (!reportState.pendingReportId && (now - reportState.requested) > 60 * 60 * 1000) {
-    try {
-      const reportRes = await axios.post(
-        'https://advertising-api-eu.amazon.com/reporting/reports',
-        {
-          name: 'CampaignPulse ' + today,
-          startDate: today,
-          endDate: today,
-          configuration: {
-            adProduct: 'SPONSORED_PRODUCTS',
-            groupBy: ['campaign'],
-            columns: ['campaignId', 'campaignName', 'cost', 'sales14d', 'clicks', 'impressions', 'purchases14d'],
-            reportTypeId: 'spCampaigns',
-            timeUnit: 'SUMMARY',
-            format: 'GZIP_JSON'
-          }
-        },
-        { headers: Object.assign({}, headers, { 'Content-Type': 'application/json', 'Accept': 'application/json' }) }
-      );
-      reportState.pendingReportId = reportRes.data.reportId;
-      reportState.requested = now;
-      console.log('Report requested: ' + reportState.pendingReportId + ' (will check next sync)');
-    } catch(e) {
-      console.error('Report request error: ' + e.message);
-    }
-  }
-
-  return reportState.data || null;
+async function refreshData() {
+  document.getElementById('sync-dot').classList.add('syncing');
+  document.getElementById('sync-time').textContent = 'Syncing...';
+  await fetch('/api/sync', { method: 'POST' });
+  setTimeout(fetchData, 3000);
 }
 
-// ── Update campaign budget ────────────────────────────────────────────────
-async function updateBudget(campaignId, newBudget) {
-  const token = await getAccessToken();
-  const profileId = await getProfileId();
-  const res = await axios.put(
-    'https://advertising-api-eu.amazon.com/v2/sp/campaigns',
-    [{ campaignId: campaignId, dailyBudget: newBudget }],
-    {
-      headers: Object.assign({}, getHeaders(profileId, token), { 'Content-Type': 'application/json' })
-    }
-  );
-  return res.data;
+// ── Dashboard ──────────────────────────────────────────────────────────────
+function renderDashboard() {
+  const m = appData.metrics || {};
+  const camps = allCampaigns;
+
+  // Metrics
+  document.getElementById('m-revenue').textContent = '£' + parseFloat(m.totalRevenue || 0).toFixed(2);
+  document.getElementById('m-spend').textContent = '£' + parseFloat(m.totalSpend || 0).toFixed(2);
+  document.getElementById('m-acos').textContent = (m.blendedAcos || 0) + '%';
+  document.getElementById('m-action').textContent = m.needsAction || 0;
+  document.getElementById('m-acos-d').textContent = m.blendedAcos > 35 ? '▲ Above 35% target' : '▼ Within target';
+  document.getElementById('m-acos-d').className = 'metric-delta ' + (m.blendedAcos > 35 ? 'delta-down' : 'delta-up');
+  document.getElementById('m-action-d').textContent = (m.needsAction || 0) + ' campaigns need attention';
+
+  // Nav badge
+  const nb = document.getElementById('nb-action');
+  if (m.needsAction > 0) { nb.textContent = m.needsAction; nb.style.display = ''; }
+  else nb.style.display = 'none';
+
+  // Sub
+  const active = camps.filter(c => c.state === 'enabled').length;
+  const outOfBudget = camps.filter(c => c.budgetRemaining <= 0.01 && c.dailyBudget > 0).length;
+  document.getElementById('camp-sub').textContent = active + ' active · ' + outOfBudget + ' out of budget';
+
+  // Alerts
+  renderAlerts();
+
+  // Table — show top 8 needing attention first
+  const sorted = [...camps].sort((a,b) => {
+    const scoreA = (a.budgetRemaining <= 0.01 ? 3 : a.budgetPct >= 80 ? 2 : a.acos > 35 ? 1 : 0);
+    const scoreB = (b.budgetRemaining <= 0.01 ? 3 : b.budgetPct >= 80 ? 2 : b.acos > 35 ? 1 : 0);
+    return scoreB - scoreA;
+  }).slice(0, 10);
+  renderCampaignTable('dash-table', sorted, true);
 }
 
-// ── Google Chat ───────────────────────────────────────────────────────────
-async function sendGoogleChat(message) {
-  if (!process.env.GOOGLE_CHAT_WEBHOOK) return;
-  await new Promise(function(resolve) { setTimeout(resolve, 1000); });
+function renderAlerts() {
+  const container = document.getElementById('alert-container');
+  const alerts = (appData.alerts || []).filter(a => a.type === 'out_of_budget').slice(-3);
+  if (!alerts.length) { container.innerHTML = ''; return; }
+  container.innerHTML = alerts.map(a => `
+    <div class="alert-banner">
+      <span>⚠</span>
+      <div class="alert-banner-text"><strong>${a.name}</strong> ran out of budget at ${a.time}. Portfolio: ${a.portfolio || 'N/A'}. Agent: ${a.agent || 'N/A'}. ACOS: ${a.acos}%.</div>
+      <button class="btn btn-green" onclick="approveBudget('${a.campaignId}', 40)">+£40</button>
+      <button class="btn btn-ghost" onclick="this.closest('.alert-banner').remove()">Dismiss</button>
+    </div>
+  `).join('');
+}
+
+function renderCampaignTable(tableId, campaigns, showAction) {
+  const tbody = document.getElementById(tableId);
+  if (!campaigns.length) { tbody.innerHTML = '<tr><td colspan="9"><div class="empty">No campaigns found</div></td></tr>'; return; }
+  tbody.innerHTML = campaigns.map(c => {
+    const outOfBudget = c.budgetRemaining <= 0.01 && c.dailyBudget > 0;
+    const budgetLow = c.budgetPct >= 80 && !outOfBudget;
+    const acosHigh = c.acos > 35 && c.spend > 5;
+    const budgetColor = outOfBudget ? 'var(--red)' : budgetLow ? 'var(--amber)' : 'var(--text)';
+    const acosClass = c.acos > 35 ? 'style="color:var(--red);font-weight:600"' : c.acos > 25 ? 'style="color:var(--amber)"' : 'style="color:var(--green)"';
+    const progColor = outOfBudget ? 'var(--red)' : budgetLow ? 'var(--amber)' : 'var(--green)';
+    let statusBadge = '<span class="badge badge-green"><span class="dot" style="background:var(--green)"></span>Healthy</span>';
+    if (outOfBudget) statusBadge = '<span class="badge badge-red"><span class="dot" style="background:var(--red)"></span>Out of budget</span>';
+    else if (acosHigh) statusBadge = '<span class="badge badge-red"><span class="dot" style="background:var(--red)"></span>ACOS high</span>';
+    else if (budgetLow) statusBadge = '<span class="badge badge-amber"><span class="dot" style="background:var(--amber)"></span>Budget low</span>';
+    let action = '<button class="btn btn-ghost" style="font-size:11px">View</button>';
+    if (showAction) {
+      if (outOfBudget) action = '<div class="ag"><button class="btn btn-green" onclick="approveBudget(\''+c.campaignId+'\',40)">+£40</button><button class="btn btn-ghost" style="font-size:11px">Skip</button></div>';
+      else if (acosHigh) action = '<div class="ag"><button class="btn btn-amber" style="font-size:11px">Fix bids</button></div>';
+      else if (budgetLow) action = '<div class="ag"><button class="btn btn-green" onclick="approveBudget(\''+c.campaignId+'\',30)">+£30</button></div>';
+      else action = '<button class="btn btn-ghost" style="font-size:11px">Scale ↗</button>';
+    }
+    return `<tr>
+      <td><div class="camp-name">${escHtml(c.name)}</div><div class="camp-meta">ID: ${c.campaignId}</div></td>
+      <td><div class="camp-name">${escHtml(c.portfolio||'—')}</div><div class="camp-meta">${escHtml(c.agent||'')}</div></td>
+      <td><div class="mono" style="color:${budgetColor}">£${c.budgetRemaining} / £${c.dailyBudget}</div><div class="prog"><div class="prog-fill" style="width:${Math.min(c.budgetPct,100)}%;background:${progColor}"></div></div></td>
+      <td class="mono" ${acosClass}>${c.acos}%</td>
+      <td class="mono">£${c.sales}</td>
+      <td class="mono">£${c.spend}</td>
+      <td>${statusBadge}</td>
+      <td>${action}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ── All Campaigns ──────────────────────────────────────────────────────────
+function renderAllCampaigns() {
+  const acosCrit = 35;
+  let filtered = [...allCampaigns];
+  if (currentFilter === 'action') filtered = filtered.filter(c => c.budgetRemaining <= 0.01 || c.acos > acosCrit || c.budgetPct >= 80);
+  else if (currentFilter === 'healthy') filtered = filtered.filter(c => c.budgetRemaining > 0.01 && c.acos <= acosCrit && c.budgetPct < 80);
+  document.getElementById('t-all').textContent = allCampaigns.length;
+  document.getElementById('t-action').textContent = allCampaigns.filter(c => c.budgetRemaining <= 0.01 || c.acos > acosCrit || c.budgetPct >= 80).length;
+  document.getElementById('t-healthy').textContent = allCampaigns.filter(c => c.budgetRemaining > 0.01 && c.acos <= acosCrit && c.budgetPct < 80).length;
+  renderCampaignTable('all-table', filtered, true);
+}
+
+function filterCamps(type, btn) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  currentFilter = type;
+  renderAllCampaigns();
+}
+
+// ── Budget approval ────────────────────────────────────────────────────────
+async function approveBudget(campaignId, amount) {
   try {
-    await axios.post(process.env.GOOGLE_CHAT_WEBHOOK, { text: message });
-    console.log('Google Chat sent');
+    const res = await fetch('/api/campaigns/' + campaignId + '/budget', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ amount: amount })
+    });
+    const data = await res.json();
+    if (data.success) {
+      alert('Budget increased by £' + amount + '. New budget: £' + data.newBudget.toFixed(2));
+      setTimeout(fetchData, 2000);
+    } else {
+      alert('Error: ' + (data.error || 'Unknown error'));
+    }
   } catch(e) {
-    console.error('Google Chat error: ' + e.message);
+    alert('Error updating budget: ' + e.message);
   }
 }
 
-// ── Analyse campaigns ─────────────────────────────────────────────────────
-async function analyseCampaigns(campaigns) {
-  const acosCritical = parseFloat(process.env.ACOS_CRITICAL_THRESHOLD || 35);
-  const budgetLowPct = parseFloat(process.env.BUDGET_LOW_PERCENT || 20);
-  const now = new Date();
-  const timeStr = now.toTimeString().slice(0, 5);
-  const dateStr = now.toDateString();
-  let chatCount = 0;
-  const maxChats = 5;
+// ── Report ─────────────────────────────────────────────────────────────────
+function renderReport() {
+  const log = appData.exhaustionLog || [];
+  const typeFilter = document.getElementById('rf-type').value;
 
-  for (let i = 0; i < campaigns.length; i++) {
-    const c = campaigns[i];
-    const budget = c.dailyBudget || 0;
-    const spend = c.spend || 0;
-    const sales = c.sales || 0;
-    const acos = sales > 0 ? (spend / sales) * 100 : 0;
-    const remaining = Math.max(0, budget - spend);
-    const remainingPct = budget > 0 ? (remaining / budget) * 100 : 100;
-    const outOfBudget = remaining <= 0.01 && budget > 0;
-    const budgetLow = remainingPct <= budgetLowPct && !outOfBudget;
-    const acosHigh = acos > acosCritical && spend > 5;
-    const alertType = outOfBudget ? 'out_of_budget' : acosHigh ? 'acos_high' : budgetLow ? 'budget_low' : null;
-    if (!alertType) continue;
+  document.getElementById('rpt-events').textContent = log.length || '0';
+  document.getElementById('rpt-events-d').textContent = log.length + ' total events recorded';
 
-    const alreadyAlerted = state.alerts.find(function(a) {
-      return a.campaignId === c.campaignId && a.date === dateStr && a.type === alertType;
-    });
-    if (alreadyAlerted) continue;
+  const missedArr = log.map(e => parseFloat((e.missed||'0').replace('GBP','').replace('£','')));
+  const totalMissed = missedArr.reduce((s,v) => s+v, 0);
+  document.getElementById('rpt-missed').textContent = '£' + totalMissed.toFixed(0);
 
-    const name = c.name || 'Unknown';
-    const portfolioName = c.portfolio || 'No portfolio';
-    const agent = portfolioName.replace('@', '').split(' ')[0];
+  if (log.length > 0) {
+    const times = log.map(e => e.time).filter(Boolean);
+    document.getElementById('rpt-avg-time').textContent = times[0] || '—';
+  }
 
-    state.alerts.push({ campaignId: c.campaignId, name: name, portfolio: portfolioName, agent: agent, type: alertType, time: timeStr, date: dateStr, budget: budget, acos: Math.round(acos * 10) / 10 });
-
-    const dashUrl = process.env.DASHBOARD_URL || 'https://campaignpulse-setup-production.up.railway.app';
-
-    if (outOfBudget && chatCount < maxChats) {
-      const hoursLeft = (23 * 60 + 59 - now.getHours() * 60 - now.getMinutes()) / 60;
-      const roas = spend > 0 ? sales / spend : 0;
-      const hourly = spend / Math.max(now.getHours(), 1);
-      const missed = Math.round(hourly * hoursLeft * roas);
-      state.exhaustionLog.unshift({ date: now.toLocaleDateString('en-GB'), time: timeStr, campaign: name, portfolio: portfolioName, agent: agent, budget: '£' + budget.toFixed(2), acos: acos.toFixed(1) + '%', missed: '£' + missed, added: 'Pending', action: 'Pending' });
-      const msg = '⚠ *OUT OF BUDGET*\n*Campaign:* ' + name + '\n*Portfolio:* ' + portfolioName + '\n*Agent:* ' + agent + '\n*Time:* ' + timeStr + '\n*Budget:* £' + budget.toFixed(2) + '\n*ACOS:* ' + acos.toFixed(1) + '%\n*Est. missed:* ~£' + missed + '\n\n' + dashUrl;
-      await sendGoogleChat(msg);
-      chatCount++;
-    } else if (acosHigh && chatCount < maxChats) {
-      const msg = '📈 *HIGH ACOS*\n*Campaign:* ' + name + '\n*Portfolio:* ' + portfolioName + '\n*Agent:* ' + agent + '\n*ACOS:* ' + acos.toFixed(1) + '%\n*Spend:* £' + spend.toFixed(2) + '\n\n' + dashUrl;
-      await sendGoogleChat(msg);
-      chatCount++;
-    } else if (budgetLow && chatCount < maxChats) {
-      const msg = '⚡ *BUDGET LOW*\n*Campaign:* ' + name + '\n*Portfolio:* ' + portfolioName + '\n*Agent:* ' + agent + '\n*Remaining:* £' + remaining.toFixed(2) + ' (' + remainingPct.toFixed(0) + '%)\n\n' + dashUrl;
-      await sendGoogleChat(msg);
-      chatCount++;
+  // AI insight
+  if (log.length >= 3) {
+    const campCounts = {};
+    log.forEach(e => { campCounts[e.campaign] = (campCounts[e.campaign] || 0) + 1; });
+    const topCamp = Object.entries(campCounts).sort((a,b) => b[1]-a[1])[0];
+    if (topCamp && topCamp[1] >= 2) {
+      document.getElementById('rpt-insight').style.display = '';
+      document.getElementById('rpt-insight-text').textContent = topCamp[0] + ' has run out of budget ' + topCamp[1] + ' times. Consider permanently increasing its daily budget to capture full-day demand and avoid missing revenue.';
     }
   }
-  if (chatCount > 0) console.log('Sent ' + chatCount + ' alerts');
-}
 
-// ── Main sync ─────────────────────────────────────────────────────────────
-async function syncCampaigns() {
-  if (state.syncing) return;
-  state.syncing = true;
-  console.log('Syncing at ' + new Date().toTimeString().slice(0, 8));
-  try {
-    await fetchPortfolios();
-    const raw = await fetchCampaigns();
-
-    // Fetch spend/revenue stats
-    const stats = await fetchCampaignStats();
-    const statsMap = {};
-    if (stats && stats.length) {
-      stats.forEach(function(s) {
-        statsMap[s.campaignId] = {
-          spend: parseFloat(s.cost || s.spend || s['Spend'] || 0),
-          sales: parseFloat(s.sales14d || s['7 Day Total Sales'] || s.sales || 0),
-          clicks: parseInt(s.clicks || s['Clicks'] || 0),
-          impressions: parseInt(s.impressions || s['Impressions'] || 0)
-        };
-      });
-      console.log('Stats loaded for ' + Object.keys(statsMap).length + ' campaigns');
-    }
-
-    const campaigns = raw.map(function(c) {
-      const budget = parseFloat((c.budget && c.budget.budget) || c.dailyBudget || 0);
-      const s = statsMap[c.campaignId] || {};
-      const spend = s.spend !== undefined ? parseFloat(s.spend) : null;
-      const sales = s.sales !== undefined ? parseFloat(s.sales) : null;
-      const acos = sales > 0 ? Math.round((spend / sales) * 1000) / 10 : 0;
-      const remaining = Math.max(0, budget - spend);
-      const pct = budget > 0 ? Math.round((spend / budget) * 100) : 0;
-      const portfolioName = c.portfolioId ? (state.portfolios[c.portfolioId] || '') : '';
-      const agent = portfolioName ? portfolioName.replace('@', '').split(' ')[0] : '';
-      return {
-        campaignId: c.campaignId,
-        name: c.name || '',
-        state: (c.state || '').toLowerCase(),
-        portfolio: portfolioName,
-        agent: agent,
-        dailyBudget: budget,
-        spend: Math.round(spend * 100) / 100,
-        sales: Math.round(sales * 100) / 100,
-        acos: acos,
-        clicks: s.clicks || 0,
-        impressions: s.impressions || 0,
-        budgetRemaining: Math.round(remaining * 100) / 100,
-        budgetPct: pct
-      };
-    });
-
-    state.campaigns = campaigns;
-    await analyseCampaigns(campaigns);
-    // Check search term report in background
-    checkSearchTermReport().catch(function(e){ console.error('KW check error: ' + e.message); });
-    requestSearchTermReport().catch(function(e){ console.error('KW request error: ' + e.message); });
-    state.lastSync = new Date().toTimeString().slice(0, 8);
-    state.error = null;
-    console.log('Sync done. ' + campaigns.length + ' campaigns.');
-  } catch(e) {
-    state.error = e.message;
-    console.error('Sync error:', e.message);
-  } finally {
-    state.syncing = false;
-  }
-}
-
-// ── API Routes ────────────────────────────────────────────────────────────
-app.get('/api/dashboard', function(req, res) {
-  const campaigns = state.campaigns;
-  const totalRevenue = campaigns.reduce(function(s, c) { return s + (c.sales || 0); }, 0);
-  const totalSpend = campaigns.reduce(function(s, c) { return s + (c.spend || 0); }, 0);
-  const blendedAcos = totalRevenue > 0 ? Math.round((totalSpend / totalRevenue) * 1000) / 10 : 0;
-  const active = campaigns.filter(function(c) { return c.state === 'enabled'; }).length;
-  const needsAction = campaigns.filter(function(c) {
-    return c.budgetRemaining <= 0.01 || c.acos > parseFloat(process.env.ACOS_CRITICAL_THRESHOLD || 35) || c.budgetPct >= 80;
-  }).length;
-  res.json({
-    metrics: { totalRevenue: totalRevenue.toFixed(2), totalSpend: totalSpend.toFixed(2), blendedAcos: blendedAcos, activeCampaigns: active, needsAction: needsAction },
-    campaigns: campaigns,
-    alerts: state.alerts.slice(-20),
-    exhaustionLog: state.exhaustionLog,
-    lastSync: state.lastSync,
-    error: state.error
-  });
-});
-
-// AI analysis endpoint
-app.post('/api/ai/analyse', async function(req, res) {
-  try {
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) return res.json({ error: 'No API key', suggestions: null });
-    const allCamps = state.campaigns;
-    const lowAcos = allCamps.filter(function(c) { return c.acos > 0 && c.acos < 15 && c.dailyBudget > 0; });
-    const highAcos = allCamps.filter(function(c) { return c.acos > 35 && c.spend > 5; });
-    const outOfBudget = allCamps.filter(function(c) { return c.budgetRemaining <= 0.01 && c.dailyBudget > 0; });
-    const prompt = 'You are an Amazon Advertising expert for FK Sports UK. Give 4 specific recommendations based on: Total campaigns: ' + allCamps.length + ', Out of budget: ' + outOfBudget.length + ' (' + outOfBudget.slice(0,3).map(function(c){return c.name;}).join(', ') + '), High ACOS >35%: ' + highAcos.length + ' (' + highAcos.slice(0,3).map(function(c){return c.name + ' ' + c.acos + '%';}).join(', ') + '), Scale opportunities ACOS<15%: ' + lowAcos.length + ' (' + lowAcos.slice(0,3).map(function(c){return c.name + ' ' + c.acos + '%';}).join(', ') + '. Return ONLY JSON array of 4 objects with fields: type, title, campaign, detail, impact, action. No other text.';
-    const aiRes = await axios.post('https://api.anthropic.com/v1/messages', {
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 1000,
-      messages: [{ role: 'user', content: prompt }]
-    }, {
-      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' }
-    });
-    const text = aiRes.data.content[0].text;
-    const clean = text.replace(/```json|```/g, '').trim();
-    res.json({ suggestions: JSON.parse(clean) });
-  } catch(e) {
-    console.error('AI error: ' + e.message);
-    res.json({ error: e.message, suggestions: null });
-  }
-});
-
-
-// ── Keyword Intelligence ─────────────────────────────────────────────────
-let keywordState = {
-  reportId: null,
-  requested: 0,
-  data: null,
-  analysis: null,
-  lastAnalysed: 0
-};
-
-async function requestSearchTermReport() {
-  const now = Date.now();
-  // Only request new report once per week
-  if (keywordState.reportId || (now - keywordState.requested) < 7 * 24 * 60 * 60 * 1000) {
+  // Table
+  const tbody = document.getElementById('report-table');
+  if (!log.length) {
+    tbody.innerHTML = '<tr><td colspan="10"><div class="empty">No events recorded yet. Events appear here when campaigns run out of budget or trigger alerts.</div></td></tr>';
     return;
   }
-  const token = await getAccessToken();
-  const profileId = await getProfileId();
-  const headers = getHeaders(profileId, token);
-  const today = new Date().toISOString().split('T')[0];
-  const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-  try {
-    const res = await axios.post(
-      'https://advertising-api-eu.amazon.com/reporting/reports',
-      {
-        name: 'CampaignPulse Search Terms ' + today,
-        startDate: weekAgo,
-        endDate: today,
-        configuration: {
-          adProduct: 'SPONSORED_PRODUCTS',
-          groupBy: ['searchTerm'],
-          columns: ['campaignId', 'campaignName', 'adGroupId', 'adGroupName', 'keywordId', 'keyword', 'matchType', 'searchTerm', 'cost', 'clicks', 'impressions', 'purchases14d', 'sales14d'],
-          reportTypeId: 'spSearchTerm',
-          timeUnit: 'SUMMARY',
-          format: 'GZIP_JSON'
-        }
-      },
-      { headers: Object.assign({}, headers, { 'Content-Type': 'application/json', 'Accept': 'application/json' }) }
-    );
-    keywordState.reportId = res.data.reportId;
-    keywordState.requested = now;
-    console.log('Search term report requested: ' + keywordState.reportId);
-  } catch(e) {
-    console.error('Search term report error: ' + e.message);
-  }
+  tbody.innerHTML = log.map(e => `
+    <tr>
+      <td class="mono" style="color:var(--text3)">${e.date||'—'}</td>
+      <td class="mono" style="color:var(--red)">${e.time||'—'}</td>
+      <td><div class="camp-name">${escHtml(e.campaign||'—')}</div></td>
+      <td>${escHtml(e.portfolio||'—')}</td>
+      <td>${escHtml(e.agent||'—')}</td>
+      <td class="mono">${e.budget||'—'}</td>
+      <td class="mono">${e.acos||'—'}</td>
+      <td class="mono" style="color:var(--red)">${e.missed||'—'}</td>
+      <td class="mono" style="color:${e.added==='Pending'?'var(--amber)':'var(--green)'}">${e.added||'—'}</td>
+      <td><span class="badge ${e.action==='Budget added'?'badge-green':e.action==='Dismissed'?'badge-red':'badge-amber'}">${e.action||'—'}</span></td>
+    </tr>
+  `).join('');
 }
 
-async function checkSearchTermReport() {
-  if (!keywordState.reportId) return;
-  const token = await getAccessToken();
-  const profileId = await getProfileId();
-  const headers = getHeaders(profileId, token);
-  try {
-    const statusRes = await axios.get(
-      'https://advertising-api-eu.amazon.com/reporting/reports/' + keywordState.reportId,
-      { headers: Object.assign({}, headers, { 'Accept': 'application/json' }) }
-    );
-    const status = statusRes.data.status;
-    console.log('Search term report status: ' + status);
-    if (status === 'COMPLETED') {
-      const downloadRes = await axios.get(statusRes.data.url, { responseType: 'arraybuffer' });
-      const zlib = require('zlib');
-      const decompressed = zlib.gunzipSync(Buffer.from(downloadRes.data));
-      keywordState.data = JSON.parse(decompressed.toString());
-      keywordState.reportId = null;
-      console.log('Search term report downloaded: ' + keywordState.data.length + ' records');
-      await analyseKeywords();
-    } else if (status === 'FAILED') {
-      console.log('Search term report failed');
-      keywordState.reportId = null;
-    }
-  } catch(e) {
-    console.error('Search term check error: ' + e.message);
-    keywordState.reportId = null;
-  }
+// ── Export CSV ─────────────────────────────────────────────────────────────
+function exportCSV() {
+  const camps = allCampaigns;
+  if (!camps.length) { alert('No data to export'); return; }
+  const headers = ['Campaign','Portfolio','Agent','State','Daily Budget','Spend','Revenue','ACOS','Budget Remaining','Budget %'];
+  const rows = camps.map(c => [c.name,c.portfolio||'',c.agent||'',c.state,c.dailyBudget,c.spend,c.sales,c.acos+'%',c.budgetRemaining,c.budgetPct+'%']);
+  downloadCSV(headers, rows, 'fksports-campaigns-' + new Date().toISOString().split('T')[0] + '.csv');
 }
 
-async function analyseKeywords() {
-  if (!keywordState.data || !keywordState.data.length) return;
-  if (!process.env.ANTHROPIC_API_KEY) {
-    console.log('No Anthropic API key — skipping AI keyword analysis');
-    // Still do rule-based analysis
-    keywordState.analysis = ruleBasedKeywordAnalysis(keywordState.data);
+function exportReportCSV() {
+  const log = appData.exhaustionLog || [];
+  if (!log.length) { alert('No report data to export'); return; }
+  const headers = ['Date','Time','Campaign','Portfolio','Agent','Budget Set','ACOS','Est. Missed Revenue','Budget Added','Action Taken'];
+  const rows = log.map(e => [e.date,e.time,e.campaign,e.portfolio||'',e.agent||'',e.budget,e.acos,e.missed,e.added,e.action]);
+  downloadCSV(headers, rows, 'fksports-budget-report-' + new Date().toISOString().split('T')[0] + '.csv');
+}
+
+function downloadCSV(headers, rows, filename) {
+  const csv = [headers, ...rows].map(r => r.map(v => '"' + String(v||'').replace(/"/g,'""') + '"').join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+}
+
+function exportReportPDF() {
+  window.print();
+}
+
+// ── Activity log ───────────────────────────────────────────────────────────
+function renderActivity() {
+  const alerts = [...(appData.alerts || [])].reverse();
+  const log = appData.exhaustionLog || [];
+  const container = document.getElementById('activity-log');
+  if (!alerts.length && !log.length) {
+    container.innerHTML = '<div class="empty" style="padding:40px">No activity recorded yet. Events appear here when campaigns trigger alerts.</div>';
     return;
   }
+  const items = [...alerts.map(a => ({ ...a, _type: 'alert' })), ...log.map(e => ({ ...e, _type: 'log' }))];
+  container.innerHTML = items.slice(0, 50).map(item => {
+    const icon = item._type === 'log' ? (item.action === 'Budget added' ? '✓' : '○') : (item.type === 'out_of_budget' ? '⚠' : item.type === 'acos_high' ? '📈' : '⚡');
+    const iconBg = item._type === 'log' ? (item.action === 'Budget added' ? 'var(--green-bg)' : 'var(--amber-bg)') : (item.type === 'out_of_budget' ? 'var(--red-bg)' : 'var(--amber-bg)');
+    const title = item._type === 'alert' ? item.type.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase()) : item.action || 'Event';
+    const detail = item._type === 'alert' ? (item.name + ' · Portfolio: ' + (item.portfolio||'N/A') + ' · Agent: ' + (item.agent||'N/A') + ' · ACOS: ' + item.acos + '%') : (item.campaign + ' · ' + (item.portfolio||'') + ' · Budget: ' + item.budget);
+    return `<div style="display:flex;gap:12px;padding:13px 0;border-bottom:1px solid var(--border)">
+      <div style="font-family:var(--mono);font-size:11px;color:var(--text3);width:60px;flex-shrink:0;padding-top:2px">${item.time||item.date||'—'}</div>
+      <div style="width:26px;height:26px;border-radius:7px;background:${iconBg};display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0">${icon}</div>
+      <div style="flex:1"><div style="font-size:12.5px;font-weight:500;color:var(--text)">${title}</div><div style="font-size:11.5px;color:var(--text3);margin-top:2px">${escHtml(detail)}</div></div>
+    </div>`;
+  }).join('');
+}
+
+// ── AI Analysis ────────────────────────────────────────────────────────────
+async function runAI() {
+  const container = document.getElementById('ai-container');
+  const camps = allCampaigns;
+  if (!camps.length) {
+    container.innerHTML = '<div class="empty">No campaign data available for analysis.</div>';
+    return;
+  }
+
+  // Calculate from real data
+  const lowAcos = camps.filter(c => c.acos > 0 && c.acos < 15 && c.dailyBudget > 0);
+  const highAcos = camps.filter(c => c.acos > 35 && c.spend > 5);
+  const outOfBudget = camps.filter(c => c.budgetRemaining <= 0.01 && c.dailyBudget > 0);
+
+  document.getElementById('ai-opps').textContent = lowAcos.length;
+  document.getElementById('ai-waste').textContent = '£' + highAcos.reduce((s,c) => s + c.spend, 0).toFixed(0);
+  document.getElementById('ai-gain').textContent = '+£' + (lowAcos.length * 80).toFixed(0) + '/day';
+
+  container.innerHTML = '<div class="ai-thinking"><div class="spinner"></div> Analysing ' + camps.length + ' campaigns with AI...</div>';
+
+  // Build summary for Claude API
+  const topWasters = highAcos.slice(0,5).map(c => `${c.name} (ACOS: ${c.acos}%, spend: £${c.spend})`).join(', ');
+  const topOpps = lowAcos.slice(0,5).map(c => `${c.name} (ACOS: ${c.acos}%, budget: £${c.dailyBudget})`).join(', ');
+  const topExhausted = outOfBudget.slice(0,5).map(c => `${c.name} (budget: £${c.dailyBudget})`).join(', ');
+
+  const prompt = `You are an Amazon Advertising expert analysing FK Sports' campaign data. Based on this data, provide 4 specific actionable recommendations.
+
+Campaign summary:
+- Total active campaigns: ${camps.length}
+- Campaigns out of budget today: ${outOfBudget.length} (${topExhausted || 'none'})
+- High ACOS campaigns (>35%): ${highAcos.length} (${topWasters || 'none'})
+- Scale opportunities (ACOS <15%): ${lowAcos.length} (${topOpps || 'none'})
+- Total wasted spend on high ACOS: £${highAcos.reduce((s,c)=>s+c.spend,0).toFixed(0)}
+
+Provide exactly 4 recommendations in this JSON format only, no other text:
+[
+  {"type":"scale","title":"Scale opportunity title","campaign":"campaign name","detail":"specific actionable advice","impact":"estimated daily revenue impact","action":"exact action to take"},
+  {"type":"waste","title":"Reduce waste title","campaign":"campaign name","detail":"specific actionable advice","impact":"estimated daily saving","action":"exact action to take"},
+  {"type":"budget","title":"Budget optimization title","campaign":"campaign name","detail":"specific actionable advice","impact":"estimated revenue impact","action":"exact action to take"},
+  {"type":"keyword","title":"Keyword opportunity title","campaign":"campaign name","detail":"specific actionable advice","impact":"estimated impact","action":"exact action to take"}
+]`;
+
   try {
-    const data = keywordState.data;
-    // Find wasters — spend > 0, zero purchases
-    const wasters = data.filter(function(r) {
-      return parseFloat(r.cost || 0) > 1 && parseInt(r.purchases14d || 0) === 0;
-    }).sort(function(a,b) { return parseFloat(b.cost||0) - parseFloat(a.cost||0); }).slice(0, 20);
-    // Find converters — high purchases, not yet as exact match keyword
-    const converters = data.filter(function(r) {
-      return parseInt(r.purchases14d || 0) > 0 && r.matchType !== 'EXACT';
-    }).sort(function(a,b) { return parseInt(b.purchases14d||0) - parseInt(a.purchases14d||0); }).slice(0, 20);
-    // High spend, low conversion rate
-    const inefficient = data.filter(function(r) {
-      const spend = parseFloat(r.cost||0);
-      const purchases = parseInt(r.purchases14d||0);
-      const sales = parseFloat(r.sales14d||0);
-      return spend > 5 && purchases > 0 && spend > sales;
-    }).sort(function(a,b) { return parseFloat(b.cost||0) - parseFloat(a.cost||0); }).slice(0, 20);
-
-    const prompt = 'You are an Amazon Advertising expert for FK Sports UK (sports equipment seller). Analyse this search term data and provide specific actionable recommendations.\n\nTop wasting search terms (spend, zero conversions):\n' +
-      wasters.slice(0,10).map(function(r){ return r.searchTerm + ' | spend: £' + parseFloat(r.cost||0).toFixed(2) + ' | campaign: ' + r.campaignName; }).join('\n') +
-      '\n\nTop converting search terms (not yet exact match keywords):\n' +
-      converters.slice(0,10).map(function(r){ return r.searchTerm + ' | purchases: ' + r.purchases14d + ' | sales: £' + parseFloat(r.sales14d||0).toFixed(2) + ' | campaign: ' + r.campaignName; }).join('\n') +
-      '\n\nTotal search terms analysed: ' + data.length +
-      '\n\nProvide analysis in this JSON format only:\n{"wasteReduction":{"totalWasted":"£X","topWasters":[{"searchTerm":"","campaign":"","spend":"£X","recommendation":"Add as negative keyword","reason":""}],"estimatedSaving":"£X/week"},"newKeywords":{"totalOpportunities":0,"topOpportunities":[{"searchTerm":"","campaign":"","purchases":0,"sales":"£X","recommendation":"Add as exact match keyword","estimatedImpact":""}]},"bidChanges":[{"keyword":"","campaign":"","currentIssue":"","recommendation":"","expectedOutcome":""}],"portfolioInsights":{"patterns":"","topPerforming":"","needsAttention":""},"summary":"","estimatedWeeklyImpact":"£X"}';
-
-    const aiRes = await axios.post('https://api.anthropic.com/v1/messages', {
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 2000,
-      messages: [{ role: 'user', content: prompt }]
-    }, {
-      headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' }
+    const res = await fetch('/api/ai/analyse', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: prompt })
     });
+    const data = await res.json();
+    if (data.error && !data.suggestions) throw new Error(data.error);
+    const text = JSON.stringify(data.suggestions);
+    let suggestions = data.suggestions || null;
 
-    const text = aiRes.data.content[0].text;
-    const clean = text.replace(/```json|```/g, '').trim();
-    keywordState.analysis = JSON.parse(clean);
-    keywordState.lastAnalysed = Date.now();
-    console.log('Keyword AI analysis complete');
+    if (suggestions && suggestions.length) {
+      const typeColors = { scale: 'var(--green)', waste: 'var(--red)', budget: 'var(--amber)', keyword: 'var(--blue)' };
+      const typeBadges = { scale: 'badge-green', waste: 'badge-red', budget: 'badge-amber', keyword: 'badge-blue' };
+      const typeIcons = { scale: '📈', waste: '✂', budget: '💰', keyword: '🔍' };
+      container.innerHTML = suggestions.map(s => `
+        <div class="ai-card">
+          <div class="ai-header">
+            <div class="ai-icon">${typeIcons[s.type]||'✦'}</div>
+            <div style="flex:1">
+              <div class="ai-title">${escHtml(s.title)}</div>
+              <div class="ai-sub">${escHtml(s.campaign||'')}</div>
+            </div>
+            <span class="badge ${typeBadges[s.type]||'badge-blue'}" style="margin-left:auto">${escHtml(s.impact)}</span>
+          </div>
+          <div class="ai-desc">${escHtml(s.detail)}</div>
+          <div class="ai-impact">✓ Recommended action: ${escHtml(s.action)}</div>
+          <div class="ag">
+            <button class="btn btn-green" style="font-size:11px">Apply recommendation</button>
+            <button class="btn btn-ghost" style="font-size:11px">View campaign</button>
+            <button class="btn btn-ghost" style="font-size:11px">Dismiss</button>
+          </div>
+        </div>
+      `).join('');
+    } else {
+      renderFallbackAI(container, lowAcos, highAcos, outOfBudget);
+    }
   } catch(e) {
-    console.error('Keyword analysis error: ' + e.message);
-    keywordState.analysis = ruleBasedKeywordAnalysis(keywordState.data);
+    renderFallbackAI(container, lowAcos, highAcos, outOfBudget);
   }
 }
 
-function ruleBasedKeywordAnalysis(data) {
-  const wasters = data.filter(function(r) {
-    return parseFloat(r.cost||0) > 1 && parseInt(r.purchases14d||0) === 0;
-  }).sort(function(a,b) { return parseFloat(b.cost||0) - parseFloat(a.cost||0); }).slice(0, 10);
-  const converters = data.filter(function(r) {
-    return parseInt(r.purchases14d||0) > 0 && r.matchType !== 'EXACT';
-  }).sort(function(a,b) { return parseInt(b.purchases14d||0) - parseInt(a.purchases14d||0); }).slice(0, 10);
-  const totalWasted = wasters.reduce(function(s,r){ return s + parseFloat(r.cost||0); }, 0);
-  return {
-    wasteReduction: {
-      totalWasted: '£' + totalWasted.toFixed(2),
-      topWasters: wasters.map(function(r){ return { searchTerm: r.searchTerm, campaign: r.campaignName, spend: '£' + parseFloat(r.cost||0).toFixed(2), recommendation: 'Add as negative keyword', reason: 'Zero conversions after £' + parseFloat(r.cost||0).toFixed(2) + ' spend' }; }),
-      estimatedSaving: '£' + totalWasted.toFixed(2) + '/week'
-    },
-    newKeywords: {
-      totalOpportunities: converters.length,
-      topOpportunities: converters.map(function(r){ return { searchTerm: r.searchTerm, campaign: r.campaignName, purchases: r.purchases14d, sales: '£' + parseFloat(r.sales14d||0).toFixed(2), recommendation: 'Add as exact match keyword', estimatedImpact: 'Lower ACOS, more targeted traffic' }; })
-    },
-    bidChanges: [],
-    portfolioInsights: { patterns: 'Analysis based on last 7 days of search term data', topPerforming: converters[0] ? converters[0].campaignName : 'N/A', needsAttention: wasters[0] ? wasters[0].campaignName : 'N/A' },
-    summary: 'Found ' + wasters.length + ' wasting search terms and ' + converters.length + ' new keyword opportunities.',
-    estimatedWeeklyImpact: '£' + totalWasted.toFixed(2) + ' saved'
-  };
+function renderFallbackAI(container, lowAcos, highAcos, outOfBudget) {
+  const cards = [];
+  if (outOfBudget.length > 0) {
+    const c = outOfBudget[0];
+    cards.push(`<div class="ai-card"><div class="ai-header"><div class="ai-icon">💰</div><div><div class="ai-title">Budget increase — ${escHtml(c.name)}</div><div class="ai-sub">Out of budget today</div></div><span class="badge badge-amber" style="margin-left:auto">Revenue at risk</span></div><div class="ai-desc">${escHtml(c.name)} has run out of budget. With its current ACOS of ${c.acos}%, this is a profitable campaign. Increasing the daily budget will allow it to continue generating revenue for the rest of the day.</div><div class="ai-impact">✓ Recommended action: Increase daily budget by £${Math.ceil(c.dailyBudget*0.5)} to £${(c.dailyBudget*1.5).toFixed(0)}</div><div class="ag"><button class="btn btn-green" onclick="approveBudget('${c.campaignId}',${Math.ceil(c.dailyBudget*0.5)})" style="font-size:11px">Approve increase</button><button class="btn btn-ghost" style="font-size:11px">Dismiss</button></div></div>`);
+  }
+  if (lowAcos.length > 0) {
+    const c = lowAcos[0];
+    cards.push(`<div class="ai-card"><div class="ai-header"><div class="ai-icon">📈</div><div><div class="ai-title">Scale opportunity — ${escHtml(c.name)}</div><div class="ai-sub">ACOS: ${c.acos}% — well below target</div></div><span class="badge badge-green" style="margin-left:auto">+£80-120/day</span></div><div class="ai-desc">${escHtml(c.name)} is performing excellently with an ACOS of ${c.acos}%. This campaign has strong conversion rates and is leaving revenue on the table. Increasing the budget would proportionally increase sales at the same profitable ACOS.</div><div class="ai-impact">✓ Recommended action: Increase daily budget from £${c.dailyBudget} to £${(c.dailyBudget*1.5).toFixed(0)}</div><div class="ag"><button class="btn btn-green" onclick="approveBudget('${c.campaignId}',${Math.ceil(c.dailyBudget*0.5)})" style="font-size:11px">Approve increase</button><button class="btn btn-ghost" style="font-size:11px">Dismiss</button></div></div>`);
+  }
+  if (highAcos.length > 0) {
+    const c = highAcos[0];
+    cards.push(`<div class="ai-card"><div class="ai-header"><div class="ai-icon">✂</div><div><div class="ai-title">Reduce waste — ${escHtml(c.name)}</div><div class="ai-sub">ACOS: ${c.acos}% — above 35% threshold</div></div><span class="badge badge-red" style="margin-left:auto">£${c.spend} wasted</span></div><div class="ai-desc">${escHtml(c.name)} has an ACOS of ${c.acos}% which is significantly above your target. Review the keywords in this campaign and add negative keywords for search terms that are spending budget without converting.</div><div class="ai-impact">✓ Recommended action: Pause top 5 wasting keywords and add negatives for non-converting search terms</div><div class="ag"><button class="btn btn-amber" style="font-size:11px">Review keywords</button><button class="btn btn-ghost" style="font-size:11px">Dismiss</button></div></div>`);
+  }
+  container.innerHTML = cards.length ? cards.join('') : '<div class="empty">All campaigns look healthy. No immediate actions needed.</div>';
 }
 
-// Keyword intelligence API endpoints
-app.get('/api/keywords/status', function(req, res) {
-  res.json({
-    reportId: keywordState.reportId,
-    hasData: !!keywordState.data,
-    dataSize: keywordState.data ? keywordState.data.length : 0,
-    hasAnalysis: !!keywordState.analysis,
-    lastAnalysed: keywordState.lastAnalysed,
-    requested: keywordState.requested
-  });
-});
+// ── Utils ──────────────────────────────────────────────────────────────────
+function escHtml(str) {
+  return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
 
-app.get('/api/keywords/analysis', function(req, res) {
-  res.json({ analysis: keywordState.analysis, dataSize: keywordState.data ? keywordState.data.length : 0 });
-});
 
-app.post('/api/keywords/refresh', async function(req, res) {
-  keywordState.requested = 0; // Force new request
-  keywordState.reportId = null;
-  await requestSearchTermReport();
-  res.json({ success: true, reportId: keywordState.reportId });
-});
-
-app.get('/api/health', function(req, res) {
-  res.json({ status: 'ok', lastSync: state.lastSync, campaigns: state.campaigns.length, error: state.error });
-});
-
-app.post('/api/sync', function(req, res) {
-  syncCampaigns();
-  res.json({ success: true });
-});
-
-app.post('/api/campaigns/:id/budget', async function(req, res) {
-  const id = req.params.id;
-  const amount = parseFloat(req.body.amount || 0);
-  const campaign = state.campaigns.find(function(c) { return String(c.campaignId) === String(id); });
-  if (!campaign) return res.status(404).json({ error: 'Not found' });
+// ── Keyword Intelligence ──────────────────────────────────────────────────
+async function loadKeywords() {
+  const container = document.getElementById('kw-container');
   try {
-    const newBudget = campaign.dailyBudget + amount;
-    await updateBudget(id, newBudget);
-    const log = state.exhaustionLog.find(function(e) { return e.campaign === campaign.name && e.action === 'Pending'; });
-    if (log) { log.added = '+£' + amount; log.action = 'Budget added'; }
-    await sendGoogleChat('✅ *Budget approved*\n*Campaign:* ' + campaign.name + '\n*Portfolio:* ' + (campaign.portfolio || 'N/A') + '\n+£' + amount + ' added. New budget: £' + newBudget.toFixed(2));
-    syncCampaigns();
-    res.json({ success: true, newBudget: newBudget });
+    const statusRes = await fetch('/api/keywords/status');
+    const status = await statusRes.json();
+
+    if (status.reportId) {
+      document.getElementById('kw-status').textContent = 'Report generating... check back in a few minutes';
+      container.innerHTML = '<div class="loading"><div class="spinner"></div> Search term report is being generated. This takes a few minutes. Refresh the page shortly.</div>';
+      return;
+    }
+
+    if (!status.hasData) {
+      document.getElementById('kw-status').textContent = 'No data yet — click "Request fresh analysis" to start';
+      container.innerHTML = '<div class="empty" style="padding:60px"><div style="font-size:32px;margin-bottom:16px">🔍</div><div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:8px">No keyword data yet</div><div style="font-size:13px;color:var(--text3);margin-bottom:20px">Click "Request fresh analysis" to pull your last 7 days of search term data.<br>The report takes 2-5 minutes to generate.</div><button class="btn btn-primary" onclick="refreshKeywords()">Request fresh analysis</button></div>';
+      return;
+    }
+
+    const res = await fetch('/api/keywords/analysis');
+    const data = await res.json();
+    document.getElementById('kw-total').textContent = data.dataSize || '—';
+
+    if (!data.analysis) {
+      container.innerHTML = '<div class="loading"><div class="spinner"></div> AI is analysing ' + data.dataSize + ' search terms...</div>';
+      setTimeout(loadKeywords, 10000);
+      return;
+    }
+
+    const a = data.analysis;
+    document.getElementById('kw-status').textContent = 'Last analysed: ' + (status.lastAnalysed ? new Date(status.lastAnalysed).toLocaleString('en-GB') : 'just now') + ' · ' + data.dataSize + ' search terms';
+    document.getElementById('kw-waste').textContent = a.wasteReduction?.totalWasted || '—';
+    document.getElementById('kw-opps').textContent = a.newKeywords?.totalOpportunities || '—';
+    document.getElementById('kw-impact').textContent = a.estimatedWeeklyImpact || '—';
+
+    container.innerHTML = `
+      <div class="insight-box" style="margin-bottom:20px">
+        <div class="insight-title">✦ AI Summary</div>
+        <div class="insight-text">${escHtml(a.summary || '')}</div>
+      </div>
+
+      <div class="tabs" id="kw-tabs">
+        <button class="tab-btn active" onclick="showKwTab('waste',this)">Wasted spend (${a.wasteReduction?.topWasters?.length || 0})</button>
+        <button class="tab-btn" onclick="showKwTab('keywords',this)">New keywords (${a.newKeywords?.totalOpportunities || 0})</button>
+        <button class="tab-btn" onclick="showKwTab('bids',this)">Bid changes (${a.bidChanges?.length || 0})</button>
+        <button class="tab-btn" onclick="showKwTab('insights',this)">Portfolio insights</button>
+      </div>
+
+      <div id="kwt-waste">
+        <div class="section-header">
+          <div>
+            <div class="section-title">Wasting search terms</div>
+            <div class="section-sub">These search terms spent budget with zero conversions. Add as negative keywords to stop waste.</div>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-ghost" onclick="exportWasters()">Export CSV</button>
+            <button class="btn btn-red" style="font-size:12px">Add all as negatives</button>
+          </div>
+        </div>
+        <div class="table-card">
+          <div style="overflow-x:auto"><table>
+            <thead><tr><th>Search term</th><th>Campaign</th><th>Spend wasted</th><th>Clicks</th><th>Impressions</th><th>Reason</th><th>Action</th></tr></thead>
+            <tbody>${(a.wasteReduction?.topWasters || []).map(function(w){ return '<tr><td><div class="camp-name mono">' + escHtml(w.searchTerm) + '</div></td><td><div class="camp-meta">' + escHtml(w.campaign) + '</div></td><td class="mono" style="color:var(--red)">' + escHtml(w.spend) + '</td><td class="mono">—</td><td class="mono">—</td><td style="font-size:12px;color:var(--text3)">' + escHtml(w.reason) + '</td><td><button class="btn btn-red" style="font-size:11px">Add negative</button></td></tr>'; }).join('') || '<tr><td colspan="7"><div class="empty">No wasting terms found</div></td></tr>'}</tbody>
+          </table></div>
+        </div>
+      </div>
+
+      <div id="kwt-keywords" style="display:none">
+        <div class="section-header">
+          <div>
+            <div class="section-title">New keyword opportunities</div>
+            <div class="section-sub">Search terms converting well that aren't yet exact match keywords. Adding these will reduce ACOS and increase targeted revenue.</div>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-ghost" onclick="exportOpps()">Export CSV</button>
+            <button class="btn btn-green" style="font-size:12px">Add all as exact match</button>
+          </div>
+        </div>
+        <div class="table-card">
+          <div style="overflow-x:auto"><table>
+            <thead><tr><th>Search term</th><th>Campaign</th><th>Purchases</th><th>Sales</th><th>Recommendation</th><th>Est. impact</th><th>Action</th></tr></thead>
+            <tbody>${(a.newKeywords?.topOpportunities || []).map(function(k){ return '<tr><td><div class="camp-name mono">' + escHtml(k.searchTerm) + '</div></td><td><div class="camp-meta">' + escHtml(k.campaign) + '</div></td><td class="mono" style="color:var(--green)">' + escHtml(String(k.purchases)) + '</td><td class="mono" style="color:var(--green)">' + escHtml(k.sales) + '</td><td style="font-size:12px">' + escHtml(k.recommendation) + '</td><td style="font-size:12px;color:var(--green)">' + escHtml(k.estimatedImpact) + '</td><td><button class="btn btn-green" style="font-size:11px">Add keyword</button></td></tr>'; }).join('') || '<tr><td colspan="7"><div class="empty">No opportunities found</div></td></tr>'}</tbody>
+          </table></div>
+        </div>
+      </div>
+
+      <div id="kwt-bids" style="display:none">
+        <div class="section-header">
+          <div class="section-title">Bid change recommendations</div>
+          <div class="section-sub">Specific keywords where bid adjustments will improve ACOS or capture more traffic.</div>
+        </div>
+        <div class="table-card">
+          <div style="overflow-x:auto"><table>
+            <thead><tr><th>Keyword</th><th>Campaign</th><th>Current issue</th><th>Recommendation</th><th>Expected outcome</th><th>Action</th></tr></thead>
+            <tbody>${(a.bidChanges || []).map(function(b){ return '<tr><td class="mono">' + escHtml(b.keyword) + '</td><td class="camp-meta">' + escHtml(b.campaign) + '</td><td style="font-size:12px;color:var(--red)">' + escHtml(b.currentIssue) + '</td><td style="font-size:12px">' + escHtml(b.recommendation) + '</td><td style="font-size:12px;color:var(--green)">' + escHtml(b.expectedOutcome) + '</td><td><button class="btn btn-amber" style="font-size:11px">Apply</button></td></tr>'; }).join('') || '<tr><td colspan="6"><div class="empty">No bid changes recommended</div></td></tr>'}</tbody>
+          </table></div>
+        </div>
+      </div>
+
+      <div id="kwt-insights" style="display:none">
+        <div class="insight-box">
+          <div class="insight-title">✦ Portfolio patterns</div>
+          <div class="insight-text">${escHtml(a.portfolioInsights?.patterns || '')}</div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px">
+          <div class="metric-card">
+            <div class="metric-label">Top performing</div>
+            <div class="metric-value" style="font-size:16px">${escHtml(a.portfolioInsights?.topPerforming || '—')}</div>
+          </div>
+          <div class="metric-card alert">
+            <div class="metric-label">Needs attention</div>
+            <div class="metric-value" style="font-size:16px">${escHtml(a.portfolioInsights?.needsAttention || '—')}</div>
+          </div>
+        </div>
+      </div>
+    `;
   } catch(e) {
-    res.status(500).json({ error: e.message });
+    container.innerHTML = '<div class="empty">Error loading keyword data: ' + e.message + '</div>';
   }
-});
+}
 
-app.post('/api/alerts/:campaignId/dismiss', function(req, res) {
-  const id = req.params.campaignId;
-  state.alerts = state.alerts.filter(function(a) { return String(a.campaignId) !== String(id); });
-  res.json({ success: true });
-});
+function showKwTab(tab, btn) {
+  ['waste','keywords','bids','insights'].forEach(function(t) {
+    const el = document.getElementById('kwt-' + t);
+    if (el) el.style.display = t === tab ? '' : 'none';
+  });
+  document.querySelectorAll('#kw-tabs .tab-btn').forEach(function(b) { b.classList.remove('active'); });
+  if (btn) btn.classList.add('active');
+}
 
-const interval = process.env.POLL_INTERVAL_MINUTES || 15;
-cron.schedule('*/' + interval + ' * * * *', function() { syncCampaigns(); });
+async function refreshKeywords() {
+  document.getElementById('kw-status').textContent = 'Requesting fresh report...';
+  document.getElementById('kw-container').innerHTML = '<div class="loading"><div class="spinner"></div> Requesting search term report from Amazon...</div>';
+  await fetch('/api/keywords/refresh', { method: 'POST' });
+  setTimeout(loadKeywords, 3000);
+}
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, '0.0.0.0', function() {
-  console.log('App running on port ' + PORT);
-  setTimeout(function() {
-    syncCampaigns().catch(function(err) { console.error('Initial sync failed:', err.message); });
-  }, 30000);
-});
+function exportWasters() {
+  fetch('/api/keywords/analysis').then(function(r){ return r.json(); }).then(function(data) {
+    if (!data.analysis) return;
+    const headers = ['Search Term', 'Campaign', 'Spend Wasted', 'Recommendation', 'Reason'];
+    const rows = (data.analysis.wasteReduction?.topWasters || []).map(function(w){ return [w.searchTerm, w.campaign, w.spend, w.recommendation, w.reason]; });
+    downloadCSV(headers, rows, 'fksports-negative-keywords-' + new Date().toISOString().split('T')[0] + '.csv');
+  });
+}
 
+function exportOpps() {
+  fetch('/api/keywords/analysis').then(function(r){ return r.json(); }).then(function(data) {
+    if (!data.analysis) return;
+    const headers = ['Search Term', 'Campaign', 'Purchases', 'Sales', 'Recommendation', 'Est. Impact'];
+    const rows = (data.analysis.newKeywords?.topOpportunities || []).map(function(k){ return [k.searchTerm, k.campaign, k.purchases, k.sales, k.recommendation, k.estimatedImpact]; });
+    downloadCSV(headers, rows, 'fksports-new-keywords-' + new Date().toISOString().split('T')[0] + '.csv');
+  });
+}
 
-
-
-
-
-
-
-
-
-
-
+// ── Init ──────────────────────────────────────────────────────────────────
+async function init() {
+  try {
+    await fetchData();
+  } catch(e) {
+    console.error('Init failed:', e);
+    setTimeout(init, 3000);
+  }
+}
+init();
+setInterval(fetchData, 5 * 60 * 1000); // refresh every 5 min
+</script>
+</body>
+</html>
 
