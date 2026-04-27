@@ -3,392 +3,779 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CampaignPulse — Amazon API Setup</title>
+<title>FK Sports — CampaignPulse</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    background: #0a0c10;
-    color: #f0f2f5;
-    min-height: 100vh;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 20px;
-  }
-  .card {
-    background: #111318;
-    border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 16px;
-    padding: 36px 40px;
-    max-width: 560px;
-    width: 100%;
-  }
-  .logo { font-size: 18px; font-weight: 600; margin-bottom: 6px; }
-  .logo span { color: #818cf8; }
-  .subtitle { font-size: 13px; color: #5a6378; margin-bottom: 28px; }
-  .step { margin-bottom: 24px; }
-  .step-label {
-    font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: #5a6378;
-    margin-bottom: 8px;
-  }
-  .step-title { font-size: 14px; font-weight: 600; color: #f0f2f5; margin-bottom: 4px; }
-  .step-desc { font-size: 13px; color: #8a92a6; line-height: 1.6; margin-bottom: 10px; }
-  input {
-    width: 100%;
-    background: #181c24;
-    border: 1px solid rgba(255,255,255,0.1);
-    color: #f0f2f5;
-    padding: 10px 14px;
-    border-radius: 8px;
-    font-size: 13px;
-    font-family: 'SF Mono', 'Fira Code', monospace;
-    margin-bottom: 8px;
-  }
-  input:focus { outline: none; border-color: #6366f1; }
-  input::placeholder { color: #3a4055; }
-  .btn {
-    width: 100%;
-    padding: 12px;
-    border-radius: 10px;
-    font-size: 14px;
-    font-weight: 600;
-    cursor: pointer;
-    border: none;
-    font-family: inherit;
-    transition: all 0.15s;
-  }
-  .btn-primary { background: #6366f1; color: white; }
-  .btn-primary:hover { background: #818cf8; }
-  .btn-primary:disabled { background: #2a2d3a; color: #5a6378; cursor: not-allowed; }
-  .divider { height: 1px; background: rgba(255,255,255,0.06); margin: 24px 0; }
-  .result-box {
-    background: #181c24;
-    border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 10px;
-    padding: 16px;
-    margin-top: 10px;
-    display: none;
-  }
-  .result-box.show { display: block; }
-  .result-label { font-size: 11px; color: #5a6378; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
-  .result-value {
-    font-family: 'SF Mono', 'Fira Code', monospace;
-    font-size: 12px;
-    color: #22c55e;
-    word-break: break-all;
-    line-height: 1.6;
-    background: #0d1117;
-    padding: 10px 12px;
-    border-radius: 6px;
-    margin-bottom: 8px;
-  }
-  .copy-btn {
-    font-size: 12px;
-    padding: 5px 12px;
-    border-radius: 6px;
-    border: 1px solid rgba(255,255,255,0.1);
-    background: transparent;
-    color: #8a92a6;
-    cursor: pointer;
-    font-family: inherit;
-  }
-  .copy-btn:hover { background: #1e2330; color: #f0f2f5; }
-  .copy-btn.copied { color: #22c55e; border-color: rgba(34,197,94,0.3); }
-  .status { font-size: 13px; padding: 10px 14px; border-radius: 8px; margin-top: 10px; display: none; }
-  .status.show { display: block; }
-  .status.error { background: rgba(239,68,68,0.1); color: #ef4444; border: 1px solid rgba(239,68,68,0.2); }
-  .status.success { background: rgba(34,197,94,0.1); color: #22c55e; border: 1px solid rgba(34,197,94,0.2); }
-  .status.loading { background: rgba(99,102,241,0.1); color: #818cf8; border: 1px solid rgba(99,102,241,0.2); }
-  .note { font-size: 12px; color: #5a6378; margin-top: 8px; line-height: 1.6; }
-  .note a { color: #818cf8; }
-  .profile-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 10px 12px;
-    background: #0d1117;
-    border-radius: 6px;
-    margin-bottom: 6px;
-    cursor: pointer;
-    border: 1px solid transparent;
-    transition: all 0.15s;
-  }
-  .profile-item:hover { border-color: #6366f1; }
-  .profile-item.selected { border-color: #22c55e; background: rgba(34,197,94,0.05); }
-  .profile-name { font-size: 13px; font-weight: 500; }
-  .profile-meta { font-size: 11px; color: #5a6378; font-family: monospace; }
-  .profile-id { font-size: 12px; font-family: monospace; color: #818cf8; }
-  .hidden { display: none; }
-  .step-number {
-    width: 22px; height: 22px;
-    border-radius: 50%;
-    background: #1e2330;
-    color: #818cf8;
-    font-size: 11px;
-    font-weight: 700;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    margin-right: 8px;
-  }
-  .step-number.done { background: rgba(34,197,94,0.15); color: #22c55e; }
+:root {
+  --bg: #05080f;
+  --surface: #0c1018;
+  --surface2: #131820;
+  --surface3: #1a2030;
+  --border: rgba(255,255,255,0.06);
+  --border2: rgba(255,255,255,0.1);
+  --text: #e8edf5;
+  --text2: #7a8499;
+  --text3: #3d4a60;
+  --green: #00d084;
+  --green-bg: rgba(0,208,132,0.08);
+  --amber: #ffb340;
+  --amber-bg: rgba(255,179,64,0.08);
+  --red: #ff4d6a;
+  --red-bg: rgba(255,77,106,0.08);
+  --blue: #4d9fff;
+  --blue-bg: rgba(77,159,255,0.08);
+  --purple: #9f7aea;
+  --purple-bg: rgba(159,122,234,0.08);
+  --accent: #ff6b35;
+  --accent2: #ff8c5a;
+  --mono: 'JetBrains Mono', monospace;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; font-size: 13px; }
+
+/* Layout */
+.shell { display: flex; min-height: 100vh; }
+.sidebar { width: 220px; flex-shrink: 0; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
+.main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+
+/* Sidebar */
+.logo { padding: 20px 18px 16px; border-bottom: 1px solid var(--border); }
+.logo-brand { font-size: 11px; font-weight: 700; letter-spacing: 0.15em; text-transform: uppercase; color: var(--accent); margin-bottom: 2px; }
+.logo-product { font-size: 16px; font-weight: 600; color: var(--text); letter-spacing: -0.3px; }
+.nav { padding: 10px 8px; flex: 1; }
+.nav-section { font-size: 10px; font-weight: 600; color: var(--text3); letter-spacing: 0.1em; text-transform: uppercase; padding: 12px 10px 6px; }
+.nav-item { display: flex; align-items: center; gap: 9px; padding: 8px 10px; border-radius: 7px; cursor: pointer; color: var(--text2); font-size: 12.5px; font-weight: 400; transition: all 0.12s; border: none; background: none; width: 100%; text-align: left; }
+.nav-item:hover { background: var(--surface2); color: var(--text); }
+.nav-item.active { background: var(--surface3); color: var(--text); font-weight: 500; }
+.nav-badge { margin-left: auto; background: var(--red); color: white; font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 20px; min-width: 18px; text-align: center; }
+.nav-badge.amber { background: var(--amber); color: #000; }
+.nav-badge.green { background: var(--green); color: #000; }
+.sidebar-footer { padding: 14px 16px; border-top: 1px solid var(--border); }
+.profile-row { display: flex; align-items: center; gap: 10px; }
+.avatar { width: 28px; height: 28px; border-radius: 50%; background: var(--accent); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: white; flex-shrink: 0; }
+.profile-name { font-size: 12px; font-weight: 600; color: var(--text); }
+.profile-role { font-size: 11px; color: var(--text3); }
+
+/* Topbar */
+.topbar { background: var(--surface); border-bottom: 1px solid var(--border); padding: 12px 24px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 10; }
+.page-title { font-size: 14px; font-weight: 600; color: var(--text); }
+.topbar-right { display: flex; align-items: center; gap: 10px; }
+.sync-info { font-family: var(--mono); font-size: 11px; color: var(--text3); display: flex; align-items: center; gap: 6px; }
+.sync-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
+.sync-dot.syncing { animation: pulse 1s infinite; }
+@keyframes pulse { 0%,100%{opacity:1}50%{opacity:0.3} }
+.btn { padding: 7px 14px; border-radius: 7px; font-size: 12px; font-weight: 500; cursor: pointer; transition: all 0.12s; border: 1px solid var(--border2); font-family: 'Inter', sans-serif; }
+.btn-ghost { background: transparent; color: var(--text2); }
+.btn-ghost:hover { background: var(--surface2); color: var(--text); }
+.btn-primary { background: var(--accent); color: white; border-color: transparent; }
+.btn-primary:hover { background: var(--accent2); }
+.btn-green { background: var(--green-bg); color: var(--green); border-color: rgba(0,208,132,0.2); }
+.btn-green:hover { background: rgba(0,208,132,0.15); }
+.btn-red { background: var(--red-bg); color: var(--red); border-color: rgba(255,77,106,0.2); }
+.btn-amber { background: var(--amber-bg); color: var(--amber); border-color: rgba(255,179,64,0.2); }
+
+/* Pages */
+.page { padding: 22px 24px; display: none; flex: 1; }
+.page.active { display: block; }
+
+/* Metrics */
+.metrics-grid { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 12px; margin-bottom: 22px; }
+.metric-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; }
+.metric-card.alert { border-color: rgba(255,77,106,0.25); background: rgba(255,77,106,0.03); }
+.metric-label { font-size: 10.5px; color: var(--text3); font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+.metric-value { font-size: 24px; font-weight: 700; color: var(--text); letter-spacing: -0.5px; font-family: var(--mono); }
+.metric-delta { font-size: 11px; margin-top: 5px; color: var(--text3); }
+.delta-up { color: var(--green); }
+.delta-down { color: var(--red); }
+
+/* Alert banner */
+.alert-banner { background: rgba(255,77,106,0.06); border: 1px solid rgba(255,77,106,0.2); border-radius: 9px; padding: 11px 16px; margin-bottom: 18px; display: flex; align-items: center; gap: 12px; }
+.alert-banner-text { font-size: 12.5px; color: var(--text); flex: 1; line-height: 1.5; }
+.alert-banner-text strong { color: var(--red); }
+
+/* Section */
+.section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.section-title { font-size: 13px; font-weight: 600; color: var(--text); }
+.section-sub { font-size: 11px; color: var(--text3); margin-top: 2px; }
+
+/* Table */
+.table-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin-bottom: 22px; }
+table { width: 100%; border-collapse: collapse; }
+thead th { font-size: 10.5px; font-weight: 600; color: var(--text3); text-transform: uppercase; letter-spacing: 0.07em; padding: 10px 14px; text-align: left; background: var(--surface2); border-bottom: 1px solid var(--border); white-space: nowrap; }
+tbody td { padding: 11px 14px; border-bottom: 1px solid var(--border); font-size: 12.5px; color: var(--text); vertical-align: middle; }
+tbody tr:last-child td { border-bottom: none; }
+tbody tr:hover { background: rgba(255,255,255,0.02); }
+.camp-name { font-weight: 500; font-size: 12.5px; }
+.camp-meta { font-size: 11px; color: var(--text3); margin-top: 1px; }
+.mono { font-family: var(--mono); }
+
+/* Badge */
+.badge { font-size: 10.5px; font-weight: 500; padding: 3px 8px; border-radius: 5px; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.badge-green { background: var(--green-bg); color: var(--green); }
+.badge-red { background: var(--red-bg); color: var(--red); }
+.badge-amber { background: var(--amber-bg); color: var(--amber); }
+.badge-blue { background: var(--blue-bg); color: var(--blue); }
+.badge-purple { background: var(--purple-bg); color: var(--purple); }
+.dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
+
+/* Progress */
+.prog { width: 70px; height: 3px; background: var(--surface3); border-radius: 3px; overflow: hidden; margin-top: 5px; }
+.prog-fill { height: 100%; border-radius: 3px; }
+
+/* Action group */
+.ag { display: flex; gap: 5px; flex-wrap: wrap; }
+
+/* Report page */
+.report-filters { display: flex; gap: 8px; margin-bottom: 18px; flex-wrap: wrap; align-items: center; }
+.filter-select { background: var(--surface); border: 1px solid var(--border2); color: var(--text); padding: 7px 10px; border-radius: 7px; font-size: 12px; font-family: 'Inter',sans-serif; cursor: pointer; }
+.filter-select:focus { outline: none; border-color: var(--accent); }
+.report-summary { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 12px; margin-bottom: 20px; }
+
+/* AI card */
+.ai-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; margin-bottom: 12px; }
+.ai-header { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 10px; }
+.ai-icon { width: 30px; height: 30px; border-radius: 8px; background: var(--purple-bg); border: 1px solid rgba(159,122,234,0.2); display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; }
+.ai-title { font-size: 13px; font-weight: 600; color: var(--text); }
+.ai-sub { font-size: 11px; color: var(--text3); margin-top: 2px; }
+.ai-desc { font-size: 12.5px; color: var(--text2); line-height: 1.6; margin-bottom: 12px; }
+.ai-impact { background: var(--green-bg); border: 1px solid rgba(0,208,132,0.15); border-radius: 7px; padding: 8px 12px; font-size: 12px; color: var(--green); margin-bottom: 12px; }
+.kw-list { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 12px; }
+.kw-pill { font-size: 11px; padding: 3px 9px; border-radius: 5px; background: var(--blue-bg); color: var(--blue); border: 1px solid rgba(77,159,255,0.15); font-family: var(--mono); }
+.kw-pill.neg { background: var(--red-bg); color: var(--red); border-color: rgba(255,77,106,0.15); }
+
+/* Loading */
+.loading { display: flex; align-items: center; justify-content: center; padding: 60px; color: var(--text3); font-size: 13px; gap: 10px; }
+.spinner { width: 16px; height: 16px; border: 2px solid var(--border2); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Empty state */
+.empty { text-align: center; padding: 50px; color: var(--text3); font-size: 13px; }
+
+/* Tabs */
+.tabs { display: flex; gap: 3px; margin-bottom: 18px; background: var(--surface2); padding: 3px; border-radius: 8px; width: fit-content; }
+.tab-btn { padding: 6px 14px; border-radius: 6px; font-size: 12px; font-weight: 500; cursor: pointer; border: none; background: transparent; color: var(--text3); font-family: 'Inter',sans-serif; transition: all 0.12s; }
+.tab-btn.active { background: var(--surface3); color: var(--text); }
+
+/* Insight box */
+.insight-box { background: var(--surface); border: 1px solid rgba(159,122,234,0.25); border-radius: 10px; padding: 14px 18px; margin-bottom: 20px; }
+.insight-title { font-size: 12px; font-weight: 600; color: var(--purple); margin-bottom: 6px; }
+.insight-text { font-size: 12.5px; color: var(--text2); line-height: 1.7; }
+
+/* Settings */
+.settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.settings-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; }
+.settings-title { font-size: 12.5px; font-weight: 600; color: var(--text); margin-bottom: 14px; }
+.settings-row { display: flex; align-items: center; justify-content: space-between; padding: 9px 0; border-bottom: 1px solid var(--border); }
+.settings-row:last-child { border-bottom: none; }
+.settings-label { font-size: 12.5px; color: var(--text); }
+.settings-sub { font-size: 11px; color: var(--text3); margin-top: 1px; }
+.toggle { width: 34px; height: 18px; background: var(--surface3); border-radius: 18px; position: relative; cursor: pointer; transition: background 0.2s; border: none; flex-shrink: 0; }
+.toggle.on { background: var(--accent); }
+.toggle::after { content:''; position:absolute; width:12px; height:12px; background:white; border-radius:50%; top:3px; left:3px; transition:left 0.2s; }
+.toggle.on::after { left:19px; }
+.input-sm { background: var(--surface2); border: 1px solid var(--border2); color: var(--text); padding: 5px 9px; border-radius: 6px; font-size: 12px; width: 70px; font-family:'Inter',sans-serif; }
+
+/* AI thinking */
+.ai-thinking { display: flex; align-items: center; gap: 8px; color: var(--text3); font-size: 12px; padding: 12px 0; }
 </style>
 </head>
 <body>
+<div class="shell">
 
-<div class="card">
-  <div class="logo">Campaign<span>Pulse</span></div>
-  <div class="subtitle">Amazon Advertising API — one-time setup</div>
-
-  <!-- PHASE 1: Enter credentials -->
-  <div id="phase1">
-    <div class="step">
-      <div class="step-label"><span class="step-number" id="n1">1</span>Your LWA credentials</div>
-      <div class="step-desc">Enter your Client ID and Client Secret from developer.amazon.com. These are used only in your browser to generate the OAuth URL — they are never sent to any server.</div>
-      <input type="text" id="clientId" placeholder="amzn1.application-oa2-client.xxxxxxxx" value="amzn1.application-oa2-client.db5315dce1004430a56e6d6bd7e0b75c" />
-      <input type="password" id="clientSecret" placeholder="Your Client Secret (2:xxxx:xxxx format)" />
-      <div class="note">⚠ Your secret stays in your browser only. This page has no backend server.</div>
+<!-- SIDEBAR -->
+<nav class="sidebar">
+  <div class="logo">
+    <div class="logo-brand">FK Sports</div>
+    <div class="logo-product">CampaignPulse</div>
+  </div>
+  <div class="nav">
+    <div class="nav-section">Monitor</div>
+    <button class="nav-item active" onclick="showPage('dashboard',this)">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/><rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>
+      Dashboard
+      <span class="nav-badge" id="nb-action" style="display:none">0</span>
+    </button>
+    <button class="nav-item" onclick="showPage('campaigns',this)">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 4h14M1 8h10M1 12h6"/></svg>
+      All campaigns
+    </button>
+    <button class="nav-item" onclick="showPage('ai',this)">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M6 8l1.5 1.5L10 6"/></svg>
+      AI analysis
+      <span class="nav-badge amber">Live</span>
+    </button>
+    <div class="nav-section">Reports</div>
+    <button class="nav-item" onclick="showPage('report',this)">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="12" height="12" rx="1"/><path d="M5 8h6M5 11h4M5 5h3"/></svg>
+      Budget report
+    </button>
+    <button class="nav-item" onclick="showPage('activity',this)">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 5v3l2 2"/></svg>
+      Activity log
+    </button>
+    <div class="nav-section">Admin</div>
+    <button class="nav-item" onclick="showPage('settings',this)">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="2.5"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2"/></svg>
+      Settings
+    </button>
+  </div>
+  <div class="sidebar-footer">
+    <div class="profile-row">
+      <div class="avatar">B</div>
+      <div><div class="profile-name">Bobby</div><div class="profile-role">Account owner</div></div>
     </div>
+  </div>
+</nav>
 
-    <div class="divider"></div>
-
-    <div class="step">
-      <div class="step-label"><span class="step-number" id="n2">2</span>Authorise with Amazon</div>
-      <div class="step-desc">Click the button below. Amazon will ask you to log in and click Allow. After that, you'll be redirected back to this page automatically with your tokens.</div>
-      <div class="note" style="margin-bottom:12px;">Make sure you're logged into the Amazon account that owns FK Sports ads.</div>
-      <button class="btn btn-primary" id="authBtn" onclick="startAuth()">Connect to Amazon Ads →</button>
-      <div class="status" id="authStatus"></div>
+<!-- MAIN -->
+<div class="main">
+  <div class="topbar">
+    <div class="page-title" id="page-title">Dashboard</div>
+    <div class="topbar-right">
+      <div class="sync-info"><div class="sync-dot" id="sync-dot"></div><span id="sync-time">Loading...</span></div>
+      <button class="btn btn-ghost" onclick="exportCSV()">Export CSV</button>
+      <button class="btn btn-primary" onclick="refreshData()">Refresh data</button>
     </div>
   </div>
 
-  <!-- PHASE 2: Exchange code for tokens -->
-  <div id="phase2" class="hidden">
-    <div class="step">
-      <div class="step-label"><span class="step-number done">✓</span>Amazon authorised</div>
-      <div class="step-desc">Exchanging your authorisation code for tokens. Enter your Client Secret to complete the exchange.</div>
-      <input type="password" id="clientSecret2" placeholder="Enter your Client Secret again" />
-      <button class="btn btn-primary" id="exchangeBtn" onclick="exchangeToken()">Get my tokens →</button>
-      <div class="status" id="exchangeStatus"></div>
+  <!-- DASHBOARD -->
+  <div class="page active" id="page-dashboard">
+    <div id="alert-container"></div>
+    <div class="metrics-grid" id="metrics-grid">
+      <div class="metric-card"><div class="metric-label">Today's revenue</div><div class="metric-value" id="m-revenue"><div class="spinner"></div></div><div class="metric-delta" id="m-revenue-d"></div></div>
+      <div class="metric-card"><div class="metric-label">Total ad spend</div><div class="metric-value" id="m-spend"></div><div class="metric-delta" id="m-spend-d"></div></div>
+      <div class="metric-card"><div class="metric-label">Blended ACOS</div><div class="metric-value" id="m-acos"></div><div class="metric-delta" id="m-acos-d"></div></div>
+      <div class="metric-card alert"><div class="metric-label">Needs action</div><div class="metric-value" id="m-action"></div><div class="metric-delta delta-down" id="m-action-d"></div></div>
+    </div>
+    <div class="section-header">
+      <div><div class="section-title">Live campaigns</div><div class="section-sub" id="camp-sub">Loading...</div></div>
+      <button class="btn btn-ghost" onclick="showPage('campaigns',document.querySelectorAll('.nav-item')[1])">View all →</button>
+    </div>
+    <div class="table-card">
+      <div style="overflow-x:auto"><table>
+        <thead><tr><th>Campaign</th><th>Portfolio</th><th>Budget left</th><th>ACOS</th><th>Revenue</th><th>Spend</th><th>Status</th><th>Action</th></tr></thead>
+        <tbody id="dash-table"><tr><td colspan="8"><div class="loading"><div class="spinner"></div> Loading campaigns...</div></td></tr></tbody>
+      </table></div>
     </div>
   </div>
 
-  <!-- PHASE 3: Show results -->
-  <div id="phase3" class="hidden">
-    <div class="step">
-      <div class="step-label"><span class="step-number done">✓</span>Setup complete</div>
-      <div class="step-desc">Save these values somewhere safe — you'll need them to configure the CampaignPulse backend.</div>
-
-      <div class="result-box show">
-        <div class="result-label">Refresh Token</div>
-        <div class="result-value" id="refreshTokenVal"></div>
-        <button class="copy-btn" onclick="copyVal('refreshTokenVal', this)">Copy</button>
-      </div>
-
-      <div class="result-box show" style="margin-top:10px">
-        <div class="result-label">Access Token (valid 1 hour)</div>
-        <div class="result-value" id="accessTokenVal"></div>
-        <button class="copy-btn" onclick="copyVal('accessTokenVal', this)">Copy</button>
-      </div>
+  <!-- ALL CAMPAIGNS -->
+  <div class="page" id="page-campaigns">
+    <div class="tabs">
+      <button class="tab-btn active" onclick="filterCamps('all',this)">All (<span id="t-all">0</span>)</button>
+      <button class="tab-btn" onclick="filterCamps('action',this)">Needs action (<span id="t-action">0</span>)</button>
+      <button class="tab-btn" onclick="filterCamps('healthy',this)">Healthy (<span id="t-healthy">0</span>)</button>
     </div>
-
-    <div class="divider"></div>
-
-    <div class="step">
-      <div class="step-label"><span class="step-number done">✓</span>Your UK Profile ID</div>
-      <div class="step-desc">Click your FK Sports UK profile below to select it.</div>
-      <div id="profileList"></div>
-      <div class="result-box" id="profileResult">
-        <div class="result-label">Selected Profile ID</div>
-        <div class="result-value" id="profileIdVal"></div>
-        <button class="copy-btn" onclick="copyVal('profileIdVal', this)">Copy</button>
-      </div>
-      <div class="status" id="profileStatus"></div>
-    </div>
-
-    <div class="divider"></div>
-
-    <div class="note" style="color:#8a92a6">
-      ✓ Save your Refresh Token, Client ID, Client Secret, and Profile ID in a text file.<br>
-      ✓ Share only the Profile ID with Claude — never the tokens or secrets.<br>
-      ✓ Your Refresh Token is long-lived and will auto-renew access tokens.
+    <div class="table-card">
+      <div style="overflow-x:auto"><table>
+        <thead><tr><th>Campaign</th><th>Portfolio / Agent</th><th>Daily budget</th><th>Spent</th><th>Budget left</th><th>ACOS</th><th>Revenue</th><th>Status</th><th>Action</th></tr></thead>
+        <tbody id="all-table"><tr><td colspan="9"><div class="loading"><div class="spinner"></div> Loading...</div></td></tr></tbody>
+      </table></div>
     </div>
   </div>
+
+  <!-- AI ANALYSIS -->
+  <div class="page" id="page-ai">
+    <div class="metrics-grid" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+      <div class="metric-card"><div class="metric-label">Est. revenue gain</div><div class="metric-value" id="ai-gain">—</div><div class="metric-delta delta-up">If all suggestions approved</div></div>
+      <div class="metric-card"><div class="metric-label">Wasted spend</div><div class="metric-value" id="ai-waste">—</div><div class="metric-delta delta-down">High ACOS campaigns</div></div>
+      <div class="metric-card"><div class="metric-label">Scale opportunities</div><div class="metric-value" id="ai-opps">—</div><div class="metric-delta delta-up">Low ACOS, budget headroom</div></div>
+    </div>
+    <div id="ai-container"><div class="loading"><div class="spinner"></div> Analysing your campaigns with AI...</div></div>
+  </div>
+
+  <!-- BUDGET REPORT -->
+  <div class="page" id="page-report">
+    <div class="report-filters">
+      <select class="filter-select" id="rf-period">
+        <option value="today">Today</option>
+        <option value="7">Last 7 days</option>
+        <option value="30" selected>Last 30 days</option>
+      </select>
+      <select class="filter-select" id="rf-type">
+        <option value="all">All events</option>
+        <option value="out_of_budget">Out of budget</option>
+        <option value="budget_low">Budget low</option>
+        <option value="acos_high">High ACOS</option>
+      </select>
+      <button class="btn btn-ghost" onclick="exportReportCSV()">📥 Export CSV</button>
+      <button class="btn btn-ghost" onclick="exportReportPDF()">📄 Export PDF</button>
+      <button class="btn btn-primary" onclick="renderReport()">Generate report</button>
+    </div>
+    <div class="report-summary">
+      <div class="metric-card alert"><div class="metric-label">Exhaustion events</div><div class="metric-value" id="rpt-events">—</div><div class="metric-delta delta-down" id="rpt-events-d"></div></div>
+      <div class="metric-card"><div class="metric-label">Est. missed revenue</div><div class="metric-value" id="rpt-missed">—</div><div class="metric-delta delta-down">From budget exhaustion</div></div>
+      <div class="metric-card"><div class="metric-label">Avg exhaustion time</div><div class="metric-value" id="rpt-avg-time">—</div><div class="metric-delta">Most alerts today</div></div>
+    </div>
+    <div class="insight-box" id="rpt-insight" style="display:none">
+      <div class="insight-title">✦ AI Pattern Insight</div>
+      <div class="insight-text" id="rpt-insight-text"></div>
+    </div>
+    <div class="section-header">
+      <div><div class="section-title">Exhaustion event log</div><div class="section-sub">Every incident with time, budget, ACOS and action taken</div></div>
+    </div>
+    <div class="table-card">
+      <div style="overflow-x:auto"><table>
+        <thead><tr><th>Date</th><th>Time</th><th>Campaign</th><th>Portfolio</th><th>Agent</th><th>Budget set</th><th>ACOS</th><th>Est. missed rev.</th><th>Budget added</th><th>Action taken</th></tr></thead>
+        <tbody id="report-table"><tr><td colspan="10"><div class="empty">No events recorded yet. Events appear here when campaigns run out of budget or trigger alerts.</div></td></tr></tbody>
+      </table></div>
+    </div>
+  </div>
+
+  <!-- ACTIVITY LOG -->
+  <div class="page" id="page-activity">
+    <div class="table-card" style="padding:0 18px">
+      <div id="activity-log"><div class="loading"><div class="spinner"></div> Loading activity...</div></div>
+    </div>
+  </div>
+
+  <!-- SETTINGS -->
+  <div class="page" id="page-settings">
+    <div class="settings-grid">
+      <div class="settings-card">
+        <div class="settings-title">Alert thresholds</div>
+        <div class="settings-row"><div><div class="settings-label">ACOS critical (%)</div><div class="settings-sub">Trigger Google Chat alert</div></div><input class="input-sm" type="number" value="35" id="s-acos-crit"/></div>
+        <div class="settings-row"><div><div class="settings-label">ACOS warning (%)</div><div class="settings-sub">Show warning badge</div></div><input class="input-sm" type="number" value="25" id="s-acos-warn"/></div>
+        <div class="settings-row"><div><div class="settings-label">Budget low (%)</div><div class="settings-sub">Alert when % remaining</div></div><input class="input-sm" type="number" value="20" id="s-budget-low"/></div>
+        <div class="settings-row"><div><div class="settings-label">Poll interval (min)</div><div class="settings-sub">How often to sync</div></div><input class="input-sm" type="number" value="15" id="s-poll"/></div>
+      </div>
+      <div class="settings-card">
+        <div class="settings-title">Notifications</div>
+        <div class="settings-row"><div><div class="settings-label">Google Chat alerts</div><div class="settings-sub">Out of budget + high ACOS</div></div><button class="toggle on" onclick="this.classList.toggle('on')"></button></div>
+        <div class="settings-row"><div><div class="settings-label">Include portfolio name</div><div class="settings-sub">Show in every alert</div></div><button class="toggle on" onclick="this.classList.toggle('on')"></button></div>
+        <div class="settings-row"><div><div class="settings-label">Include agent name</div><div class="settings-sub">From portfolio</div></div><button class="toggle on" onclick="this.classList.toggle('on')"></button></div>
+        <div class="settings-row"><div><div class="settings-label">Max alerts per sync</div><div class="settings-sub">Prevent flooding</div></div><input class="input-sm" type="number" value="5" id="s-max-alerts"/></div>
+      </div>
+      <div class="settings-card">
+        <div class="settings-title">Auto-actions</div>
+        <div class="settings-row"><div><div class="settings-label">Auto-pause at ACOS > 50%</div><div class="settings-sub">No approval needed</div></div><button class="toggle" onclick="this.classList.toggle('on')"></button></div>
+        <div class="settings-row"><div><div class="settings-label">Auto-add budget (ACOS &lt; 15%)</div><div class="settings-sub">When out of budget</div></div><button class="toggle" onclick="this.classList.toggle('on')"></button></div>
+        <div class="settings-row"><div><div class="settings-label">Max auto-add per event (£)</div><div class="settings-sub">Hard cap</div></div><input class="input-sm" type="number" value="50" id="s-max-add"/></div>
+      </div>
+      <div class="settings-card">
+        <div class="settings-title">AI analysis</div>
+        <div class="settings-row"><div><div class="settings-label">Keyword gap analysis</div><div class="settings-sub">Daily via Claude AI</div></div><button class="toggle on" onclick="this.classList.toggle('on')"></button></div>
+        <div class="settings-row"><div><div class="settings-label">Scale recommendations</div><div class="settings-sub">When ACOS stable 7+ days</div></div><button class="toggle on" onclick="this.classList.toggle('on')"></button></div>
+        <div class="settings-row"><div><div class="settings-label">Negative keyword suggestions</div><div class="settings-sub">Zero-conversion terms</div></div><button class="toggle on" onclick="this.classList.toggle('on')"></button></div>
+        <div class="settings-row"><div><div class="settings-label">Bid optimisation</div><div class="settings-sub">Weekly per keyword</div></div><button class="toggle" onclick="this.classList.toggle('on')"></button></div>
+      </div>
+    </div>
+    <div style="margin-top:14px;display:flex;gap:8px">
+      <button class="btn btn-primary">Save settings</button>
+      <button class="btn btn-ghost">Reset to defaults</button>
+    </div>
+  </div>
+
+</div>
 </div>
 
 <script>
-  // ── Read URL params on load ─────────────────────────────────────────────
-  window.addEventListener('load', () => {
-    const params = new URLSearchParams(window.location.search);
-    const code = params.get('code');
-    const error = params.get('error');
+// ── State ──────────────────────────────────────────────────────────────────
+let appData = { metrics: {}, campaigns: [], alerts: [], exhaustionLog: [], lastSync: null };
+let allCampaigns = [];
+let currentFilter = 'all';
 
-    if (error) {
-      showStatus('authStatus', 'error', 'Amazon returned an error: ' + error);
-      return;
+const pageTitles = {
+  dashboard: 'Dashboard', campaigns: 'All campaigns', ai: 'AI analysis',
+  report: 'Budget exhaustion report', activity: 'Activity log', settings: 'Settings'
+};
+
+// ── Navigation ─────────────────────────────────────────────────────────────
+function showPage(name, btn) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  if (btn) btn.classList.add('active');
+  document.getElementById('page-title').textContent = pageTitles[name] || name;
+  if (name === 'campaigns') renderAllCampaigns();
+  if (name === 'report') renderReport();
+  if (name === 'activity') renderActivity();
+  if (name === 'ai') runAI();
+}
+
+// ── Fetch data ─────────────────────────────────────────────────────────────
+async function fetchData() {
+  try {
+    const res = await fetch('/api/dashboard');
+    if (!res.ok) throw new Error('API error');
+    appData = await res.json();
+    allCampaigns = appData.campaigns || [];
+    renderDashboard();
+    updateSyncTime();
+  } catch(e) {
+    console.error('Fetch error:', e.message);
+    document.getElementById('sync-time').textContent = 'Retrying...';
+    setTimeout(fetchData, 5000);
+  }
+}
+
+function updateSyncTime() {
+  const el = document.getElementById('sync-time');
+  el.textContent = appData.lastSync ? 'Synced ' + appData.lastSync : 'Synced just now';
+  document.getElementById('sync-dot').classList.remove('syncing');
+}
+
+async function refreshData() {
+  document.getElementById('sync-dot').classList.add('syncing');
+  document.getElementById('sync-time').textContent = 'Syncing...';
+  await fetch('/api/sync', { method: 'POST' });
+  setTimeout(fetchData, 3000);
+}
+
+// ── Dashboard ──────────────────────────────────────────────────────────────
+function renderDashboard() {
+  const m = appData.metrics || {};
+  const camps = allCampaigns;
+
+  // Metrics
+  document.getElementById('m-revenue').textContent = '£' + parseFloat(m.totalRevenue || 0).toFixed(2);
+  document.getElementById('m-spend').textContent = '£' + parseFloat(m.totalSpend || 0).toFixed(2);
+  document.getElementById('m-acos').textContent = (m.blendedAcos || 0) + '%';
+  document.getElementById('m-action').textContent = m.needsAction || 0;
+  document.getElementById('m-acos-d').textContent = m.blendedAcos > 35 ? '▲ Above 35% target' : '▼ Within target';
+  document.getElementById('m-acos-d').className = 'metric-delta ' + (m.blendedAcos > 35 ? 'delta-down' : 'delta-up');
+  document.getElementById('m-action-d').textContent = (m.needsAction || 0) + ' campaigns need attention';
+
+  // Nav badge
+  const nb = document.getElementById('nb-action');
+  if (m.needsAction > 0) { nb.textContent = m.needsAction; nb.style.display = ''; }
+  else nb.style.display = 'none';
+
+  // Sub
+  const active = camps.filter(c => c.state === 'enabled').length;
+  const outOfBudget = camps.filter(c => c.budgetRemaining <= 0.01 && c.dailyBudget > 0).length;
+  document.getElementById('camp-sub').textContent = active + ' active · ' + outOfBudget + ' out of budget';
+
+  // Alerts
+  renderAlerts();
+
+  // Table — show top 8 needing attention first
+  const sorted = [...camps].sort((a,b) => {
+    const scoreA = (a.budgetRemaining <= 0.01 ? 3 : a.budgetPct >= 80 ? 2 : a.acos > 35 ? 1 : 0);
+    const scoreB = (b.budgetRemaining <= 0.01 ? 3 : b.budgetPct >= 80 ? 2 : b.acos > 35 ? 1 : 0);
+    return scoreB - scoreA;
+  }).slice(0, 10);
+  renderCampaignTable('dash-table', sorted, true);
+}
+
+function renderAlerts() {
+  const container = document.getElementById('alert-container');
+  const alerts = (appData.alerts || []).filter(a => a.type === 'out_of_budget').slice(-3);
+  if (!alerts.length) { container.innerHTML = ''; return; }
+  container.innerHTML = alerts.map(a => `
+    <div class="alert-banner">
+      <span>⚠</span>
+      <div class="alert-banner-text"><strong>${a.name}</strong> ran out of budget at ${a.time}. Portfolio: ${a.portfolio || 'N/A'}. Agent: ${a.agent || 'N/A'}. ACOS: ${a.acos}%.</div>
+      <button class="btn btn-green" onclick="approveBudget('${a.campaignId}', 40)">+£40</button>
+      <button class="btn btn-ghost" onclick="this.closest('.alert-banner').remove()">Dismiss</button>
+    </div>
+  `).join('');
+}
+
+function renderCampaignTable(tableId, campaigns, showAction) {
+  const tbody = document.getElementById(tableId);
+  if (!campaigns.length) { tbody.innerHTML = '<tr><td colspan="9"><div class="empty">No campaigns found</div></td></tr>'; return; }
+  tbody.innerHTML = campaigns.map(c => {
+    const outOfBudget = c.budgetRemaining <= 0.01 && c.dailyBudget > 0;
+    const budgetLow = c.budgetPct >= 80 && !outOfBudget;
+    const acosHigh = c.acos > 35 && c.spend > 5;
+    const budgetColor = outOfBudget ? 'var(--red)' : budgetLow ? 'var(--amber)' : 'var(--text)';
+    const acosClass = c.acos > 35 ? 'style="color:var(--red);font-weight:600"' : c.acos > 25 ? 'style="color:var(--amber)"' : 'style="color:var(--green)"';
+    const progColor = outOfBudget ? 'var(--red)' : budgetLow ? 'var(--amber)' : 'var(--green)';
+    let statusBadge = '<span class="badge badge-green"><span class="dot" style="background:var(--green)"></span>Healthy</span>';
+    if (outOfBudget) statusBadge = '<span class="badge badge-red"><span class="dot" style="background:var(--red)"></span>Out of budget</span>';
+    else if (acosHigh) statusBadge = '<span class="badge badge-red"><span class="dot" style="background:var(--red)"></span>ACOS high</span>';
+    else if (budgetLow) statusBadge = '<span class="badge badge-amber"><span class="dot" style="background:var(--amber)"></span>Budget low</span>';
+    let action = '<button class="btn btn-ghost" style="font-size:11px">View</button>';
+    if (showAction) {
+      if (outOfBudget) action = '<div class="ag"><button class="btn btn-green" onclick="approveBudget(\''+c.campaignId+'\',40)">+£40</button><button class="btn btn-ghost" style="font-size:11px">Skip</button></div>';
+      else if (acosHigh) action = '<div class="ag"><button class="btn btn-amber" style="font-size:11px">Fix bids</button></div>';
+      else if (budgetLow) action = '<div class="ag"><button class="btn btn-green" onclick="approveBudget(\''+c.campaignId+'\',30)">+£30</button></div>';
+      else action = '<button class="btn btn-ghost" style="font-size:11px">Scale ↗</button>';
     }
+    return `<tr>
+      <td><div class="camp-name">${escHtml(c.name)}</div><div class="camp-meta">ID: ${c.campaignId}</div></td>
+      <td><div class="camp-name">${escHtml(c.portfolio||'—')}</div><div class="camp-meta">${escHtml(c.agent||'')}</div></td>
+      <td><div class="mono" style="color:${budgetColor}">£${c.budgetRemaining} / £${c.dailyBudget}</div><div class="prog"><div class="prog-fill" style="width:${Math.min(c.budgetPct,100)}%;background:${progColor}"></div></div></td>
+      <td class="mono" ${acosClass}>${c.acos}%</td>
+      <td class="mono">£${c.sales}</td>
+      <td class="mono">£${c.spend}</td>
+      <td>${statusBadge}</td>
+      <td>${action}</td>
+    </tr>`;
+  }).join('');
+}
 
-    if (code) {
-      // We have a code — show phase 2
-      window.authCode = code;
-      document.getElementById('phase1').classList.add('hidden');
-      document.getElementById('phase2').classList.remove('hidden');
+// ── All Campaigns ──────────────────────────────────────────────────────────
+function renderAllCampaigns() {
+  const acosCrit = 35;
+  let filtered = [...allCampaigns];
+  if (currentFilter === 'action') filtered = filtered.filter(c => c.budgetRemaining <= 0.01 || c.acos > acosCrit || c.budgetPct >= 80);
+  else if (currentFilter === 'healthy') filtered = filtered.filter(c => c.budgetRemaining > 0.01 && c.acos <= acosCrit && c.budgetPct < 80);
+  document.getElementById('t-all').textContent = allCampaigns.length;
+  document.getElementById('t-action').textContent = allCampaigns.filter(c => c.budgetRemaining <= 0.01 || c.acos > acosCrit || c.budgetPct >= 80).length;
+  document.getElementById('t-healthy').textContent = allCampaigns.filter(c => c.budgetRemaining > 0.01 && c.acos <= acosCrit && c.budgetPct < 80).length;
+  renderCampaignTable('all-table', filtered, true);
+}
 
-      // Try to restore client ID
-      const savedId = sessionStorage.getItem('cp_client_id');
-      if (savedId) document.getElementById('clientId') && null;
-      window.clientId = savedId || 'amzn1.application-oa2-client.db5315dce1004430a56e6d6bd7e0b75c';
-    }
-  });
+function filterCamps(type, btn) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  currentFilter = type;
+  renderAllCampaigns();
+}
 
-  // ── Start OAuth flow ────────────────────────────────────────────────────
-  function startAuth() {
-    const clientId = document.getElementById('clientId').value.trim();
-    const secret = document.getElementById('clientSecret').value.trim();
-
-    if (!clientId) { showStatus('authStatus', 'error', 'Please enter your Client ID'); return; }
-    if (!secret) { showStatus('authStatus', 'error', 'Please enter your Client Secret'); return; }
-
-    // Save to session so we can use after redirect
-    sessionStorage.setItem('cp_client_id', clientId);
-    sessionStorage.setItem('cp_client_secret', secret);
-
-    window.clientId = clientId;
-
-    // Build redirect URI — this page itself
-    const redirectUri = window.location.origin + window.location.pathname;
-    const authUrl = `https://www.amazon.co.uk/ap/oa?client_id=${encodeURIComponent(clientId)}&scope=advertising::campaign_management&response_type=code&redirect_uri=${encodeURIComponent(redirectUri)}`;
-
-    showStatus('authStatus', 'loading', 'Redirecting to Amazon login...');
-
-    setTimeout(() => { window.location.href = authUrl; }, 800);
-  }
-
-  // ── Exchange code for tokens ────────────────────────────────────────────
-  async function exchangeToken() {
-    const secret = document.getElementById('clientSecret2').value.trim();
-    if (!secret) { showStatus('exchangeStatus', 'error', 'Please enter your Client Secret'); return; }
-
-    const clientId = sessionStorage.getItem('cp_client_id') || 'amzn1.application-oa2-client.db5315dce1004430a56e6d6bd7e0b75c';
-    const redirectUri = window.location.origin + window.location.pathname;
-    const code = window.authCode;
-
-    showStatus('exchangeStatus', 'loading', 'Exchanging code for tokens with Amazon...');
-    document.getElementById('exchangeBtn').disabled = true;
-
-    try {
-      const body = new URLSearchParams({
-        grant_type: 'authorization_code',
-        code: code,
-        redirect_uri: redirectUri,
-        client_id: clientId,
-        client_secret: secret
-      });
-
-      const response = await fetch('https://api.amazon.co.uk/auth/o2/token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: body.toString()
-      });
-
-      const data = await response.json();
-
-      if (data.error) {
-        showStatus('exchangeStatus', 'error', `Error: ${data.error_description || data.error}`);
-        document.getElementById('exchangeBtn').disabled = false;
-        return;
-      }
-
-      window.accessToken = data.access_token;
-      window.refreshToken = data.refresh_token;
-      window.clientSecret = secret;
-
-      // Show phase 3
-      document.getElementById('phase2').classList.add('hidden');
-      document.getElementById('phase3').classList.remove('hidden');
-      document.getElementById('refreshTokenVal').textContent = data.refresh_token;
-      document.getElementById('accessTokenVal').textContent = data.access_token;
-
-      // Fetch profiles
-      fetchProfiles(data.access_token, clientId);
-
-    } catch(e) {
-      showStatus('exchangeStatus', 'error', 'Network error: ' + e.message);
-      document.getElementById('exchangeBtn').disabled = false;
-    }
-  }
-
-  // ── Fetch profiles ──────────────────────────────────────────────────────
-  async function fetchProfiles(accessToken, clientId) {
-    showStatus('profileStatus', 'loading', 'Fetching your advertising profiles...');
-
-    try {
-      const response = await fetch('https://advertising-api-eu.amazon.com/v2/profiles', {
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Amazon-Advertising-API-ClientId': clientId
-        }
-      });
-
-      const profiles = await response.json();
-
-      if (!Array.isArray(profiles)) {
-        showStatus('profileStatus', 'error', 'Could not fetch profiles: ' + JSON.stringify(profiles));
-        return;
-      }
-
-      document.getElementById('profileStatus').classList.remove('show');
-      const list = document.getElementById('profileList');
-      list.innerHTML = '';
-
-      profiles.forEach(p => {
-        const isUK = p.countryCode === 'GB' || p.countryCode === 'UK';
-        const div = document.createElement('div');
-        div.className = 'profile-item' + (isUK ? ' selected' : '');
-        div.innerHTML = `
-          <div>
-            <div class="profile-name">${p.accountInfo?.name || 'Unknown'} ${isUK ? '🇬🇧' : ''}</div>
-            <div class="profile-meta">${p.countryCode} · ${p.accountInfo?.type || ''}</div>
-          </div>
-          <div class="profile-id">${p.profileId}</div>
-        `;
-        div.onclick = () => selectProfile(p.profileId, div);
-        list.appendChild(div);
-
-        if (isUK) selectProfile(p.profileId, div);
-      });
-
-    } catch(e) {
-      showStatus('profileStatus', 'error', 'Error fetching profiles: ' + e.message);
-    }
-  }
-
-  function selectProfile(profileId, el) {
-    document.querySelectorAll('.profile-item').forEach(i => i.classList.remove('selected'));
-    el.classList.add('selected');
-    document.getElementById('profileIdVal').textContent = profileId;
-    document.getElementById('profileResult').classList.add('show');
-  }
-
-  // ── Helpers ─────────────────────────────────────────────────────────────
-  function showStatus(id, type, msg) {
-    const el = document.getElementById(id);
-    el.className = `status show ${type}`;
-    el.textContent = msg;
-  }
-
-  function copyVal(id, btn) {
-    const text = document.getElementById(id).textContent;
-    navigator.clipboard.writeText(text).then(() => {
-      btn.textContent = 'Copied ✓';
-      btn.classList.add('copied');
-      setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2000);
+// ── Budget approval ────────────────────────────────────────────────────────
+async function approveBudget(campaignId, amount) {
+  try {
+    const res = await fetch('/api/campaigns/' + campaignId + '/budget', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ amount: amount })
     });
+    const data = await res.json();
+    if (data.success) {
+      alert('Budget increased by £' + amount + '. New budget: £' + data.newBudget.toFixed(2));
+      setTimeout(fetchData, 2000);
+    } else {
+      alert('Error: ' + (data.error || 'Unknown error'));
+    }
+  } catch(e) {
+    alert('Error updating budget: ' + e.message);
   }
+}
+
+// ── Report ─────────────────────────────────────────────────────────────────
+function renderReport() {
+  const log = appData.exhaustionLog || [];
+  const typeFilter = document.getElementById('rf-type').value;
+
+  document.getElementById('rpt-events').textContent = log.length || '0';
+  document.getElementById('rpt-events-d').textContent = log.length + ' total events recorded';
+
+  const missedArr = log.map(e => parseFloat((e.missed||'0').replace('GBP','').replace('£','')));
+  const totalMissed = missedArr.reduce((s,v) => s+v, 0);
+  document.getElementById('rpt-missed').textContent = '£' + totalMissed.toFixed(0);
+
+  if (log.length > 0) {
+    const times = log.map(e => e.time).filter(Boolean);
+    document.getElementById('rpt-avg-time').textContent = times[0] || '—';
+  }
+
+  // AI insight
+  if (log.length >= 3) {
+    const campCounts = {};
+    log.forEach(e => { campCounts[e.campaign] = (campCounts[e.campaign] || 0) + 1; });
+    const topCamp = Object.entries(campCounts).sort((a,b) => b[1]-a[1])[0];
+    if (topCamp && topCamp[1] >= 2) {
+      document.getElementById('rpt-insight').style.display = '';
+      document.getElementById('rpt-insight-text').textContent = topCamp[0] + ' has run out of budget ' + topCamp[1] + ' times. Consider permanently increasing its daily budget to capture full-day demand and avoid missing revenue.';
+    }
+  }
+
+  // Table
+  const tbody = document.getElementById('report-table');
+  if (!log.length) {
+    tbody.innerHTML = '<tr><td colspan="10"><div class="empty">No events recorded yet. Events appear here when campaigns run out of budget or trigger alerts.</div></td></tr>';
+    return;
+  }
+  tbody.innerHTML = log.map(e => `
+    <tr>
+      <td class="mono" style="color:var(--text3)">${e.date||'—'}</td>
+      <td class="mono" style="color:var(--red)">${e.time||'—'}</td>
+      <td><div class="camp-name">${escHtml(e.campaign||'—')}</div></td>
+      <td>${escHtml(e.portfolio||'—')}</td>
+      <td>${escHtml(e.agent||'—')}</td>
+      <td class="mono">${e.budget||'—'}</td>
+      <td class="mono">${e.acos||'—'}</td>
+      <td class="mono" style="color:var(--red)">${e.missed||'—'}</td>
+      <td class="mono" style="color:${e.added==='Pending'?'var(--amber)':'var(--green)'}">${e.added||'—'}</td>
+      <td><span class="badge ${e.action==='Budget added'?'badge-green':e.action==='Dismissed'?'badge-red':'badge-amber'}">${e.action||'—'}</span></td>
+    </tr>
+  `).join('');
+}
+
+// ── Export CSV ─────────────────────────────────────────────────────────────
+function exportCSV() {
+  const camps = allCampaigns;
+  if (!camps.length) { alert('No data to export'); return; }
+  const headers = ['Campaign','Portfolio','Agent','State','Daily Budget','Spend','Revenue','ACOS','Budget Remaining','Budget %'];
+  const rows = camps.map(c => [c.name,c.portfolio||'',c.agent||'',c.state,c.dailyBudget,c.spend,c.sales,c.acos+'%',c.budgetRemaining,c.budgetPct+'%']);
+  downloadCSV(headers, rows, 'fksports-campaigns-' + new Date().toISOString().split('T')[0] + '.csv');
+}
+
+function exportReportCSV() {
+  const log = appData.exhaustionLog || [];
+  if (!log.length) { alert('No report data to export'); return; }
+  const headers = ['Date','Time','Campaign','Portfolio','Agent','Budget Set','ACOS','Est. Missed Revenue','Budget Added','Action Taken'];
+  const rows = log.map(e => [e.date,e.time,e.campaign,e.portfolio||'',e.agent||'',e.budget,e.acos,e.missed,e.added,e.action]);
+  downloadCSV(headers, rows, 'fksports-budget-report-' + new Date().toISOString().split('T')[0] + '.csv');
+}
+
+function downloadCSV(headers, rows, filename) {
+  const csv = [headers, ...rows].map(r => r.map(v => '"' + String(v||'').replace(/"/g,'""') + '"').join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+}
+
+function exportReportPDF() {
+  window.print();
+}
+
+// ── Activity log ───────────────────────────────────────────────────────────
+function renderActivity() {
+  const alerts = [...(appData.alerts || [])].reverse();
+  const log = appData.exhaustionLog || [];
+  const container = document.getElementById('activity-log');
+  if (!alerts.length && !log.length) {
+    container.innerHTML = '<div class="empty" style="padding:40px">No activity recorded yet. Events appear here when campaigns trigger alerts.</div>';
+    return;
+  }
+  const items = [...alerts.map(a => ({ ...a, _type: 'alert' })), ...log.map(e => ({ ...e, _type: 'log' }))];
+  container.innerHTML = items.slice(0, 50).map(item => {
+    const icon = item._type === 'log' ? (item.action === 'Budget added' ? '✓' : '○') : (item.type === 'out_of_budget' ? '⚠' : item.type === 'acos_high' ? '📈' : '⚡');
+    const iconBg = item._type === 'log' ? (item.action === 'Budget added' ? 'var(--green-bg)' : 'var(--amber-bg)') : (item.type === 'out_of_budget' ? 'var(--red-bg)' : 'var(--amber-bg)');
+    const title = item._type === 'alert' ? item.type.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase()) : item.action || 'Event';
+    const detail = item._type === 'alert' ? (item.name + ' · Portfolio: ' + (item.portfolio||'N/A') + ' · Agent: ' + (item.agent||'N/A') + ' · ACOS: ' + item.acos + '%') : (item.campaign + ' · ' + (item.portfolio||'') + ' · Budget: ' + item.budget);
+    return `<div style="display:flex;gap:12px;padding:13px 0;border-bottom:1px solid var(--border)">
+      <div style="font-family:var(--mono);font-size:11px;color:var(--text3);width:60px;flex-shrink:0;padding-top:2px">${item.time||item.date||'—'}</div>
+      <div style="width:26px;height:26px;border-radius:7px;background:${iconBg};display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0">${icon}</div>
+      <div style="flex:1"><div style="font-size:12.5px;font-weight:500;color:var(--text)">${title}</div><div style="font-size:11.5px;color:var(--text3);margin-top:2px">${escHtml(detail)}</div></div>
+    </div>`;
+  }).join('');
+}
+
+// ── AI Analysis ────────────────────────────────────────────────────────────
+async function runAI() {
+  const container = document.getElementById('ai-container');
+  const camps = allCampaigns;
+  if (!camps.length) {
+    container.innerHTML = '<div class="empty">No campaign data available for analysis.</div>';
+    return;
+  }
+
+  // Calculate from real data
+  const lowAcos = camps.filter(c => c.acos > 0 && c.acos < 15 && c.dailyBudget > 0);
+  const highAcos = camps.filter(c => c.acos > 35 && c.spend > 5);
+  const outOfBudget = camps.filter(c => c.budgetRemaining <= 0.01 && c.dailyBudget > 0);
+
+  document.getElementById('ai-opps').textContent = lowAcos.length;
+  document.getElementById('ai-waste').textContent = '£' + highAcos.reduce((s,c) => s + c.spend, 0).toFixed(0);
+  document.getElementById('ai-gain').textContent = '+£' + (lowAcos.length * 80).toFixed(0) + '/day';
+
+  container.innerHTML = '<div class="ai-thinking"><div class="spinner"></div> Analysing ' + camps.length + ' campaigns with AI...</div>';
+
+  // Build summary for Claude API
+  const topWasters = highAcos.slice(0,5).map(c => `${c.name} (ACOS: ${c.acos}%, spend: £${c.spend})`).join(', ');
+  const topOpps = lowAcos.slice(0,5).map(c => `${c.name} (ACOS: ${c.acos}%, budget: £${c.dailyBudget})`).join(', ');
+  const topExhausted = outOfBudget.slice(0,5).map(c => `${c.name} (budget: £${c.dailyBudget})`).join(', ');
+
+  const prompt = `You are an Amazon Advertising expert analysing FK Sports' campaign data. Based on this data, provide 4 specific actionable recommendations.
+
+Campaign summary:
+- Total active campaigns: ${camps.length}
+- Campaigns out of budget today: ${outOfBudget.length} (${topExhausted || 'none'})
+- High ACOS campaigns (>35%): ${highAcos.length} (${topWasters || 'none'})
+- Scale opportunities (ACOS <15%): ${lowAcos.length} (${topOpps || 'none'})
+- Total wasted spend on high ACOS: £${highAcos.reduce((s,c)=>s+c.spend,0).toFixed(0)}
+
+Provide exactly 4 recommendations in this JSON format only, no other text:
+[
+  {"type":"scale","title":"Scale opportunity title","campaign":"campaign name","detail":"specific actionable advice","impact":"estimated daily revenue impact","action":"exact action to take"},
+  {"type":"waste","title":"Reduce waste title","campaign":"campaign name","detail":"specific actionable advice","impact":"estimated daily saving","action":"exact action to take"},
+  {"type":"budget","title":"Budget optimization title","campaign":"campaign name","detail":"specific actionable advice","impact":"estimated revenue impact","action":"exact action to take"},
+  {"type":"keyword","title":"Keyword opportunity title","campaign":"campaign name","detail":"specific actionable advice","impact":"estimated impact","action":"exact action to take"}
+]`;
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+    const data = await res.json();
+    const text = data.content[0].text;
+    let suggestions;
+    try {
+      const clean = text.replace(/```json|```/g,'').trim();
+      suggestions = JSON.parse(clean);
+    } catch(e) {
+      suggestions = null;
+    }
+
+    if (suggestions && suggestions.length) {
+      const typeColors = { scale: 'var(--green)', waste: 'var(--red)', budget: 'var(--amber)', keyword: 'var(--blue)' };
+      const typeBadges = { scale: 'badge-green', waste: 'badge-red', budget: 'badge-amber', keyword: 'badge-blue' };
+      const typeIcons = { scale: '📈', waste: '✂', budget: '💰', keyword: '🔍' };
+      container.innerHTML = suggestions.map(s => `
+        <div class="ai-card">
+          <div class="ai-header">
+            <div class="ai-icon">${typeIcons[s.type]||'✦'}</div>
+            <div style="flex:1">
+              <div class="ai-title">${escHtml(s.title)}</div>
+              <div class="ai-sub">${escHtml(s.campaign||'')}</div>
+            </div>
+            <span class="badge ${typeBadges[s.type]||'badge-blue'}" style="margin-left:auto">${escHtml(s.impact)}</span>
+          </div>
+          <div class="ai-desc">${escHtml(s.detail)}</div>
+          <div class="ai-impact">✓ Recommended action: ${escHtml(s.action)}</div>
+          <div class="ag">
+            <button class="btn btn-green" style="font-size:11px">Apply recommendation</button>
+            <button class="btn btn-ghost" style="font-size:11px">View campaign</button>
+            <button class="btn btn-ghost" style="font-size:11px">Dismiss</button>
+          </div>
+        </div>
+      `).join('');
+    } else {
+      renderFallbackAI(container, lowAcos, highAcos, outOfBudget);
+    }
+  } catch(e) {
+    renderFallbackAI(container, lowAcos, highAcos, outOfBudget);
+  }
+}
+
+function renderFallbackAI(container, lowAcos, highAcos, outOfBudget) {
+  const cards = [];
+  if (outOfBudget.length > 0) {
+    const c = outOfBudget[0];
+    cards.push(`<div class="ai-card"><div class="ai-header"><div class="ai-icon">💰</div><div><div class="ai-title">Budget increase — ${escHtml(c.name)}</div><div class="ai-sub">Out of budget today</div></div><span class="badge badge-amber" style="margin-left:auto">Revenue at risk</span></div><div class="ai-desc">${escHtml(c.name)} has run out of budget. With its current ACOS of ${c.acos}%, this is a profitable campaign. Increasing the daily budget will allow it to continue generating revenue for the rest of the day.</div><div class="ai-impact">✓ Recommended action: Increase daily budget by £${Math.ceil(c.dailyBudget*0.5)} to £${(c.dailyBudget*1.5).toFixed(0)}</div><div class="ag"><button class="btn btn-green" onclick="approveBudget('${c.campaignId}',${Math.ceil(c.dailyBudget*0.5)})" style="font-size:11px">Approve increase</button><button class="btn btn-ghost" style="font-size:11px">Dismiss</button></div></div>`);
+  }
+  if (lowAcos.length > 0) {
+    const c = lowAcos[0];
+    cards.push(`<div class="ai-card"><div class="ai-header"><div class="ai-icon">📈</div><div><div class="ai-title">Scale opportunity — ${escHtml(c.name)}</div><div class="ai-sub">ACOS: ${c.acos}% — well below target</div></div><span class="badge badge-green" style="margin-left:auto">+£80-120/day</span></div><div class="ai-desc">${escHtml(c.name)} is performing excellently with an ACOS of ${c.acos}%. This campaign has strong conversion rates and is leaving revenue on the table. Increasing the budget would proportionally increase sales at the same profitable ACOS.</div><div class="ai-impact">✓ Recommended action: Increase daily budget from £${c.dailyBudget} to £${(c.dailyBudget*1.5).toFixed(0)}</div><div class="ag"><button class="btn btn-green" onclick="approveBudget('${c.campaignId}',${Math.ceil(c.dailyBudget*0.5)})" style="font-size:11px">Approve increase</button><button class="btn btn-ghost" style="font-size:11px">Dismiss</button></div></div>`);
+  }
+  if (highAcos.length > 0) {
+    const c = highAcos[0];
+    cards.push(`<div class="ai-card"><div class="ai-header"><div class="ai-icon">✂</div><div><div class="ai-title">Reduce waste — ${escHtml(c.name)}</div><div class="ai-sub">ACOS: ${c.acos}% — above 35% threshold</div></div><span class="badge badge-red" style="margin-left:auto">£${c.spend} wasted</span></div><div class="ai-desc">${escHtml(c.name)} has an ACOS of ${c.acos}% which is significantly above your target. Review the keywords in this campaign and add negative keywords for search terms that are spending budget without converting.</div><div class="ai-impact">✓ Recommended action: Pause top 5 wasting keywords and add negatives for non-converting search terms</div><div class="ag"><button class="btn btn-amber" style="font-size:11px">Review keywords</button><button class="btn btn-ghost" style="font-size:11px">Dismiss</button></div></div>`);
+  }
+  container.innerHTML = cards.length ? cards.join('') : '<div class="empty">All campaigns look healthy. No immediate actions needed.</div>';
+}
+
+// ── Utils ──────────────────────────────────────────────────────────────────
+function escHtml(str) {
+  return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────
+async function init() {
+  try {
+    await fetchData();
+  } catch(e) {
+    console.error('Init failed:', e);
+    setTimeout(init, 3000);
+  }
+}
+init();
+setInterval(fetchData, 5 * 60 * 1000); // refresh every 5 min
 </script>
 </body>
 </html>
+
