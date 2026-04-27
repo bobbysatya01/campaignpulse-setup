@@ -1,0 +1,1111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CampaignPulse — Amazon Ads Monitor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0c10;
+    --surface: #111318;
+    --surface2: #181c24;
+    --surface3: #1e2330;
+    --border: rgba(255,255,255,0.07);
+    --border2: rgba(255,255,255,0.12);
+    --text: #f0f2f5;
+    --text2: #8a92a6;
+    --text3: #5a6378;
+    --green: #22c55e;
+    --green-bg: rgba(34,197,94,0.1);
+    --amber: #f59e0b;
+    --amber-bg: rgba(245,158,11,0.1);
+    --red: #ef4444;
+    --red-bg: rgba(239,68,68,0.1);
+    --blue: #3b82f6;
+    --blue-bg: rgba(59,130,246,0.1);
+    --purple: #a78bfa;
+    --purple-bg: rgba(167,139,250,0.1);
+    --accent: #6366f1;
+    --accent2: #818cf8;
+    --mono: 'DM Mono', monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; font-size: 14px; line-height: 1.5; }
+
+  /* Layout */
+  .shell { display: flex; min-height: 100vh; }
+  .sidebar { width: 220px; flex-shrink: 0; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; padding: 0; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
+  .main { flex: 1; min-width: 0; overflow-x: hidden; }
+
+  /* Sidebar */
+  .logo { padding: 20px 20px 16px; border-bottom: 1px solid var(--border); }
+  .logo-mark { font-size: 16px; font-weight: 600; color: var(--text); letter-spacing: -0.3px; }
+  .logo-mark span { color: var(--accent2); }
+  .logo-sub { font-size: 11px; color: var(--text3); margin-top: 2px; font-family: var(--mono); }
+  .nav { padding: 12px 10px; flex: 1; }
+  .nav-section { font-size: 10px; font-weight: 500; color: var(--text3); letter-spacing: 0.08em; text-transform: uppercase; padding: 10px 10px 6px; }
+  .nav-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; cursor: pointer; color: var(--text2); font-size: 13px; font-weight: 400; transition: all 0.15s; border: none; background: none; width: 100%; text-align: left; }
+  .nav-item:hover { background: var(--surface2); color: var(--text); }
+  .nav-item.active { background: var(--surface3); color: var(--text); font-weight: 500; }
+  .nav-item .icon { width: 16px; height: 16px; opacity: 0.7; flex-shrink: 0; }
+  .nav-item.active .icon { opacity: 1; }
+  .nav-badge { margin-left: auto; background: var(--red); color: white; font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 20px; }
+  .nav-badge.amber { background: var(--amber); }
+  .sidebar-footer { padding: 16px; border-top: 1px solid var(--border); }
+  .profile-row { display: flex; align-items: center; gap: 10px; }
+  .avatar { width: 30px; height: 30px; border-radius: 50%; background: var(--accent); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; flex-shrink: 0; }
+  .profile-name { font-size: 12px; font-weight: 500; color: var(--text); }
+  .profile-role { font-size: 11px; color: var(--text3); }
+
+  /* Topbar */
+  .topbar { background: var(--surface); border-bottom: 1px solid var(--border); padding: 14px 28px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 10; }
+  .page-title { font-size: 15px; font-weight: 600; color: var(--text); }
+  .topbar-right { display: flex; align-items: center; gap: 12px; }
+  .sync-info { font-family: var(--mono); font-size: 11px; color: var(--text3); display: flex; align-items: center; gap: 6px; }
+  .sync-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+  .btn { padding: 7px 14px; border-radius: 8px; font-size: 12px; font-weight: 500; cursor: pointer; transition: all 0.15s; border: 1px solid var(--border2); font-family: 'DM Sans', sans-serif; }
+  .btn-ghost { background: transparent; color: var(--text2); }
+  .btn-ghost:hover { background: var(--surface2); color: var(--text); }
+  .btn-primary { background: var(--accent); color: white; border-color: transparent; }
+  .btn-primary:hover { background: var(--accent2); }
+  .btn-green { background: var(--green-bg); color: var(--green); border-color: rgba(34,197,94,0.25); }
+  .btn-green:hover { background: rgba(34,197,94,0.2); }
+  .btn-red { background: var(--red-bg); color: var(--red); border-color: rgba(239,68,68,0.25); }
+  .btn-red:hover { background: rgba(239,68,68,0.2); }
+  .btn-amber { background: var(--amber-bg); color: var(--amber); border-color: rgba(245,158,11,0.25); }
+  .btn-amber:hover { background: rgba(245,158,11,0.2); }
+
+  /* Page content */
+  .page { padding: 24px 28px; display: none; }
+  .page.active { display: block; }
+
+  /* Metric cards */
+  .metrics-grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 12px; margin-bottom: 24px; }
+  .metric-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; }
+  .metric-label { font-size: 11px; color: var(--text3); font-weight: 500; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; }
+  .metric-value { font-size: 26px; font-weight: 600; color: var(--text); letter-spacing: -0.5px; font-family: var(--mono); }
+  .metric-delta { font-size: 11px; margin-top: 6px; display: flex; align-items: center; gap: 4px; }
+  .delta-up { color: var(--green); }
+  .delta-down { color: var(--red); }
+  .delta-neutral { color: var(--text3); }
+  .metric-card.alert-card { border-color: rgba(239,68,68,0.3); background: rgba(239,68,68,0.04); }
+  .metric-card.warn-card { border-color: rgba(245,158,11,0.3); background: rgba(245,158,11,0.04); }
+
+  /* Section headers */
+  .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .section-title { font-size: 13px; font-weight: 600; color: var(--text); }
+  .section-sub { font-size: 12px; color: var(--text3); margin-top: 1px; }
+
+  /* Table */
+  .table-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin-bottom: 24px; }
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; }
+  thead th { font-size: 11px; font-weight: 500; color: var(--text3); text-transform: uppercase; letter-spacing: 0.06em; padding: 12px 16px; text-align: left; background: var(--surface2); border-bottom: 1px solid var(--border); white-space: nowrap; }
+  tbody td { padding: 13px 16px; border-bottom: 1px solid var(--border); font-size: 13px; color: var(--text); vertical-align: middle; }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: var(--surface2); }
+  .campaign-name { font-weight: 500; font-size: 13px; }
+  .campaign-meta { font-size: 11px; color: var(--text3); margin-top: 2px; font-family: var(--mono); }
+
+  /* Badges */
+  .badge { font-size: 11px; font-weight: 500; padding: 3px 9px; border-radius: 20px; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+  .badge-green { background: var(--green-bg); color: var(--green); }
+  .badge-red { background: var(--red-bg); color: var(--red); }
+  .badge-amber { background: var(--amber-bg); color: var(--amber); }
+  .badge-blue { background: var(--blue-bg); color: var(--blue); }
+  .badge-purple { background: var(--purple-bg); color: var(--purple); }
+  .dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
+  .dot-green { background: var(--green); }
+  .dot-red { background: var(--red); }
+  .dot-amber { background: var(--amber); }
+  .dot-blue { background: var(--blue); }
+
+  /* Progress bar */
+  .prog-wrap { width: 80px; height: 4px; background: var(--surface3); border-radius: 4px; overflow: hidden; }
+  .prog-fill { height: 100%; border-radius: 4px; transition: width 0.3s; }
+
+  /* Mono values */
+  .mono { font-family: var(--mono); }
+  .acos-high { color: var(--red); font-weight: 500; }
+  .acos-ok { color: var(--green); }
+  .acos-warn { color: var(--amber); }
+
+  /* Actions inline */
+  .action-group { display: flex; gap: 6px; flex-wrap: wrap; }
+
+  /* AI suggestion cards */
+  .ai-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; margin-bottom: 12px; }
+  .ai-card-header { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 10px; }
+  .ai-badge { width: 32px; height: 32px; border-radius: 8px; background: var(--purple-bg); border: 1px solid rgba(167,139,250,0.2); display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 15px; }
+  .ai-card-title { font-size: 13px; font-weight: 600; color: var(--text); }
+  .ai-card-sub { font-size: 12px; color: var(--text3); margin-top: 2px; }
+  .ai-desc { font-size: 13px; color: var(--text2); line-height: 1.6; margin-bottom: 12px; }
+  .kw-list { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+  .kw-pill { font-size: 12px; padding: 4px 10px; border-radius: 6px; background: var(--blue-bg); color: var(--blue); border: 1px solid rgba(59,130,246,0.2); font-family: var(--mono); }
+  .kw-pill.neg { background: var(--red-bg); color: var(--red); border-color: rgba(239,68,68,0.2); }
+  .est-impact { background: var(--green-bg); border: 1px solid rgba(34,197,94,0.15); border-radius: 8px; padding: 8px 12px; font-size: 12px; color: var(--green); margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+
+  /* Notification preview */
+  .chat-preview { background: var(--surface2); border-radius: 12px; padding: 14px 16px; border: 1px solid var(--border); }
+  .chat-msg { background: var(--surface); border-radius: 10px; padding: 12px 14px; border: 1px solid var(--border); }
+  .chat-sender { font-size: 11px; color: var(--text3); margin-bottom: 6px; font-family: var(--mono); }
+  .chat-alert-title { font-size: 13px; font-weight: 600; color: var(--red); margin-bottom: 4px; }
+  .chat-body { font-size: 13px; color: var(--text2); line-height: 1.6; }
+
+  /* Report page */
+  .report-filters { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; align-items: center; }
+  .filter-select { background: var(--surface); border: 1px solid var(--border2); color: var(--text); padding: 7px 12px; border-radius: 8px; font-size: 13px; font-family: 'DM Sans', sans-serif; cursor: pointer; }
+  .filter-select:focus { outline: none; border-color: var(--accent); }
+  .report-summary { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 12px; margin-bottom: 24px; }
+
+  /* Timeline chart */
+  .timeline-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; margin-bottom: 24px; }
+  .timeline-title { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 16px; }
+  .timeline-row { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+  .tl-label { font-size: 12px; color: var(--text2); width: 160px; flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tl-bar-wrap { flex: 1; height: 22px; background: var(--surface3); border-radius: 4px; position: relative; overflow: hidden; }
+  .tl-bar { height: 100%; border-radius: 4px; position: absolute; display: flex; align-items: center; padding-left: 8px; }
+  .tl-bar-label { font-size: 11px; font-weight: 500; font-family: var(--mono); color: rgba(255,255,255,0.85); white-space: nowrap; }
+  .tl-time { font-size: 11px; color: var(--text3); width: 60px; text-align: right; font-family: var(--mono); flex-shrink: 0; }
+  .tl-hours { display: flex; justify-content: space-between; font-size: 10px; color: var(--text3); font-family: var(--mono); padding: 4px 0 0; }
+
+  /* Activity log */
+  .log-entry { display: flex; gap: 14px; padding: 14px 0; border-bottom: 1px solid var(--border); }
+  .log-entry:last-child { border-bottom: none; }
+  .log-time { font-size: 11px; color: var(--text3); font-family: var(--mono); width: 72px; flex-shrink: 0; padding-top: 2px; }
+  .log-icon { width: 28px; height: 28px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 13px; flex-shrink: 0; }
+  .log-content { flex: 1; }
+  .log-title { font-size: 13px; font-weight: 500; color: var(--text); }
+  .log-detail { font-size: 12px; color: var(--text3); margin-top: 2px; }
+  .log-actor { font-size: 11px; color: var(--text3); margin-top: 4px; display: flex; align-items: center; gap: 6px; }
+  .actor-dot { width: 14px; height: 14px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 8px; font-weight: 600; }
+
+  /* Settings page */
+  .settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .settings-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; }
+  .settings-card-title { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 14px; }
+  .settings-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .settings-row:last-child { border-bottom: none; }
+  .settings-label { font-size: 13px; color: var(--text); }
+  .settings-sublabel { font-size: 11px; color: var(--text3); margin-top: 1px; }
+  .toggle { width: 36px; height: 20px; background: var(--surface3); border-radius: 20px; position: relative; cursor: pointer; transition: background 0.2s; border: none; flex-shrink: 0; }
+  .toggle.on { background: var(--accent); }
+  .toggle::after { content: ''; position: absolute; width: 14px; height: 14px; background: white; border-radius: 50%; top: 3px; left: 3px; transition: left 0.2s; }
+  .toggle.on::after { left: 19px; }
+  .input-sm { background: var(--surface2); border: 1px solid var(--border2); color: var(--text); padding: 6px 10px; border-radius: 7px; font-size: 13px; width: 80px; font-family: 'DM Sans', sans-serif; }
+  .input-sm:focus { outline: none; border-color: var(--accent); }
+  .input-full { background: var(--surface2); border: 1px solid var(--border2); color: var(--text); padding: 7px 12px; border-radius: 8px; font-size: 13px; width: 100%; font-family: 'DM Sans', sans-serif; margin-top: 6px; }
+  .input-full:focus { outline: none; border-color: var(--accent); }
+
+  /* Tabs */
+  .tabs { display: flex; gap: 4px; margin-bottom: 20px; background: var(--surface2); padding: 4px; border-radius: 10px; width: fit-content; }
+  .tab-btn { padding: 6px 14px; border-radius: 7px; font-size: 12px; font-weight: 500; cursor: pointer; border: none; background: transparent; color: var(--text3); font-family: 'DM Sans', sans-serif; transition: all 0.15s; }
+  .tab-btn.active { background: var(--surface3); color: var(--text); }
+
+  /* Alerts banner */
+  .alert-banner { background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.2); border-radius: 10px; padding: 12px 16px; margin-bottom: 20px; display: flex; align-items: center; gap: 12px; }
+  .alert-banner-icon { font-size: 16px; }
+  .alert-banner-text { font-size: 13px; color: var(--text); flex: 1; }
+  .alert-banner-text strong { color: var(--red); }
+
+  /* Setup screen */
+  .setup-screen { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: calc(100vh - 60px); padding: 40px; text-align: center; }
+  .setup-card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 36px 40px; max-width: 520px; width: 100%; text-align: left; }
+  .setup-title { font-size: 20px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
+  .setup-sub { font-size: 13px; color: var(--text3); margin-bottom: 28px; line-height: 1.6; }
+  .form-group { margin-bottom: 16px; }
+  .form-label { font-size: 12px; font-weight: 500; color: var(--text2); margin-bottom: 6px; display: block; }
+  .form-hint { font-size: 11px; color: var(--text3); margin-top: 4px; font-family: var(--mono); }
+  .input-group { position: relative; }
+  .form-input { background: var(--surface2); border: 1px solid var(--border2); color: var(--text); padding: 9px 12px; border-radius: 8px; font-size: 13px; width: 100%; font-family: 'DM Sans', sans-serif; }
+  .form-input:focus { outline: none; border-color: var(--accent); }
+  .form-input::placeholder { color: var(--text3); }
+  .setup-divider { height: 1px; background: var(--border); margin: 20px 0; }
+  .connect-status { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text3); padding: 8px 12px; background: var(--surface2); border-radius: 8px; margin-top: 8px; }
+  .connect-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text3); flex-shrink: 0; }
+  .connect-dot.connected { background: var(--green); }
+  .connect-dot.pending { background: var(--amber); animation: pulse 1.5s infinite; }
+
+  /* Tooltip-like helper */
+  .helper-link { color: var(--accent2); text-decoration: none; font-size: 11px; }
+  .helper-link:hover { text-decoration: underline; }
+
+  /* Responsive tweak */
+  @media (max-width: 900px) {
+    .metrics-grid { grid-template-columns: repeat(2, 1fr); }
+    .settings-grid { grid-template-columns: 1fr; }
+    .report-summary { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- SIDEBAR -->
+  <nav class="sidebar">
+    <div class="logo">
+      <div class="logo-mark">Campaign<span>Pulse</span></div>
+      <div class="logo-sub">amazon.co.uk</div>
+    </div>
+    <div class="nav">
+      <div class="nav-section">Monitor</div>
+      <button class="nav-item active" onclick="showPage('dashboard', this)">
+        <svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/><rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>
+        Dashboard
+        <span class="nav-badge">3</span>
+      </button>
+      <button class="nav-item" onclick="showPage('campaigns', this)">
+        <svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 4h14M1 8h10M1 12h6"/></svg>
+        All campaigns
+      </button>
+      <button class="nav-item" onclick="showPage('ai', this)">
+        <svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 5v3l2 2"/></svg>
+        AI suggestions
+        <span class="nav-badge amber">5</span>
+      </button>
+      <div class="nav-section">Reports</div>
+      <button class="nav-item" onclick="showPage('report', this)">
+        <svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="12" height="12" rx="1"/><path d="M5 8h6M5 11h4M5 5h3"/></svg>
+        Budget exhaustion
+      </button>
+      <button class="nav-item" onclick="showPage('activity', this)">
+        <svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 1v6l3 3"/><circle cx="8" cy="8" r="7"/></svg>
+        Activity log
+      </button>
+      <div class="nav-section">Admin</div>
+      <button class="nav-item" onclick="showPage('settings', this)">
+        <svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="2.5"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.05 3.05l1.41 1.41M11.54 11.54l1.41 1.41M3.05 12.95l1.41-1.41M11.54 4.46l1.41-1.41"/></svg>
+        Settings
+      </button>
+      <button class="nav-item" onclick="showPage('setup', this)">
+        <svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 1v6M8 9v6M1 8h6M9 8h6"/></svg>
+        API setup
+      </button>
+    </div>
+    <div class="sidebar-footer">
+      <div class="profile-row">
+        <div class="avatar">B</div>
+        <div>
+          <div class="profile-name">Bobby</div>
+          <div class="profile-role">Account owner</div>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <!-- MAIN -->
+  <div class="main">
+
+    <!-- Topbar -->
+    <div class="topbar">
+      <div class="page-title" id="page-title">Dashboard</div>
+      <div class="topbar-right">
+        <div class="sync-info">
+          <div class="sync-dot"></div>
+          Synced 3 min ago
+        </div>
+        <button class="btn btn-ghost">Export CSV</button>
+        <button class="btn btn-primary">Refresh data</button>
+      </div>
+    </div>
+
+    <!-- DASHBOARD PAGE -->
+    <div class="page active" id="page-dashboard">
+      <div class="alert-banner">
+        <span class="alert-banner-icon">⚠</span>
+        <div class="alert-banner-text"><strong>1 campaign out of budget</strong> · Garden Tools Exact ran out at 14:38. Google Chat notified James. Estimated missed revenue: £85. <strong>Action required.</strong></div>
+        <button class="btn btn-green" style="white-space:nowrap;">Approve +£40</button>
+        <button class="btn btn-ghost" style="white-space:nowrap;">Dismiss</button>
+      </div>
+
+      <div class="metrics-grid">
+        <div class="metric-card">
+          <div class="metric-label">Today's revenue</div>
+          <div class="metric-value">£4,812</div>
+          <div class="metric-delta delta-up">↑ 18% vs yesterday</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Total ad spend</div>
+          <div class="metric-value">£683</div>
+          <div class="metric-delta delta-neutral">74% of daily budget used</div>
+        </div>
+        <div class="metric-card warn-card">
+          <div class="metric-label">Blended ACOS</div>
+          <div class="metric-value">14.2%</div>
+          <div class="metric-delta delta-up">↓ Below 20% target</div>
+        </div>
+        <div class="metric-card alert-card">
+          <div class="metric-label">Needs action</div>
+          <div class="metric-value">3</div>
+          <div class="metric-delta delta-down">1 critical · 2 warnings</div>
+        </div>
+      </div>
+
+      <div class="section-header">
+        <div>
+          <div class="section-title">Live campaigns</div>
+          <div class="section-sub">12 active · 2 paused · 1 out of budget</div>
+        </div>
+        <button class="btn btn-ghost" onclick="showPage('campaigns', document.querySelector('[onclick*=campaigns]'))">View all →</button>
+      </div>
+
+      <div class="table-card">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Campaign</th>
+                <th>Budget left</th>
+                <th>ACOS</th>
+                <th>Revenue</th>
+                <th>Spend</th>
+                <th>Status</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><div class="campaign-name">Garden Tools — Exact</div><div class="campaign-meta">SP · James · 14 kw</div></td>
+                <td><div class="mono" style="color:var(--red)">£0 / £80</div><div class="prog-wrap" style="margin-top:6px"><div class="prog-fill" style="width:100%;background:var(--red)"></div></div></td>
+                <td class="mono acos-ok">11.4%</td>
+                <td class="mono">£346</td>
+                <td class="mono">£80</td>
+                <td><span class="badge badge-red"><span class="dot dot-red"></span>Out of budget</span></td>
+                <td><div class="action-group"><button class="btn btn-green">Approve +£40</button><button class="btn btn-ghost">Skip</button></div></td>
+              </tr>
+              <tr>
+                <td><div class="campaign-name">Kitchen Storage — Broad</div><div class="campaign-meta">SP · Sarah · 31 kw</div></td>
+                <td><div class="mono">£23 / £120</div><div class="prog-wrap" style="margin-top:6px"><div class="prog-fill" style="width:81%;background:var(--amber)"></div></div></td>
+                <td class="mono acos-high">38.7%</td>
+                <td class="mono">£214</td>
+                <td class="mono">£97</td>
+                <td><span class="badge badge-red"><span class="dot dot-red"></span>ACOS high</span></td>
+                <td><div class="action-group"><button class="btn btn-amber">Fix bids</button><button class="btn btn-ghost">Ignore</button></div></td>
+              </tr>
+              <tr>
+                <td><div class="campaign-name">Home Decor — Auto</div><div class="campaign-meta">SP · James · auto</div></td>
+                <td><div class="mono" style="color:var(--amber)">£18 / £100</div><div class="prog-wrap" style="margin-top:6px"><div class="prog-fill" style="width:82%;background:var(--amber)"></div></div></td>
+                <td class="mono acos-ok">17.1%</td>
+                <td class="mono">£188</td>
+                <td class="mono">£82</td>
+                <td><span class="badge badge-amber"><span class="dot dot-amber"></span>Budget low</span></td>
+                <td><div class="action-group"><button class="btn btn-green">Approve +£30</button><button class="btn btn-ghost">Skip</button></div></td>
+              </tr>
+              <tr>
+                <td><div class="campaign-name">Office Supplies — Exact</div><div class="campaign-meta">SP · Sarah · 22 kw</div></td>
+                <td><div class="mono">£61 / £150</div><div class="prog-wrap" style="margin-top:6px"><div class="prog-fill" style="width:59%;background:var(--green)"></div></div></td>
+                <td class="mono acos-ok">12.3%</td>
+                <td class="mono">£521</td>
+                <td class="mono">£89</td>
+                <td><span class="badge badge-green"><span class="dot dot-green"></span>Healthy</span></td>
+                <td><button class="btn btn-ghost">Scale ↗</button></td>
+              </tr>
+              <tr>
+                <td><div class="campaign-name">Storage Boxes — Phrase</div><div class="campaign-meta">SP · Mike · 18 kw</div></td>
+                <td><div class="mono">£44 / £90</div><div class="prog-wrap" style="margin-top:6px"><div class="prog-fill" style="width:51%;background:var(--blue)"></div></div></td>
+                <td class="mono acos-ok">9.8%</td>
+                <td class="mono">£612</td>
+                <td class="mono">£46</td>
+                <td><span class="badge badge-blue"><span class="dot dot-blue"></span>Scale ready</span></td>
+                <td><button class="btn btn-primary">Scale ↗</button></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Google Chat Preview -->
+      <div class="section-header">
+        <div class="section-title">Google Chat notification sent</div>
+      </div>
+      <div class="chat-preview">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+          <div style="width:22px;height:22px;border-radius:50%;background:var(--green-bg);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:var(--green);">B</div>
+          <span style="font-size:12px;color:var(--text3)">CampaignPulse → <strong style="color:var(--text2)">James</strong> · 14:41</span>
+        </div>
+        <div class="chat-msg">
+          <div class="chat-alert-title">⚠ Garden Tools — Exact is out of budget</div>
+          <div class="chat-body">Campaign ran out of budget at <strong style="color:var(--text)">14:38</strong>. ACOS was 11.4% — well within target. Estimated missed revenue: <strong style="color:var(--text)">~£85</strong> for the rest of today.<br><br>Budget was £80. AI recommends adding <strong style="color:var(--text)">£40</strong> to capture remaining demand.</div>
+          <div class="action-group" style="margin-top:12px;">
+            <button class="btn btn-green">✓ Approve +£40</button>
+            <button class="btn btn-ghost">Add custom amount</button>
+            <button class="btn btn-red">✗ No action</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CAMPAIGNS PAGE -->
+    <div class="page" id="page-campaigns">
+      <div class="tabs">
+        <button class="tab-btn active">All (15)</button>
+        <button class="tab-btn">Active (12)</button>
+        <button class="tab-btn">Paused (2)</button>
+        <button class="tab-btn">Out of budget (1)</button>
+      </div>
+      <div class="table-card">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Campaign</th>
+                <th>Owner</th>
+                <th>Type</th>
+                <th>Daily budget</th>
+                <th>Spent today</th>
+                <th>Budget left</th>
+                <th>ACOS</th>
+                <th>Revenue</th>
+                <th>Status</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><div class="campaign-name">Garden Tools — Exact</div><div class="campaign-meta">14 keywords · SP</div></td>
+                <td><span style="font-size:12px;color:var(--text2)">James</span></td>
+                <td><span class="badge badge-blue">Exact</span></td>
+                <td class="mono">£80</td>
+                <td class="mono">£80</td>
+                <td class="mono" style="color:var(--red)">£0</td>
+                <td class="mono acos-ok">11.4%</td>
+                <td class="mono">£346</td>
+                <td><span class="badge badge-red"><span class="dot dot-red"></span>Out of budget</span></td>
+                <td><button class="btn btn-green">+£40</button></td>
+              </tr>
+              <tr>
+                <td><div class="campaign-name">Kitchen Storage — Broad</div><div class="campaign-meta">31 keywords · SP</div></td>
+                <td><span style="font-size:12px;color:var(--text2)">Sarah</span></td>
+                <td><span class="badge badge-purple">Broad</span></td>
+                <td class="mono">£120</td>
+                <td class="mono">£97</td>
+                <td class="mono" style="color:var(--amber)">£23</td>
+                <td class="mono acos-high">38.7%</td>
+                <td class="mono">£214</td>
+                <td><span class="badge badge-red"><span class="dot dot-red"></span>ACOS high</span></td>
+                <td><button class="btn btn-amber">Fix bids</button></td>
+              </tr>
+              <tr>
+                <td><div class="campaign-name">Storage Boxes — Phrase</div><div class="campaign-meta">18 keywords · SP</div></td>
+                <td><span style="font-size:12px;color:var(--text2)">Mike</span></td>
+                <td><span class="badge badge-blue">Phrase</span></td>
+                <td class="mono">£90</td>
+                <td class="mono">£46</td>
+                <td class="mono">£44</td>
+                <td class="mono acos-ok">9.8%</td>
+                <td class="mono">£612</td>
+                <td><span class="badge badge-blue"><span class="dot dot-blue"></span>Scale ready</span></td>
+                <td><button class="btn btn-primary">Scale ↗</button></td>
+              </tr>
+              <tr>
+                <td><div class="campaign-name">Office Supplies — Exact</div><div class="campaign-meta">22 keywords · SP</div></td>
+                <td><span style="font-size:12px;color:var(--text2)">Sarah</span></td>
+                <td><span class="badge badge-blue">Exact</span></td>
+                <td class="mono">£150</td>
+                <td class="mono">£89</td>
+                <td class="mono">£61</td>
+                <td class="mono acos-ok">12.3%</td>
+                <td class="mono">£521</td>
+                <td><span class="badge badge-green"><span class="dot dot-green"></span>Healthy</span></td>
+                <td><button class="btn btn-ghost">Scale ↗</button></td>
+              </tr>
+              <tr>
+                <td><div class="campaign-name">Home Decor — Auto</div><div class="campaign-meta">Auto-targeting · SP</div></td>
+                <td><span style="font-size:12px;color:var(--text2)">James</span></td>
+                <td><span class="badge" style="background:var(--surface3);color:var(--text2)">Auto</span></td>
+                <td class="mono">£100</td>
+                <td class="mono">£82</td>
+                <td class="mono" style="color:var(--amber)">£18</td>
+                <td class="mono acos-warn">17.1%</td>
+                <td class="mono">£188</td>
+                <td><span class="badge badge-amber"><span class="dot dot-amber"></span>Budget low</span></td>
+                <td><button class="btn btn-green">+£30</button></td>
+              </tr>
+              <tr>
+                <td><div class="campaign-name">Cleaning Products — Broad</div><div class="campaign-meta">27 keywords · SP</div></td>
+                <td><span style="font-size:12px;color:var(--text2)">Mike</span></td>
+                <td><span class="badge badge-purple">Broad</span></td>
+                <td class="mono">£75</td>
+                <td class="mono">£38</td>
+                <td class="mono">£37</td>
+                <td class="mono acos-ok">15.2%</td>
+                <td class="mono">£249</td>
+                <td><span class="badge badge-green"><span class="dot dot-green"></span>Healthy</span></td>
+                <td><button class="btn btn-ghost">View</button></td>
+              </tr>
+              <tr>
+                <td><div class="campaign-name">Bathroom Accessories — Exact</div><div class="campaign-meta">11 keywords · SP</div></td>
+                <td><span style="font-size:12px;color:var(--text2)">James</span></td>
+                <td><span class="badge badge-blue">Exact</span></td>
+                <td class="mono">£60</td>
+                <td class="mono">£21</td>
+                <td class="mono">£39</td>
+                <td class="mono acos-ok">13.8%</td>
+                <td class="mono">£152</td>
+                <td><span class="badge badge-green"><span class="dot dot-green"></span>Healthy</span></td>
+                <td><button class="btn btn-ghost">View</button></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- AI SUGGESTIONS PAGE -->
+    <div class="page" id="page-ai">
+      <div class="metrics-grid" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+        <div class="metric-card">
+          <div class="metric-label">Estimated revenue gain</div>
+          <div class="metric-value">+£340</div>
+          <div class="metric-delta delta-up">If all suggestions approved</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Wasted spend saved</div>
+          <div class="metric-value">£42</div>
+          <div class="metric-delta delta-up">Via negative keywords</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Suggestions pending</div>
+          <div class="metric-value">5</div>
+          <div class="metric-delta delta-neutral">Across 4 campaigns</div>
+        </div>
+      </div>
+
+      <div class="ai-card">
+        <div class="ai-card-header">
+          <div class="ai-badge">✦</div>
+          <div>
+            <div class="ai-card-title">Keyword gap — Storage Boxes Phrase</div>
+            <div class="ai-card-sub">Owner: Mike · Found in search term report · Last 14 days</div>
+          </div>
+          <span class="badge badge-green" style="margin-left:auto">+£80–120/day</span>
+        </div>
+        <div class="ai-desc">3 high-converting search terms are triggering this campaign but are not in your keyword list as exact match. Adding them as exact match will capture more targeted traffic at lower ACOS than broad/phrase.</div>
+        <div class="kw-list">
+          <span class="kw-pill">stackable storage box</span>
+          <span class="kw-pill">clear storage containers with lids</span>
+          <span class="kw-pill">plastic storage box set</span>
+        </div>
+        <div class="est-impact">✓ Estimated ACOS improvement: 9.8% → 8.1% · Revenue uplift: £80–120/day</div>
+        <div class="action-group">
+          <button class="btn btn-green">Add all 3 as exact match</button>
+          <button class="btn btn-ghost">Review individually</button>
+          <button class="btn btn-red">Dismiss</button>
+        </div>
+      </div>
+
+      <div class="ai-card">
+        <div class="ai-card-header">
+          <div class="ai-badge">✦</div>
+          <div>
+            <div class="ai-card-title">Negative keywords — Kitchen Storage Broad</div>
+            <div class="ai-card-sub">Owner: Sarah · Zero-conversion spend · Last 14 days</div>
+          </div>
+          <span class="badge badge-red" style="margin-left:auto">Wasting £42</span>
+        </div>
+        <div class="ai-desc">4 search terms have generated £42 in spend over 14 days with zero conversions. These are irrelevant to your product and pulling ACOS up significantly. Adding as campaign negatives will recover this budget for performing terms.</div>
+        <div class="kw-list">
+          <span class="kw-pill neg">free storage</span>
+          <span class="kw-pill neg">diy storage ideas</span>
+          <span class="kw-pill neg">storage rental</span>
+          <span class="kw-pill neg">storage units near me</span>
+        </div>
+        <div class="est-impact">✓ Estimated ACOS improvement: 38.7% → 22.1% · Budget saved: £42</div>
+        <div class="action-group">
+          <button class="btn btn-green">Add all as negatives</button>
+          <button class="btn btn-ghost">Review</button>
+          <button class="btn btn-red">Dismiss</button>
+        </div>
+      </div>
+
+      <div class="ai-card">
+        <div class="ai-card-header">
+          <div class="ai-badge">✦</div>
+          <div>
+            <div class="ai-card-title">Scale opportunity — Storage Boxes Phrase</div>
+            <div class="ai-card-sub">Owner: Mike · Strong ACOS · High conversion rate</div>
+          </div>
+          <span class="badge badge-blue" style="margin-left:auto">Scale ready</span>
+        </div>
+        <div class="ai-desc">This campaign has maintained 9.8% ACOS for 7 consecutive days with a high conversion rate. It's consistently running out of budget in the evening, suggesting strong demand headroom. Increasing daily budget by £40 is likely to generate proportional revenue.</div>
+        <div class="est-impact">✓ Suggested budget increase: £90 → £130 · Estimated additional revenue: £150–200/day</div>
+        <div class="action-group">
+          <button class="btn btn-primary">Approve budget to £130</button>
+          <button class="btn btn-ghost">Set custom amount</button>
+          <button class="btn btn-red">Dismiss</button>
+        </div>
+      </div>
+
+      <div class="ai-card">
+        <div class="ai-card-header">
+          <div class="ai-badge">✦</div>
+          <div>
+            <div class="ai-card-title">Bid reduction — Kitchen Storage Broad</div>
+            <div class="ai-card-sub">Owner: Sarah · Top 6 keywords overbidding</div>
+          </div>
+          <span class="badge badge-amber" style="margin-left:auto">Reduce waste</span>
+        </div>
+        <div class="ai-desc">6 keywords in this campaign have a CPC well above the average order value ratio. Reducing bids by 20–30% on these terms will reduce spend without significantly affecting impression share, bringing ACOS back in line.</div>
+        <div class="kw-list">
+          <span class="kw-pill">kitchen storage solutions</span>
+          <span class="kw-pill">cupboard organiser</span>
+          <span class="kw-pill">pantry storage</span>
+          <span class="kw-pill">spice rack organiser</span>
+          <span class="kw-pill">drawer dividers</span>
+          <span class="kw-pill">food container set</span>
+        </div>
+        <div class="est-impact">✓ Estimated ACOS after bid reduction: ~24% · Spend reduction: ~£18/day</div>
+        <div class="action-group">
+          <button class="btn btn-amber">Apply 25% bid reduction</button>
+          <button class="btn btn-ghost">Set custom %</button>
+          <button class="btn btn-red">Dismiss</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- BUDGET EXHAUSTION REPORT -->
+    <div class="page" id="page-report">
+      <div class="report-filters">
+        <select class="filter-select">
+          <option>Last 30 days</option>
+          <option>Last 14 days</option>
+          <option>Last 7 days</option>
+          <option>Custom range</option>
+        </select>
+        <select class="filter-select">
+          <option>All campaigns</option>
+          <option>Garden Tools — Exact</option>
+          <option>Home Decor — Auto</option>
+          <option>Kitchen Storage — Broad</option>
+        </select>
+        <select class="filter-select">
+          <option>All agents</option>
+          <option>James</option>
+          <option>Sarah</option>
+          <option>Mike</option>
+        </select>
+        <button class="btn btn-ghost">Export CSV</button>
+        <button class="btn btn-primary">Generate report</button>
+      </div>
+
+      <div class="report-summary">
+        <div class="metric-card alert-card">
+          <div class="metric-label">Total exhaustion events</div>
+          <div class="metric-value">34</div>
+          <div class="metric-delta delta-down">↑ 6 vs previous 30d</div>
+        </div>
+        <div class="metric-card warn-card">
+          <div class="metric-label">Est. missed revenue</div>
+          <div class="metric-value">£2,140</div>
+          <div class="metric-delta delta-down">Across 34 events</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Avg exhaustion time</div>
+          <div class="metric-value">14:22</div>
+          <div class="metric-delta delta-neutral">Most common: 2–4pm</div>
+        </div>
+      </div>
+
+      <!-- Timeline chart -->
+      <div class="timeline-card">
+        <div class="timeline-title">Budget exhaustion times — last 30 days (average per campaign)</div>
+        <div class="tl-hours" style="padding-left:172px;padding-right:60px;margin-bottom:8px">
+          <span>8am</span><span>10am</span><span>12pm</span><span>2pm</span><span>4pm</span><span>6pm</span><span>8pm</span>
+        </div>
+        <div class="timeline-row">
+          <div class="tl-label">Garden Tools — Exact</div>
+          <div class="tl-bar-wrap">
+            <div class="tl-bar" style="left:0;width:57%;background:linear-gradient(90deg,var(--surface3) 0%,var(--red) 100%)">
+              <span class="tl-bar-label">ran out</span>
+            </div>
+          </div>
+          <div class="tl-time">14:12</div>
+        </div>
+        <div class="timeline-row">
+          <div class="tl-label">Home Decor — Auto</div>
+          <div class="tl-bar-wrap">
+            <div class="tl-bar" style="left:0;width:65%;background:linear-gradient(90deg,var(--surface3) 0%,var(--amber) 100%)">
+              <span class="tl-bar-label">ran out</span>
+            </div>
+          </div>
+          <div class="tl-time">15:20</div>
+        </div>
+        <div class="timeline-row">
+          <div class="tl-label">Kitchen Storage — Broad</div>
+          <div class="tl-bar-wrap">
+            <div class="tl-bar" style="left:0;width:82%;background:linear-gradient(90deg,var(--surface3) 0%,var(--amber) 100%)">
+              <span class="tl-bar-label">ran out</span>
+            </div>
+          </div>
+          <div class="tl-time">17:44</div>
+        </div>
+        <div class="timeline-row">
+          <div class="tl-label">Cleaning Products — Broad</div>
+          <div class="tl-bar-wrap">
+            <div class="tl-bar" style="left:0;width:90%;background:linear-gradient(90deg,var(--surface3) 0%,var(--green) 100%)">
+              <span class="tl-bar-label">ran out</span>
+            </div>
+          </div>
+          <div class="tl-time">18:55</div>
+        </div>
+        <div style="font-size:11px;color:var(--text3);margin-top:12px;padding-left:172px">Bar length = average time until budget exhausted · Red = consistently early · Amber = afternoon · Green = evening</div>
+      </div>
+
+      <!-- Detailed report table -->
+      <div class="section-header">
+        <div class="section-title">Exhaustion event log</div>
+        <div class="section-sub">Every incident with time, budget, ACOS, and action taken</div>
+      </div>
+      <div class="table-card">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Campaign</th>
+                <th>Owner</th>
+                <th>Budget set</th>
+                <th>Ran out at</th>
+                <th>ACOS at exhaustion</th>
+                <th>Est. missed rev.</th>
+                <th>Budget added</th>
+                <th>Response time</th>
+                <th>Action taken</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="mono" style="color:var(--text3)">Today</td>
+                <td><div class="campaign-name">Garden Tools — Exact</div></td>
+                <td>James</td>
+                <td class="mono">£80</td>
+                <td class="mono" style="color:var(--red)">14:38</td>
+                <td class="mono acos-ok">11.4%</td>
+                <td class="mono" style="color:var(--red)">£85</td>
+                <td class="mono" style="color:var(--amber)">Pending</td>
+                <td class="mono" style="color:var(--amber)">—</td>
+                <td><span class="badge badge-amber">Awaiting approval</span></td>
+              </tr>
+              <tr>
+                <td class="mono" style="color:var(--text3)">22 Apr</td>
+                <td><div class="campaign-name">Garden Tools — Exact</div></td>
+                <td>James</td>
+                <td class="mono">£80</td>
+                <td class="mono" style="color:var(--red)">13:51</td>
+                <td class="mono acos-ok">10.8%</td>
+                <td class="mono" style="color:var(--red)">£110</td>
+                <td class="mono" style="color:var(--green)">+£40</td>
+                <td class="mono">14 min</td>
+                <td><span class="badge badge-green">Budget added</span></td>
+              </tr>
+              <tr>
+                <td class="mono" style="color:var(--text3)">21 Apr</td>
+                <td><div class="campaign-name">Home Decor — Auto</div></td>
+                <td>James</td>
+                <td class="mono">£100</td>
+                <td class="mono" style="color:var(--amber)">16:04</td>
+                <td class="mono acos-warn">19.2%</td>
+                <td class="mono">£48</td>
+                <td class="mono" style="color:var(--red)">None</td>
+                <td class="mono" style="color:var(--red)">No action</td>
+                <td><span class="badge badge-red">Dismissed</span></td>
+              </tr>
+              <tr>
+                <td class="mono" style="color:var(--text3)">21 Apr</td>
+                <td><div class="campaign-name">Garden Tools — Exact</div></td>
+                <td>James</td>
+                <td class="mono">£80</td>
+                <td class="mono" style="color:var(--red)">14:10</td>
+                <td class="mono acos-ok">12.1%</td>
+                <td class="mono" style="color:var(--red)">£95</td>
+                <td class="mono" style="color:var(--green)">+£30</td>
+                <td class="mono">8 min</td>
+                <td><span class="badge badge-green">Budget added</span></td>
+              </tr>
+              <tr>
+                <td class="mono" style="color:var(--text3)">20 Apr</td>
+                <td><div class="campaign-name">Kitchen Storage — Broad</div></td>
+                <td>Sarah</td>
+                <td class="mono">£120</td>
+                <td class="mono" style="color:var(--amber)">17:22</td>
+                <td class="mono acos-high">41.2%</td>
+                <td class="mono">£22</td>
+                <td class="mono" style="color:var(--red)">None</td>
+                <td class="mono">31 min</td>
+                <td><span class="badge badge-red">Not added — high ACOS</span></td>
+              </tr>
+              <tr>
+                <td class="mono" style="color:var(--text3)">19 Apr</td>
+                <td><div class="campaign-name">Garden Tools — Exact</div></td>
+                <td>James</td>
+                <td class="mono">£80</td>
+                <td class="mono" style="color:var(--red)">13:29</td>
+                <td class="mono acos-ok">9.9%</td>
+                <td class="mono" style="color:var(--red)">£130</td>
+                <td class="mono" style="color:var(--green)">+£50</td>
+                <td class="mono">22 min</td>
+                <td><span class="badge badge-green">Budget added</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Insight callout -->
+      <div style="background:var(--surface);border:1px solid rgba(99,102,241,0.3);border-radius:12px;padding:16px 20px;margin-bottom:24px;">
+        <div style="font-size:13px;font-weight:600;color:var(--accent2);margin-bottom:6px;">✦ AI insight — Pattern detected</div>
+        <div style="font-size:13px;color:var(--text2);line-height:1.7;">Garden Tools — Exact has run out of budget before 3pm on <strong style="color:var(--text)">18 of the last 22 days</strong>. At current ACOS (avg 11.2%), this campaign has strong profit potential. Recommendation: <strong style="color:var(--text)">permanently increase daily budget to £130</strong> to capture full-day demand. Estimated additional monthly revenue: <strong style="color:var(--green)">£1,800–2,400</strong>.</div>
+        <div style="margin-top:12px;display:flex;gap:8px;">
+          <button class="btn btn-primary">Approve permanent increase</button>
+          <button class="btn btn-ghost">Schedule review</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ACTIVITY LOG PAGE -->
+    <div class="page" id="page-activity">
+      <div class="table-card" style="padding:0 20px;">
+        <div style="padding:14px 0;">
+
+          <div class="log-entry">
+            <div class="log-time">14:41</div>
+            <div class="log-icon" style="background:var(--red-bg)">⚠</div>
+            <div class="log-content">
+              <div class="log-title">Google Chat sent to James</div>
+              <div class="log-detail">Garden Tools — Exact ran out of budget. Approval request sent.</div>
+              <div class="log-actor"><div class="actor-dot" style="background:var(--blue-bg);color:var(--blue)">S</div><span>System · Auto-triggered</span></div>
+            </div>
+          </div>
+
+          <div class="log-entry">
+            <div class="log-time">14:38</div>
+            <div class="log-icon" style="background:var(--red-bg)">○</div>
+            <div class="log-content">
+              <div class="log-title">Campaign out of budget detected</div>
+              <div class="log-detail">Garden Tools — Exact · Budget: £80 · ACOS at time: 11.4%</div>
+              <div class="log-actor"><div class="actor-dot" style="background:var(--blue-bg);color:var(--blue)">S</div><span>System · Monitoring</span></div>
+            </div>
+          </div>
+
+          <div class="log-entry">
+            <div class="log-time">Yesterday 14:05</div>
+            <div class="log-icon" style="background:var(--green-bg)">✓</div>
+            <div class="log-content">
+              <div class="log-title">Budget increase approved and applied</div>
+              <div class="log-detail">Garden Tools — Exact · +£40 added · New budget: £120 · Applied via API</div>
+              <div class="log-actor"><div class="actor-dot" style="background:var(--green-bg);color:var(--green)">J</div><span>James · via Google Chat</span></div>
+            </div>
+          </div>
+
+          <div class="log-entry">
+            <div class="log-time">Yesterday 13:51</div>
+            <div class="log-icon" style="background:var(--red-bg)">○</div>
+            <div class="log-content">
+              <div class="log-title">Campaign out of budget detected</div>
+              <div class="log-detail">Garden Tools — Exact · Budget: £80 · ACOS at time: 10.8%</div>
+              <div class="log-actor"><div class="actor-dot" style="background:var(--blue-bg);color:var(--blue)">S</div><span>System · Monitoring</span></div>
+            </div>
+          </div>
+
+          <div class="log-entry">
+            <div class="log-time">21 Apr 16:12</div>
+            <div class="log-icon" style="background:var(--amber-bg)">—</div>
+            <div class="log-content">
+              <div class="log-title">Approval dismissed — no action</div>
+              <div class="log-detail">Home Decor — Auto · Budget exhausted · Agent chose not to add budget</div>
+              <div class="log-actor"><div class="actor-dot" style="background:var(--amber-bg);color:var(--amber)">J</div><span>James · via Google Chat</span></div>
+            </div>
+          </div>
+
+          <div class="log-entry">
+            <div class="log-time">21 Apr 11:30</div>
+            <div class="log-icon" style="background:var(--purple-bg)">✦</div>
+            <div class="log-content">
+              <div class="log-title">AI negative keywords approved</div>
+              <div class="log-detail">Kitchen Storage — Broad · 4 negative keywords added · Est. ACOS saving: 16.6pp</div>
+              <div class="log-actor"><div class="actor-dot" style="background:var(--green-bg);color:var(--green)">S</div><span>Sarah · Dashboard approval</span></div>
+            </div>
+          </div>
+
+          <div class="log-entry">
+            <div class="log-time">20 Apr 09:14</div>
+            <div class="log-icon" style="background:var(--blue-bg)">↑</div>
+            <div class="log-content">
+              <div class="log-title">Daily budget manually updated</div>
+              <div class="log-detail">Storage Boxes — Phrase · £70 → £90 · Applied via API</div>
+              <div class="log-actor"><div class="actor-dot" style="background:var(--blue-bg);color:var(--blue)">M</div><span>Mike · Dashboard</span></div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- SETTINGS PAGE -->
+    <div class="page" id="page-settings">
+      <div class="settings-grid">
+        <div class="settings-card">
+          <div class="settings-card-title">Alert thresholds</div>
+          <div class="settings-row">
+            <div><div class="settings-label">ACOS warning threshold</div><div class="settings-sublabel">Trigger warning badge</div></div>
+            <input class="input-sm" type="number" value="25" />
+          </div>
+          <div class="settings-row">
+            <div><div class="settings-label">ACOS critical threshold</div><div class="settings-sublabel">Trigger Google Chat alert</div></div>
+            <input class="input-sm" type="number" value="35" />
+          </div>
+          <div class="settings-row">
+            <div><div class="settings-label">Budget low warning (%)</div><div class="settings-sublabel">Alert when budget % remaining</div></div>
+            <input class="input-sm" type="number" value="20" />
+          </div>
+          <div class="settings-row">
+            <div><div class="settings-label">Poll interval (minutes)</div><div class="settings-sublabel">How often to sync Amazon</div></div>
+            <input class="input-sm" type="number" value="15" />
+          </div>
+        </div>
+
+        <div class="settings-card">
+          <div class="settings-card-title">Notification routing</div>
+          <div class="settings-row">
+            <div><div class="settings-label">Google Chat — James</div><div class="settings-sublabel">Garden Tools, Home Decor</div></div>
+            <button class="toggle on" onclick="this.classList.toggle('on')"></button>
+          </div>
+          <div class="settings-row">
+            <div><div class="settings-label">Google Chat — Sarah</div><div class="settings-sublabel">Kitchen Storage, Office Supplies</div></div>
+            <button class="toggle on" onclick="this.classList.toggle('on')"></button>
+          </div>
+          <div class="settings-row">
+            <div><div class="settings-label">Google Chat — Mike</div><div class="settings-sublabel">Storage Boxes, Cleaning</div></div>
+            <button class="toggle on" onclick="this.classList.toggle('on')"></button>
+          </div>
+          <div class="settings-row">
+            <div><div class="settings-label">Notify Bobby on all critical</div><div class="settings-sublabel">ACOS critical + out of budget</div></div>
+            <button class="toggle on" onclick="this.classList.toggle('on')"></button>
+          </div>
+        </div>
+
+        <div class="settings-card">
+          <div class="settings-card-title">Auto-action rules</div>
+          <div class="settings-row">
+            <div><div class="settings-label">Auto-pause on ACOS > 50%</div><div class="settings-sublabel">No approval needed</div></div>
+            <button class="toggle" onclick="this.classList.toggle('on')"></button>
+          </div>
+          <div class="settings-row">
+            <div><div class="settings-label">Auto-add budget (low ACOS)</div><div class="settings-sublabel">ACOS &lt;15% + out of budget</div></div>
+            <button class="toggle" onclick="this.classList.toggle('on')"></button>
+          </div>
+          <div class="settings-row">
+            <div><div class="settings-label">Max auto-add per campaign</div><div class="settings-sublabel">Hard cap per event</div></div>
+            <input class="input-sm" type="number" value="50" />
+          </div>
+          <div class="settings-row">
+            <div><div class="settings-label">Daily auto-add cap (total)</div><div class="settings-sublabel">Across all campaigns</div></div>
+            <input class="input-sm" type="number" value="200" />
+          </div>
+        </div>
+
+        <div class="settings-card">
+          <div class="settings-card-title">AI analysis</div>
+          <div class="settings-row">
+            <div><div class="settings-label">Keyword gap analysis</div><div class="settings-sublabel">Daily · Uses search term report</div></div>
+            <button class="toggle on" onclick="this.classList.toggle('on')"></button>
+          </div>
+          <div class="settings-row">
+            <div><div class="settings-label">Negative keyword suggestions</div><div class="settings-sublabel">Weekly · Zero-conversion terms</div></div>
+            <button class="toggle on" onclick="this.classList.toggle('on')"></button>
+          </div>
+          <div class="settings-row">
+            <div><div class="settings-label">Scale recommendations</div><div class="settings-sublabel">When ACOS stable 7+ days</div></div>
+            <button class="toggle on" onclick="this.classList.toggle('on')"></button>
+          </div>
+          <div class="settings-row">
+            <div><div class="settings-label">Bid optimisation suggestions</div><div class="settings-sublabel">Weekly · Per keyword</div></div>
+            <button class="toggle" onclick="this.classList.toggle('on')"></button>
+          </div>
+        </div>
+      </div>
+      <div style="margin-top:12px;display:flex;gap:10px;">
+        <button class="btn btn-primary">Save settings</button>
+        <button class="btn btn-ghost">Reset to defaults</button>
+      </div>
+    </div>
+
+    <!-- API SETUP PAGE -->
+    <div class="page" id="page-setup">
+      <div style="max-width:560px;">
+        <div style="margin-bottom:24px;">
+          <div style="font-size:15px;font-weight:600;color:var(--text);margin-bottom:4px;">Connect your Amazon Advertising account</div>
+          <div style="font-size:13px;color:var(--text3);line-height:1.7;">You need three things from Amazon and one from Google Chat. All stored securely — never exposed in the UI after saving.</div>
+        </div>
+
+        <div class="settings-card" style="margin-bottom:16px;">
+          <div class="settings-card-title">Amazon Advertising API</div>
+          <div style="font-size:12px;color:var(--text3);margin-bottom:14px;">Get these from <a href="https://advertising.amazon.com" class="helper-link" target="_blank">advertising.amazon.com</a> → Tools → API Access, then <a href="https://developer.amazon.com/apps-and-games/console/lwa.html" class="helper-link" target="_blank">developer.amazon.com</a> for the LWA app.</div>
+          <div class="form-group">
+            <label class="form-label">Client ID</label>
+            <input class="input-full" type="text" placeholder="amzn1.application-oa2-client.xxxxxxxx" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Client Secret</label>
+            <input class="input-full" type="password" placeholder="••••••••••••••••••••••••••" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Refresh Token</label>
+            <input class="input-full" type="password" placeholder="Atzr|xxxxxxxxxxxxxxxx..." />
+            <div class="form-hint">From the OAuth authorisation flow on developer.amazon.com</div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Profile ID (amazon.co.uk)</label>
+            <input class="input-full" type="text" placeholder="e.g. 1234567890" />
+            <div class="form-hint">Run a GET /v2/profiles call after connecting — your .co.uk profile ID will be in the list</div>
+          </div>
+          <div class="connect-status">
+            <div class="connect-dot"></div>
+            Not connected
+          </div>
+        </div>
+
+        <div class="settings-card" style="margin-bottom:16px;">
+          <div class="settings-card-title">Google Chat webhook</div>
+          <div style="font-size:12px;color:var(--text3);margin-bottom:14px;">In your Google Chat space → Apps & Integrations → Manage Webhooks → Add Webhook. Paste the URL below.</div>
+          <div class="form-group">
+            <label class="form-label">Webhook URL — General / Alerts space</label>
+            <input class="input-full" type="text" placeholder="https://chat.googleapis.com/v1/spaces/xxx/messages?key=..." />
+          </div>
+          <div class="connect-status">
+            <div class="connect-dot"></div>
+            Not connected · <span style="color:var(--accent2);cursor:pointer;font-size:11px;">Send test message</span>
+          </div>
+        </div>
+
+        <button class="btn btn-primary" style="width:100%;padding:11px;font-size:14px;">Connect and start monitoring</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  const pageTitles = {
+    dashboard: 'Dashboard',
+    campaigns: 'All campaigns',
+    ai: 'AI suggestions',
+    report: 'Budget exhaustion report',
+    activity: 'Activity log',
+    settings: 'Settings',
+    setup: 'API setup'
+  };
+
+  function showPage(name, btn) {
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    document.getElementById('page-' + name).classList.add('active');
+    if (btn) btn.classList.add('active');
+    document.getElementById('page-title').textContent = pageTitles[name] || name;
+  }
+</script>
+</body>
+</html>
