@@ -256,5 +256,5 @@ app.listen(PORT, '0.0.0.0', function() {
   console.log('App running on port ' + PORT);
   setTimeout(function() {
     syncCampaigns().catch(function(err) { console.error('Initial sync failed:', err.message); });
-  }, 3000);
+  }, 30000);
 });
