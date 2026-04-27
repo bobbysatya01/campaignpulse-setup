@@ -101,14 +101,17 @@ async function fetchCampaigns() {
 
 // ── Fetch spend/revenue via reporting API ─────────────────────────────────
 let statsCache = { data: null, lastFetched: 0 };
+// Reset cache on startup
+statsCache.lastFetched = 0;
 
 async function fetchCampaignStats() {
   // Only fetch new report every 60 minutes
   const now = Date.now();
   if (statsCache.data && (now - statsCache.lastFetched) < 60 * 60 * 1000) {
-    console.log('Using cached stats');
+    console.log('Using cached stats (' + Math.round((now - statsCache.lastFetched)/60000) + ' min old)');
     return statsCache.data;
   }
+  console.log('Requesting fresh stats report...');
 
   const token = await getAccessToken();
   const profileId = await getProfileId();
@@ -377,5 +380,6 @@ app.listen(PORT, '0.0.0.0', function() {
     syncCampaigns().catch(function(err) { console.error('Initial sync failed:', err.message); });
   }, 30000);
 });
+
 
 
