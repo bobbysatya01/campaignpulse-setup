@@ -495,7 +495,10 @@ async function analyseKeywords() {
 
     const text = aiRes.data.content[0].text;
     const clean = text.replace(/```json|```/g, '').trim();
-    keywordState.analysis = JSON.parse(clean);
+   const jsonStart = clean.indexOf('{');
+const jsonEnd = clean.lastIndexOf('}');
+if (jsonStart === -1 || jsonEnd === -1) throw new Error('No JSON found');
+keywordState.analysis = JSON.parse(clean.substring(jsonStart, jsonEnd + 1));
     keywordState.lastAnalysed = Date.now();
     console.log('Keyword AI analysis complete');
   } catch(e) {
