@@ -280,8 +280,8 @@ async function syncCampaigns() {
     const campaigns = raw.map(function(c) {
       const budget = parseFloat((c.budget && c.budget.budget) || c.dailyBudget || 0);
       const s = statsMap[c.campaignId] || {};
-      const spend = parseFloat(s.spend || 0);
-      const sales = parseFloat(s.sales || 0);
+      const spend = s.spend !== undefined ? parseFloat(s.spend) : null;
+      const sales = s.sales !== undefined ? parseFloat(s.sales) : null;
       const acos = sales > 0 ? Math.round((spend / sales) * 1000) / 10 : 0;
       const remaining = Math.max(0, budget - spend);
       const pct = budget > 0 ? Math.round((spend / budget) * 100) : 0;
@@ -380,6 +380,7 @@ app.listen(PORT, '0.0.0.0', function() {
     syncCampaigns().catch(function(err) { console.error('Initial sync failed:', err.message); });
   }, 30000);
 });
+
 
 
 
