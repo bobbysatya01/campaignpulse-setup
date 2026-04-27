@@ -99,74 +99,73 @@ async function fetchCampaigns() {
   return campaigns;
 }
 
-// ── Fetch spend/revenue via v3 reporting API ─────────────────────────────
-let statsCache = { data: null, lastFetched: 0 };
+// ── Async report system — request now, download next cycle ───────────────
+let reportState = { pendingReportId: null, data: null, lastFetched: 0, requested: 0 };
 
 async function fetchCampaignStats() {
   const now = Date.now();
-  if (statsCache.data && (now - statsCache.lastFetched) < 60 * 60 * 1000) {
-    console.log('Using cached stats (' + Math.round((now - statsCache.lastFetched)/60000) + ' min old)');
-    return statsCache.data;
-  }
-  console.log('Requesting stats report...');
-
   const token = await getAccessToken();
   const profileId = await getProfileId();
   const headers = getHeaders(profileId, token);
   const today = new Date().toISOString().split('T')[0];
 
-  try {
-    const reportRes = await axios.post(
-      'https://advertising-api-eu.amazon.com/reporting/reports',
-      {
-        name: 'CampaignPulse Stats ' + today,
-        startDate: today,
-        endDate: today,
-        configuration: {
-          adProduct: 'SPONSORED_PRODUCTS',
-          groupBy: ['campaign'],
-          columns: ['campaignId', 'campaignName', 'cost', 'sales14d', 'clicks', 'impressions', 'purchases14d', 'campaignBudgetAmount', 'campaignStatus'],
-          reportTypeId: 'spCampaigns',
-          timeUnit: 'SUMMARY',
-          format: 'GZIP_JSON'
-        }
-      },
-      { headers: Object.assign({}, headers, { 'Content-Type': 'application/json', 'Accept': 'application/json' }) }
-    );
-
-    const reportId = reportRes.data.reportId;
-    console.log('Report requested: ' + reportId);
-
-    // Poll for up to 3 minutes
-    for (let i = 0; i < 36; i++) {
-      await new Promise(function(r) { setTimeout(r, 5000); });
+  // If we have a pending report, check if it's ready
+  if (reportState.pendingReportId) {
+    try {
       const statusRes = await axios.get(
-        'https://advertising-api-eu.amazon.com/reporting/reports/' + reportId,
+        'https://advertising-api-eu.amazon.com/reporting/reports/' + reportState.pendingReportId,
         { headers: Object.assign({}, headers, { 'Accept': 'application/json' }) }
       );
       const status = statusRes.data.status;
-      console.log('Report status: ' + status);
+      console.log('Pending report status: ' + status);
       if (status === 'COMPLETED') {
-        const downloadRes = await axios.get(statusRes.data.url, {
-          responseType: 'arraybuffer'
-        });
+        const downloadRes = await axios.get(statusRes.data.url, { responseType: 'arraybuffer' });
         const zlib = require('zlib');
         const decompressed = zlib.gunzipSync(Buffer.from(downloadRes.data));
         const reportData = JSON.parse(decompressed.toString());
-        console.log('Report ready: ' + reportData.length + ' records. Sample: ' + JSON.stringify(reportData[0]));
-        statsCache = { data: reportData, lastFetched: now };
-        return reportData;
+        console.log('Report downloaded: ' + reportData.length + ' records');
+        reportState.data = reportData;
+        reportState.lastFetched = now;
+        reportState.pendingReportId = null;
+      } else if (status === 'FAILED') {
+        console.log('Report failed, will retry next cycle');
+        reportState.pendingReportId = null;
       }
-      if (status === 'FAILED') {
-        console.log('Report failed: ' + JSON.stringify(statusRes.data));
-        break;
-      }
+    } catch(e) {
+      console.error('Report check error: ' + e.message);
+      reportState.pendingReportId = null;
     }
-    return statsCache.data || null;
-  } catch(e) {
-    console.error('Stats error: ' + e.message + (e.response ? ' ' + JSON.stringify(e.response.data) : ''));
-    return statsCache.data || null;
   }
+
+  // Request a new report if we dont have one pending and data is older than 1 hour
+  if (!reportState.pendingReportId && (now - reportState.requested) > 60 * 60 * 1000) {
+    try {
+      const reportRes = await axios.post(
+        'https://advertising-api-eu.amazon.com/reporting/reports',
+        {
+          name: 'CampaignPulse ' + today,
+          startDate: today,
+          endDate: today,
+          configuration: {
+            adProduct: 'SPONSORED_PRODUCTS',
+            groupBy: ['campaign'],
+            columns: ['campaignId', 'campaignName', 'cost', 'sales14d', 'clicks', 'impressions', 'purchases14d'],
+            reportTypeId: 'spCampaigns',
+            timeUnit: 'SUMMARY',
+            format: 'GZIP_JSON'
+          }
+        },
+        { headers: Object.assign({}, headers, { 'Content-Type': 'application/json', 'Accept': 'application/json' }) }
+      );
+      reportState.pendingReportId = reportRes.data.reportId;
+      reportState.requested = now;
+      console.log('Report requested: ' + reportState.pendingReportId + ' (will check next sync)');
+    } catch(e) {
+      console.error('Report request error: ' + e.message);
+    }
+  }
+
+  return reportState.data || null;
 }
 
 // ── Update campaign budget ────────────────────────────────────────────────
@@ -381,6 +380,7 @@ app.listen(PORT, '0.0.0.0', function() {
     syncCampaigns().catch(function(err) { console.error('Initial sync failed:', err.message); });
   }, 30000);
 });
+
 
 
 
