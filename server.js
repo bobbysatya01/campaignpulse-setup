@@ -78,6 +78,8 @@ async function fetchCampaigns() {
     );
     const campaigns = res.data.campaigns || res.data || [];
     console.log('Campaigns fetched: ' + campaigns.length);
+    if (campaigns.length > 0) console.log('Sample campaign fields:', JSON.stringify(Object.keys(campaigns[0])));
+    if (campaigns.length > 0) console.log('Sample campaign data:', JSON.stringify(campaigns[0]));
     return campaigns.map(function(c) {
       return Object.assign({}, c, { cost: 0, attributedSales14d: 0, clicks: 0, impressions: 0 });
     });
@@ -331,5 +333,6 @@ app.listen(PORT, '0.0.0.0', function() {
     syncCampaigns().catch(function(err) { console.error('Initial sync failed:', err.message); });
   }, 30000);
 });
+
 
 
