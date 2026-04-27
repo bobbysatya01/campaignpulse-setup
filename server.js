@@ -125,7 +125,7 @@ async function fetchCampaignStats() {
         configuration: {
           adProduct: 'SPONSORED_PRODUCTS',
           groupBy: ['campaign'],
-          columns: ['campaignId', 'campaignName', 'portfolioId', 'cost', 'sales14d', 'clicks', 'impressions', 'purchases14d'],
+          columns: ['campaignId', 'campaignName', 'cost', 'sales14d', 'clicks', 'impressions', 'purchases14d', 'campaignBudgetAmount', 'campaignStatus'],
           reportTypeId: 'spCampaigns',
           timeUnit: 'SUMMARY',
           format: 'GZIP_JSON'
@@ -381,6 +381,7 @@ app.listen(PORT, '0.0.0.0', function() {
     syncCampaigns().catch(function(err) { console.error('Initial sync failed:', err.message); });
   }, 30000);
 });
+
 
 
 
