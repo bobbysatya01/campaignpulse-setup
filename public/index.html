@@ -222,6 +222,10 @@ tbody tr:hover { background: var(--surface2); }
       <span class="nav-badge green">AI</span>
     </button>
     <div class="nav-section">Reports</div>
+    <button class="nav-item" onclick="showPage('history',this)">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 3v5l3 3"/><circle cx="8" cy="8" r="6"/><path d="M2 2l2 2"/></svg>
+      Daily history
+    </button>
     <button class="nav-item" onclick="showPage('report',this)">
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="12" height="12" rx="1.5"/><path d="M5 8h6M5 11h4M5 5h3"/></svg>
       Budget report
@@ -347,6 +351,83 @@ tbody tr:hover { background: var(--surface2); }
     <div id="kw-container"><div class="loading"><div class="spinner"></div> Loading keyword analysis...</div></div>
   </div>
 
+  <!-- DAILY HISTORY PAGE -->
+  <div class="page" id="page-history">
+    <div style="display:flex;gap:10px;margin-bottom:20px;align-items:center">
+      <select id="history-date-select" onchange="loadHistoryDate()" style="background:white;border:1px solid var(--border2);color:var(--text);padding:8px 14px;border-radius:8px;font-size:13px;font-family:inherit;cursor:pointer;min-width:200px">
+        <option value="">Select a date...</option>
+      </select>
+      <span id="history-loading" style="font-size:12px;color:var(--text3)"></span>
+    </div>
+
+    <div id="history-metrics" style="display:none">
+      <div class="metrics-grid" style="margin-bottom:20px">
+        <div class="metric-card success"><div class="metric-label">Total revenue</div><div class="metric-value" id="h-revenue">—</div></div>
+        <div class="metric-card"><div class="metric-label">Total ad spend</div><div class="metric-value" id="h-spend">—</div></div>
+        <div class="metric-card"><div class="metric-label">Blended ACOS</div><div class="metric-value" id="h-acos">—</div></div>
+        <div class="metric-card alert"><div class="metric-label">Wasted spend</div><div class="metric-value" id="h-wasted">—</div><div class="metric-delta delta-down" id="h-wasted-d"></div></div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-bottom:22px">
+        <div class="metric-card"><div class="metric-label">Active campaigns</div><div class="metric-value" id="h-active">—</div></div>
+        <div class="metric-card alert"><div class="metric-label">Out of budget events</div><div class="metric-value" id="h-oob">—</div></div>
+        <div class="metric-card"><div class="metric-label">Spend no revenue</div><div class="metric-value" id="h-snr">—</div><div class="metric-delta delta-down">campaigns</div></div>
+      </div>
+
+      <div class="tabs" style="margin-bottom:16px">
+        <button class="tab-btn active" onclick="showHistoryTab('campaigns',this)">All campaigns</button>
+        <button class="tab-btn" onclick="showHistoryTab('spend_no_revenue',this)">Spend, no revenue</button>
+        <button class="tab-btn" onclick="showHistoryTab('exhaustion',this)">Budget exhaustion log</button>
+      </div>
+
+      <div id="history-campaigns-tab">
+        <div class="table-card">
+          <div style="overflow-x:auto"><table>
+            <thead><tr><th>Campaign</th><th>Portfolio</th><th>Type</th><th>Budget</th><th>Impressions</th><th>Clicks</th><th>CTR</th><th>Conversions</th><th>Revenue</th><th>Spend</th><th>ACOS</th><th>Status</th></tr></thead>
+            <tbody id="history-table"></tbody>
+          </table></div>
+        </div>
+      </div>
+
+      <div id="history-snr-tab" style="display:none">
+        <div class="insight-box" style="margin-bottom:16px">
+          <div class="insight-title">✦ Spend with no revenue</div>
+          <div class="insight-text" id="history-snr-insight">Campaigns that spent budget but generated zero attributed revenue on this day. Review these with your team.</div>
+        </div>
+        <div class="table-card">
+          <div style="overflow-x:auto"><table>
+            <thead><tr><th>Campaign</th><th>Portfolio</th><th>Type</th><th>Spend</th><th>Impressions</th><th>Clicks</th><th>CTR</th><th>Conversions</th><th>Status</th></tr></thead>
+            <tbody id="history-snr-table"></tbody>
+          </table></div>
+        </div>
+      </div>
+
+      <div id="history-exhaustion-tab" style="display:none">
+        <div class="table-card">
+          <div style="overflow-x:auto"><table>
+            <thead><tr><th>Time</th><th>Campaign</th><th>Portfolio</th><th>Agent</th><th>Budget</th><th>ACOS</th><th>Est. missed</th><th>Resolved at</th><th>Gap</th><th>Action</th></tr></thead>
+            <tbody id="history-exhaustion-table"></tbody>
+          </table></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="history-empty" style="display:none">
+      <div class="empty" style="padding:60px">
+        <div style="font-size:32px;margin-bottom:16px">📅</div>
+        <div style="font-size:15px;font-weight:600;color:var(--text);margin-bottom:8px">No data for this date</div>
+        <div style="font-size:13px;color:var(--text3)">Data is saved automatically every sync. Select a different date.</div>
+      </div>
+    </div>
+
+    <div id="history-placeholder">
+      <div class="empty" style="padding:60px">
+        <div style="font-size:32px;margin-bottom:16px">📊</div>
+        <div style="font-size:15px;font-weight:600;color:var(--text);margin-bottom:8px">Daily campaign history</div>
+        <div style="font-size:13px;color:var(--text3);line-height:1.7">Select a date above to review that day's campaign performance.<br>Use this for your morning team discussions — see exactly what happened the day before.</div>
+      </div>
+    </div>
+  </div>
+
   <!-- BUDGET REPORT -->
   <div class="page" id="page-report">
     <div class="report-filters">
@@ -453,6 +534,7 @@ function showPage(name, btn) {
   document.getElementById('page-title').textContent = pageTitles[name] || name;
   if (name === 'campaigns') renderAllCampaigns();
   if (name === 'report') renderReport();
+  if (name === 'history') loadHistoryDates();
   if (name === 'activity') renderActivity();
   if (name === 'ai') runAI();
   if (name === 'keywords') loadKeywords();
@@ -962,6 +1044,90 @@ function downloadCSV(headers, rows, filename) {
 
 function escHtml(str) {
   return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+
+// ── Daily History ─────────────────────────────────────────────────────────
+async function loadHistoryDates() {
+  try {
+    const res = await fetch('/api/snapshots');
+    const data = await res.json();
+    const sel = document.getElementById('history-date-select');
+    sel.innerHTML = '<option value="">Select a date...</option>';
+    data.dates.forEach(function(d) {
+      const date = new Date(d.date);
+      const label = date.toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short', year:'numeric' });
+      const m = d.metrics || {};
+      const opt = document.createElement('option');
+      opt.value = d.date;
+      opt.textContent = label + ' — £' + (m.totalRevenue||'0') + ' rev · £' + (m.totalSpend||'0') + ' spend · ' + (m.blendedAcos||'0') + '% ACOS';
+      sel.appendChild(opt);
+    });
+    if (data.dates.length === 0) {
+      document.getElementById('history-placeholder').innerHTML = '<div class="empty" style="padding:60px"><div style="font-size:32px;margin-bottom:16px">⏳</div><div style="font-size:15px;font-weight:600;color:var(--text);margin-bottom:8px">No history yet</div><div style="font-size:13px;color:var(--text3)">Data is being saved automatically every sync. Check back later today.</div></div>';
+    }
+  } catch(e) {
+    console.error('History dates error:', e);
+  }
+}
+
+async function loadHistoryDate() {
+  const date = document.getElementById('history-date-select').value;
+  if (!date) return;
+  document.getElementById('history-loading').textContent = 'Loading...';
+  document.getElementById('history-metrics').style.display = 'none';
+  document.getElementById('history-empty').style.display = 'none';
+  document.getElementById('history-placeholder').style.display = 'none';
+  try {
+    const res = await fetch('/api/snapshots/' + date);
+    if (!res.ok) {
+      document.getElementById('history-empty').style.display = '';
+      document.getElementById('history-loading').textContent = '';
+      return;
+    }
+    const data = await res.json();
+    const m = data.metrics || {};
+    document.getElementById('h-revenue').textContent = '£' + (m.totalRevenue||'0');
+    document.getElementById('h-spend').textContent = '£' + (m.totalSpend||'0');
+    document.getElementById('h-acos').textContent = (m.blendedAcos||'0') + '%';
+    document.getElementById('h-wasted').textContent = '£' + (m.totalWastedSpend||'0');
+    document.getElementById('h-wasted-d').textContent = (m.spendNoRevenue||'0') + ' campaigns with spend, no revenue';
+    document.getElementById('h-active').textContent = m.activeCampaigns||'0';
+    document.getElementById('h-oob').textContent = (data.exhaustionLog||[]).length;
+    document.getElementById('h-snr').textContent = m.spendNoRevenue||'0';
+    const camps = data.campaigns || [];
+    // Campaigns table
+    const tbody = document.getElementById('history-table');
+    tbody.innerHTML = camps.sort(function(a,b){ return (b.spend||0)-(a.spend||0); }).map(function(c) {
+      const acosClass = c.acos > 35 ? 'acos-high' : c.acos > 25 ? 'acos-warn' : c.acos > 0 ? 'acos-ok' : '';
+      return '<tr><td><div class="camp-name">' + escHtml(c.name) + '</div></td><td style="font-size:12px">' + escHtml(c.portfolio||'—') + '</td><td>' + (c.targetingType==='auto'?'<span class="badge badge-blue" style="font-size:10px">Auto</span>':'<span class="badge" style="background:var(--surface3);color:var(--text3);font-size:10px">Manual</span>') + '</td><td class="mono">£' + (c.dailyBudget||0) + '</td><td class="mono">' + (c.impressions||0).toLocaleString() + '</td><td class="mono">' + (c.clicks||0) + '</td><td class="mono">' + (c.ctr||'0') + '%</td><td class="mono">' + (c.conversions||0) + '</td><td class="mono" style="color:var(--green)">£' + (c.sales||0) + '</td><td class="mono">£' + (c.spend||0) + '</td><td class="mono ' + acosClass + '">' + (c.acos>0?c.acos+'%':'—') + '</td><td>' + (c.budgetRemaining<=0.01&&c.dailyBudget>0?'<span class="badge badge-red">Out of budget</span>':c.acos>35&&c.spend>5?'<span class="badge badge-red">ACOS high</span>':'<span class="badge badge-green">Healthy</span>') + '</td></tr>';
+    }).join('') || '<tr><td colspan="12"><div class="empty">No campaign data</div></td></tr>';
+    // Spend no revenue table
+    const snr = camps.filter(function(c){ return c.spend > 0 && (c.sales === 0 || c.sales === null); });
+    document.getElementById('history-snr-insight').textContent = snr.length + ' campaigns spent £' + snr.reduce(function(s,c){ return s+(c.spend||0); }, 0).toFixed(2) + ' with zero attributed revenue on this day.';
+    const snrTbody = document.getElementById('history-snr-table');
+    snrTbody.innerHTML = snr.sort(function(a,b){ return (b.spend||0)-(a.spend||0); }).map(function(c) {
+      return '<tr><td><div class="camp-name">' + escHtml(c.name) + '</div></td><td style="font-size:12px">' + escHtml(c.portfolio||'—') + '</td><td>' + (c.targetingType==='auto'?'<span class="badge badge-blue" style="font-size:10px">Auto</span>':'<span class="badge" style="background:var(--surface3);color:var(--text3);font-size:10px">Manual</span>') + '</td><td class="mono" style="color:var(--red);font-weight:600">£' + (c.spend||0) + '</td><td class="mono">' + (c.impressions||0).toLocaleString() + '</td><td class="mono">' + (c.clicks||0) + '</td><td class="mono">' + (c.ctr||'0') + '%</td><td class="mono">' + (c.conversions||0) + '</td><td><span class="badge badge-red">Wasted spend</span></td></tr>';
+    }).join('') || '<tr><td colspan="9"><div class="empty">No wasted spend on this day</div></td></tr>';
+    // Exhaustion log table
+    const exTbody = document.getElementById('history-exhaustion-table');
+    exTbody.innerHTML = (data.exhaustionLog||[]).map(function(e) {
+      return '<tr><td class="mono" style="color:var(--red);font-weight:600">' + (e.time||'—') + '</td><td><div class="camp-name">' + escHtml(e.campaign||'—') + '</div></td><td style="font-size:12px">' + escHtml(e.portfolio||'—') + '</td><td style="font-size:12px">' + escHtml(e.agent||'—') + '</td><td class="mono">' + (e.budget||'—') + '</td><td class="mono">' + (e.acos||'—') + '</td><td class="mono" style="color:var(--red)">' + (e.missed||'—') + '</td><td class="mono" style="color:var(--green)">' + (e.resolvedAt||'—') + '</td><td class="mono" style="color:var(--amber);font-weight:600">' + (e.gap||'—') + '</td><td><span class="badge ' + (e.action==='Budget added'?'badge-green':e.action==='Dismissed'?'badge-red':'badge-amber') + '">' + (e.action||'—') + '</span></td></tr>';
+    }).join('') || '<tr><td colspan="10"><div class="empty">No exhaustion events on this day</div></td></tr>';
+    document.getElementById('history-metrics').style.display = '';
+    document.getElementById('history-loading').textContent = '';
+  } catch(e) {
+    document.getElementById('history-empty').style.display = '';
+    document.getElementById('history-loading').textContent = '';
+  }
+}
+
+function showHistoryTab(tab, btn) {
+  document.getElementById('history-campaigns-tab').style.display = tab==='campaigns'?'':'none';
+  document.getElementById('history-snr-tab').style.display = tab==='spend_no_revenue'?'':'none';
+  document.getElementById('history-exhaustion-tab').style.display = tab==='exhaustion'?'':'none';
+  document.querySelectorAll('#page-history .tab-btn').forEach(function(b){ b.classList.remove('active'); });
+  if (btn) btn.classList.add('active');
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────
