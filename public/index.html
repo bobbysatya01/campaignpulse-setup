@@ -278,6 +278,17 @@ tbody tr:hover { background: var(--surface2); }
 
   <!-- ALL CAMPAIGNS -->
   <div class="page" id="page-campaigns">
+    <div style="display:flex;gap:10px;margin-bottom:14px;align-items:center;flex-wrap:wrap">
+      <input type="text" id="camp-search" placeholder="Search campaigns..." oninput="renderAllCampaigns()" style="background:white;border:1px solid var(--border2);color:var(--text);padding:8px 14px;border-radius:8px;font-size:13px;width:260px;font-family:inherit">
+      <select id="camp-portfolio-filter" onchange="renderAllCampaigns()" style="background:white;border:1px solid var(--border2);color:var(--text);padding:8px 12px;border-radius:8px;font-size:13px;font-family:inherit;cursor:pointer">
+        <option value="">All portfolios</option>
+      </select>
+      <select id="camp-type-filter" onchange="renderAllCampaigns()" style="background:white;border:1px solid var(--border2);color:var(--text);padding:8px 12px;border-radius:8px;font-size:13px;font-family:inherit;cursor:pointer">
+        <option value="">All types</option>
+        <option value="auto">Auto</option>
+        <option value="manual">Manual</option>
+      </select>
+    </div>
     <div class="tabs">
       <button class="tab-btn active" onclick="filterCamps('action',this)">Needs action (<span id="t-action">0</span>)</button>
       <button class="tab-btn" onclick="filterCamps('all',this)">All (<span id="t-all">0</span>)</button>
@@ -547,17 +558,35 @@ function renderCampaignTable(tableId, campaigns, showAction) {
 
 // ── All Campaigns ──────────────────────────────────────────────────────────
 function renderAllCampaigns() {
-  const filtered = getFilteredCampaigns(currentFilter);
+  const search = (document.getElementById('camp-search')?.value || '').toLowerCase();
+  const portfolioFilter = document.getElementById('camp-portfolio-filter')?.value || '';
+  const typeFilter = document.getElementById('camp-type-filter')?.value || '';
+  let filtered = getFilteredCampaigns(currentFilter);
+  if (search) filtered = filtered.filter(c => c.name.toLowerCase().includes(search) || (c.portfolio||'').toLowerCase().includes(search));
+  if (portfolioFilter) filtered = filtered.filter(c => (c.portfolio||'') === portfolioFilter);
+  if (typeFilter) filtered = filtered.filter(c => (c.targetingType||'') === typeFilter);
+  // Sort problems first
+  filtered.sort(function(a,b) {
+    const scoreA = (a.budgetRemaining<=0.01&&a.dailyBudget>0)?3:(a.budgetPct>=80?2:(a.acos>35&&a.spend>5?1:0));
+    const scoreB = (b.budgetRemaining<=0.01&&b.dailyBudget>0)?3:(b.budgetPct>=80?2:(b.acos>35&&b.spend>5?1:0));
+    return scoreB - scoreA;
+  });
   document.getElementById('t-all').textContent = allCampaigns.length;
   document.getElementById('t-action').textContent = allCampaigns.filter(c => c.budgetRemaining <= 0.01 || c.acos > 35 || c.budgetPct >= 80).length;
   document.getElementById('t-healthy').textContent = allCampaigns.filter(c => c.budgetRemaining > 0.01 && c.acos <= 35 && c.budgetPct < 80).length;
   renderCampaignTable('all-table', filtered, true);
+  // Populate portfolio filter
+  const sel = document.getElementById('camp-portfolio-filter');
+  if (sel && sel.options.length <= 1) {
+    const portfolios = [...new Set(allCampaigns.map(c=>c.portfolio||'').filter(Boolean))].sort();
+    portfolios.forEach(p => { const o = document.createElement('option'); o.value=p; o.textContent=p; sel.appendChild(o); });
+  }
 }
 
 function getFilteredCampaigns(type) {
   if (type === 'action') return allCampaigns.filter(c => c.budgetRemaining <= 0.01 || c.acos > 35 || c.budgetPct >= 80);
   if (type === 'healthy') return allCampaigns.filter(c => c.budgetRemaining > 0.01 && c.acos <= 35 && c.budgetPct < 80);
-  return allCampaigns;
+  return [...allCampaigns];
 }
 
 function filterCamps(type, btn) {
@@ -655,6 +684,8 @@ function renderActivity() {
 }
 
 // ── AI Analysis ────────────────────────────────────────────────────────────
+let aiCache = { suggestions: null, lastRun: 0 };
+
 async function runAI() {
   const container = document.getElementById('ai-container');
   const camps = allCampaigns;
@@ -665,32 +696,46 @@ async function runAI() {
   document.getElementById('ai-opps').textContent = lowAcos.length;
   document.getElementById('ai-waste').textContent = '£' + highAcos.reduce((s,c) => s+(c.spend||0), 0).toFixed(0);
   document.getElementById('ai-gain').textContent = '+£' + (lowAcos.length * 80).toFixed(0) + '/day';
-  container.innerHTML = '<div class="loading"><div class="spinner"></div> Analysing ' + camps.length + ' campaigns with AI...</div>';
+
+  // Use cache if less than 30 minutes old
+  if (aiCache.suggestions && (Date.now() - aiCache.lastRun) < 30 * 60 * 1000) {
+    renderAISuggestions(container, aiCache.suggestions);
+    return;
+  }
+
+  container.innerHTML = '<div class="loading"><div class="spinner"></div> Analysing ' + camps.length + ' FK Sports campaigns with Claude AI...<br><span style="font-size:11px;color:var(--text3);margin-top:8px;display:block">This takes 10-15 seconds · Results cached for 30 minutes</span></div>';
   try {
     const res = await fetch('/api/ai/analyse', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
     const data = await res.json();
     if (data.error && !data.suggestions) throw new Error(data.error);
     const suggestions = data.suggestions;
     if (!suggestions || !suggestions.length) throw new Error('No suggestions');
-    const typeIcons = { scale:'📈', waste:'✂️', budget:'💰', keyword:'🔍' };
-    const typeBadgeClass = { scale:'badge-green', waste:'badge-red', budget:'badge-amber', keyword:'badge-blue' };
-    container.innerHTML = suggestions.map(s => `
-      <div class="ai-card">
-        <div class="ai-header">
-          <div class="ai-icon">${typeIcons[s.type]||'✦'}</div>
-          <div style="flex:1"><div class="ai-title">${escHtml(s.title)}</div><div class="ai-sub">${escHtml(s.campaign||'')}</div></div>
-          <span class="badge ${typeBadgeClass[s.type]||'badge-blue'}" style="margin-left:auto">${escHtml(s.impact)}</span>
-        </div>
-        <div class="ai-desc">${escHtml(s.detail)}</div>
-        <div class="ai-impact">✓ Recommended action: ${escHtml(s.action)}</div>
-        <div class="ag">
-          <button class="btn btn-green" style="font-size:12px">Apply recommendation</button>
-          <button class="btn btn-ghost" style="font-size:12px">Dismiss</button>
-        </div>
-      </div>`).join('');
+    aiCache = { suggestions, lastRun: Date.now() };
+    renderAISuggestions(container, suggestions);
   } catch(e) {
     renderFallbackAI(container, lowAcos, highAcos, outOfBudget);
   }
+}
+
+function renderAISuggestions(container, suggestions) {
+  const typeIcons = { scale:'📈', waste:'✂️', budget:'💰', keyword:'🔍' };
+  const typeBadgeClass = { scale:'badge-green', waste:'badge-red', budget:'badge-amber', keyword:'badge-blue' };
+  const lastRun = aiCache.lastRun ? new Date(aiCache.lastRun).toLocaleTimeString('en-GB', {hour:'2-digit',minute:'2-digit'}) : '';
+  container.innerHTML = (lastRun ? '<div style="font-size:11px;color:var(--text3);margin-bottom:12px">Last analysed: ' + lastRun + ' · <button onclick="aiCache.lastRun=0;runAI()" style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:11px;font-family:inherit">Refresh analysis</button></div>' : '') +
+  suggestions.map(s => `
+    <div class="ai-card">
+      <div class="ai-header">
+        <div class="ai-icon">${typeIcons[s.type]||'✦'}</div>
+        <div style="flex:1"><div class="ai-title">${escHtml(s.title)}</div><div class="ai-sub">${escHtml(s.campaign||'')}</div></div>
+        <span class="badge ${typeBadgeClass[s.type]||'badge-blue'}" style="margin-left:auto">${escHtml(s.impact)}</span>
+      </div>
+      <div class="ai-desc">${escHtml(s.detail)}</div>
+      <div class="ai-impact">✓ Recommended action: ${escHtml(s.action)}</div>
+      <div class="ag">
+        <button class="btn btn-green" style="font-size:12px">Apply recommendation</button>
+        <button class="btn btn-ghost" style="font-size:12px">Dismiss</button>
+      </div>
+    </div>`).join('');
 }
 
 function renderFallbackAI(container, lowAcos, highAcos, outOfBudget) {
