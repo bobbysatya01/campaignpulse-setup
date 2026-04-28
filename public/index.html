@@ -268,6 +268,11 @@ tbody tr:hover { background: var(--surface2); }
       <div><div class="section-title">Campaigns needing action</div><div class="section-sub" id="camp-sub">Loading...</div></div>
       <button class="btn btn-ghost" onclick="showPage('campaigns',document.querySelectorAll('.nav-item')[1])">View all →</button>
     </div>
+    <div class="tabs" style="margin-bottom:14px">
+      <button class="tab-btn active" id="dash-tab-all" onclick="setDashTab('all',this)">All issues</button>
+      <button class="tab-btn" id="dash-tab-spend" onclick="setDashTab('spend_no_revenue',this)">Spend, no revenue <span id="cnt-spend-no-rev" style="background:rgba(192,57,43,0.15);color:var(--red);padding:1px 6px;border-radius:10px;font-size:10px;margin-left:4px">0</span></button>
+      <button class="tab-btn" id="dash-tab-no-activity" onclick="setDashTab('no_activity',this)">No activity <span id="cnt-no-activity" style="background:rgba(0,0,0,0.07);color:var(--text3);padding:1px 6px;border-radius:10px;font-size:10px;margin-left:4px">0</span></button>
+    </div>
     <div class="table-card">
       <div style="overflow-x:auto"><table>
         <thead><tr><th>Campaign</th><th>Portfolio</th><th>Budget left</th><th>Impressions</th><th>Clicks</th><th>CTR</th><th>Conversions</th><th>Revenue</th><th>Spend</th><th>ACOS</th><th>Status</th><th>Action</th></tr></thead>
@@ -296,7 +301,22 @@ tbody tr:hover { background: var(--surface2); }
     </div>
     <div class="table-card">
       <div style="overflow-x:auto"><table>
-        <thead><tr><th>Campaign</th><th>Portfolio / Agent</th><th>Type</th><th>Daily budget</th><th>Budget left</th><th>Impressions</th><th>Clicks</th><th>CTR</th><th>Conversions</th><th>Revenue</th><th>Spend</th><th>ACOS</th><th>Status</th><th>Action</th></tr></thead>
+        <thead><tr>
+          <th onclick="sortCamps('name')" style="cursor:pointer">Campaign <span id="sort-name"></span></th>
+          <th>Portfolio / Agent</th>
+          <th onclick="sortCamps('targetingType')" style="cursor:pointer">Type <span id="sort-targetingType"></span></th>
+          <th onclick="sortCamps('dailyBudget')" style="cursor:pointer">Daily budget <span id="sort-dailyBudget"></span></th>
+          <th onclick="sortCamps('budgetPct')" style="cursor:pointer">Budget left <span id="sort-budgetPct"></span></th>
+          <th onclick="sortCamps('impressions')" style="cursor:pointer">Impressions <span id="sort-impressions"></span></th>
+          <th onclick="sortCamps('clicks')" style="cursor:pointer">Clicks <span id="sort-clicks"></span></th>
+          <th onclick="sortCamps('ctr')" style="cursor:pointer">CTR <span id="sort-ctr"></span></th>
+          <th onclick="sortCamps('conversions')" style="cursor:pointer">Conversions <span id="sort-conversions"></span></th>
+          <th onclick="sortCamps('sales')" style="cursor:pointer">Revenue <span id="sort-sales"></span></th>
+          <th onclick="sortCamps('spend')" style="cursor:pointer">Spend <span id="sort-spend"></span></th>
+          <th onclick="sortCamps('acos')" style="cursor:pointer">ACOS <span id="sort-acos"></span></th>
+          <th>Status</th>
+          <th>Action</th>
+        </tr></thead>
         <tbody id="all-table"><tr><td colspan="14"><div class="loading"><div class="spinner"></div> Loading...</div></td></tr></tbody>
       </table></div>
     </div>
@@ -421,6 +441,7 @@ tbody tr:hover { background: var(--surface2); }
 let appData = { metrics:{}, campaigns:[], alerts:[], exhaustionLog:[], lastSync:null };
 let allCampaigns = [];
 let currentFilter = 'action';
+let sortState = { col: null, dir: 1 };
 const pageTitles = { dashboard:'Dashboard', campaigns:'All campaigns', ai:'AI analysis', keywords:'Keyword Intelligence', report:'Budget exhaustion report', activity:'Activity log', settings:'Settings' };
 
 // ── Navigation ─────────────────────────────────────────────────────────────
@@ -477,15 +498,39 @@ function populateFilters() {
 }
 
 // ── Dashboard ──────────────────────────────────────────────────────────────
+let dashTab = 'all';
+function setDashTab(tab, btn) {
+  dashTab = tab;
+  document.querySelectorAll('#page-dashboard .tabs .tab-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  renderDashboardTable();
+}
+
+function renderDashboardTable() {
+  const camps = allCampaigns;
+  const spendNoRev = camps.filter(c => c.spend > 0 && (c.sales === 0 || c.sales === null));
+  const noActivity = camps.filter(c => (c.spend === 0 || c.spend === null) && (c.impressions === 0));
+  document.getElementById('cnt-spend-no-rev').textContent = spendNoRev.length;
+  document.getElementById('cnt-no-activity').textContent = noActivity.length;
+  let toShow;
+  if (dashTab === 'spend_no_revenue') toShow = spendNoRev;
+  else if (dashTab === 'no_activity') toShow = noActivity;
+  else {
+    const needsAction = camps.filter(c => c.budgetRemaining <= 0.01 || c.acos > 35 || c.budgetPct >= 80);
+    const healthy = camps.filter(c => c.budgetRemaining > 0.01 && c.acos <= 35 && c.budgetPct < 80).slice(0,3);
+    toShow = [...needsAction, ...healthy].slice(0, 12);
+  }
+  renderCampaignTable('dash-table', toShow, true);
+}
+
 function renderDashboard() {
   const m = appData.metrics || {};
   document.getElementById('m-revenue').textContent = '£' + parseFloat(m.totalRevenue || 0).toFixed(2);
   document.getElementById('m-spend').textContent = '£' + parseFloat(m.totalSpend || 0).toFixed(2);
   document.getElementById('m-acos').textContent = (m.blendedAcos || 0) + '%';
   document.getElementById('m-action').textContent = m.needsAction || 0;
-  const acosTarget = 12;
-document.getElementById('m-acos-d').textContent = m.blendedAcos > acosTarget ? '▲ Above ' + acosTarget + '% target' : '▼ Within ' + acosTarget + '% target';
-document.getElementById('m-acos-d').className = 'metric-delta ' + (m.blendedAcos > acosTarget ? 'delta-down' : 'delta-up');
+  document.getElementById('m-acos-d').textContent = m.blendedAcos > 35 ? '▲ Above 35% target' : '▼ Within target';
+  document.getElementById('m-acos-d').className = 'metric-delta ' + (m.blendedAcos > 35 ? 'delta-down' : 'delta-up');
   document.getElementById('m-action-d').textContent = (m.needsAction || 0) + ' campaigns need attention';
   const nb = document.getElementById('nb-action');
   if (m.needsAction > 0) { nb.textContent = m.needsAction; nb.style.display = ''; }
@@ -494,9 +539,7 @@ document.getElementById('m-acos-d').className = 'metric-delta ' + (m.blendedAcos
   const outOfBudget = allCampaigns.filter(c => c.budgetRemaining <= 0.01 && c.dailyBudget > 0).length;
   document.getElementById('camp-sub').textContent = active + ' active · ' + outOfBudget + ' out of budget · showing campaigns needing action first';
   renderAlerts();
-  const needsAction = allCampaigns.filter(c => c.budgetRemaining <= 0.01 || c.acos > 35 || c.budgetPct >= 80);
-  const healthy = allCampaigns.filter(c => c.budgetRemaining > 0.01 && c.acos <= 35 && c.budgetPct < 80).slice(0,3);
-  renderCampaignTable('dash-table', [...needsAction, ...healthy].slice(0, 12), true);
+  renderDashboardTable();
 }
 
 function renderAlerts() {
@@ -566,12 +609,24 @@ function renderAllCampaigns() {
   if (search) filtered = filtered.filter(c => c.name.toLowerCase().includes(search) || (c.portfolio||'').toLowerCase().includes(search));
   if (portfolioFilter) filtered = filtered.filter(c => (c.portfolio||'') === portfolioFilter);
   if (typeFilter) filtered = filtered.filter(c => (c.targetingType||'') === typeFilter);
-  // Sort problems first
-  filtered.sort(function(a,b) {
-    const scoreA = (a.budgetRemaining<=0.01&&a.dailyBudget>0)?3:(a.budgetPct>=80?2:(a.acos>35&&a.spend>5?1:0));
-    const scoreB = (b.budgetRemaining<=0.01&&b.dailyBudget>0)?3:(b.budgetPct>=80?2:(b.acos>35&&b.spend>5?1:0));
-    return scoreB - scoreA;
-  });
+  // Sort
+  if (sortState.col) {
+    filtered.sort(function(a,b) {
+      let va = a[sortState.col], vb = b[sortState.col];
+      if (va === null || va === undefined) va = -1;
+      if (vb === null || vb === undefined) vb = -1;
+      if (typeof va === 'string') va = va.toLowerCase();
+      if (typeof vb === 'string') vb = vb.toLowerCase();
+      return va < vb ? -sortState.dir : va > vb ? sortState.dir : 0;
+    });
+  } else {
+    // Default: sort problems first
+    filtered.sort(function(a,b) {
+      const scoreA = (a.budgetRemaining<=0.01&&a.dailyBudget>0)?3:(a.budgetPct>=80?2:(a.acos>35&&a.spend>5?1:0));
+      const scoreB = (b.budgetRemaining<=0.01&&b.dailyBudget>0)?3:(b.budgetPct>=80?2:(b.acos>35&&b.spend>5?1:0));
+      return scoreB - scoreA;
+    });
+  }
   document.getElementById('t-all').textContent = allCampaigns.length;
   document.getElementById('t-action').textContent = allCampaigns.filter(c => c.budgetRemaining <= 0.01 || c.acos > 35 || c.budgetPct >= 80).length;
   document.getElementById('t-healthy').textContent = allCampaigns.filter(c => c.budgetRemaining > 0.01 && c.acos <= 35 && c.budgetPct < 80).length;
@@ -594,6 +649,16 @@ function filterCamps(type, btn) {
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   currentFilter = type;
+  renderAllCampaigns();
+}
+
+function sortCamps(col) {
+  if (sortState.col === col) { sortState.dir *= -1; }
+  else { sortState.col = col; sortState.dir = -1; }
+  // Update sort indicators
+  document.querySelectorAll('[id^="sort-"]').forEach(el => el.textContent = '');
+  const indicator = document.getElementById('sort-' + col);
+  if (indicator) indicator.textContent = sortState.dir === -1 ? ' ↓' : ' ↑';
   renderAllCampaigns();
 }
 
