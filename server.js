@@ -339,11 +339,92 @@ async function syncCampaigns() {
     state.lastSync = new Date().toTimeString().slice(0, 8);
     state.error = null;
     console.log('Sync done. ' + campaigns.length + ' campaigns.');
+    // Save snapshot to DB on every sync
+    saveDailySnapshot().catch(function(e){ console.error('Snapshot error: ' + e.message); });
   } catch(e) {
     state.error = e.message;
     console.error('Sync error:', e.message);
   } finally {
     state.syncing = false;
+  }
+}
+
+
+// ── Database ──────────────────────────────────────────────────────────────
+let db = null;
+
+async function initDB() {
+  if (!process.env.DATABASE_URL) { console.log('No DATABASE_URL - skipping DB'); return; }
+  try {
+    const { Client } = require('pg');
+    db = new Client({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
+    await db.connect();
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS daily_snapshots (
+        id SERIAL PRIMARY KEY,
+        snapshot_date DATE NOT NULL UNIQUE,
+        created_at TIMESTAMP DEFAULT NOW(),
+        metrics JSONB,
+        campaigns JSONB,
+        exhaustion_log JSONB,
+        alerts JSONB
+      );
+      CREATE INDEX IF NOT EXISTS idx_snapshot_date ON daily_snapshots(snapshot_date);
+    `);
+    console.log('Database connected and tables ready');
+  } catch(e) {
+    console.error('DB init error: ' + e.message);
+    db = null;
+  }
+}
+
+async function saveDailySnapshot() {
+  if (!db) return;
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    const campaigns = state.campaigns;
+    const totalRevenue = campaigns.reduce(function(s,c){ return s+(c.sales||0); }, 0);
+    const totalSpend = campaigns.reduce(function(s,c){ return s+(c.spend||0); }, 0);
+    const blendedAcos = totalRevenue > 0 ? Math.round((totalSpend/totalRevenue)*1000)/10 : 0;
+    const metrics = {
+      totalRevenue: totalRevenue.toFixed(2),
+      totalSpend: totalSpend.toFixed(2),
+      blendedAcos,
+      activeCampaigns: campaigns.filter(function(c){ return c.state==='enabled'; }).length,
+      totalCampaigns: campaigns.length,
+      outOfBudget: campaigns.filter(function(c){ return c.budgetRemaining<=0.01&&c.dailyBudget>0; }).length,
+      spendNoRevenue: campaigns.filter(function(c){ return c.spend>0&&(c.sales===0||c.sales===null); }).length,
+      totalWastedSpend: campaigns.filter(function(c){ return c.spend>0&&(c.sales===0||c.sales===null); }).reduce(function(s,c){ return s+(c.spend||0); }, 0).toFixed(2)
+    };
+    // Upsert snapshot for today
+    await db.query(
+      'INSERT INTO daily_snapshots (snapshot_date, metrics, campaigns, exhaustion_log, alerts) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (snapshot_date) DO UPDATE SET metrics=$2, campaigns=$3, exhaustion_log=$4, alerts=$5, created_at=NOW()',
+      [today, JSON.stringify(metrics), JSON.stringify(campaigns), JSON.stringify(state.exhaustionLog), JSON.stringify(state.alerts)]
+    );
+    console.log('Daily snapshot saved for ' + today);
+  } catch(e) {
+    console.error('Snapshot save error: ' + e.message);
+  }
+}
+
+async function getDailySnapshot(date) {
+  if (!db) return null;
+  try {
+    const res = await db.query('SELECT * FROM daily_snapshots WHERE snapshot_date = $1', [date]);
+    return res.rows[0] || null;
+  } catch(e) {
+    console.error('Snapshot fetch error: ' + e.message);
+    return null;
+  }
+}
+
+async function getSnapshotDates() {
+  if (!db) return [];
+  try {
+    const res = await db.query('SELECT snapshot_date, metrics FROM daily_snapshots ORDER BY snapshot_date DESC LIMIT 30');
+    return res.rows;
+  } catch(e) {
+    return [];
   }
 }
 
@@ -576,6 +657,25 @@ app.post('/api/keywords/refresh', async function(req, res) {
   res.json({ success: true, reportId: keywordState.reportId });
 });
 
+app.get('/api/snapshots', async function(req, res) {
+  const dates = await getSnapshotDates();
+  res.json({ dates: dates.map(function(r) {
+    return { date: r.snapshot_date, metrics: r.metrics };
+  })});
+});
+
+app.get('/api/snapshots/:date', async function(req, res) {
+  const snap = await getDailySnapshot(req.params.date);
+  if (!snap) return res.status(404).json({ error: 'No snapshot for ' + req.params.date });
+  res.json({
+    date: snap.snapshot_date,
+    metrics: snap.metrics,
+    campaigns: snap.campaigns,
+    exhaustionLog: snap.exhaustion_log,
+    alerts: snap.alerts
+  });
+});
+
 app.get('/api/health', function(req, res) {
   res.json({ status: 'ok', lastSync: state.lastSync, campaigns: state.campaigns.length, error: state.error });
 });
@@ -626,8 +726,9 @@ const interval = process.env.POLL_INTERVAL_MINUTES || 15;
 cron.schedule('*/' + interval + ' * * * *', function() { syncCampaigns(); });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, '0.0.0.0', function() {
+app.listen(PORT, '0.0.0.0', async function() {
   console.log('App running on port ' + PORT);
+  await initDB();
   setTimeout(function() {
     syncCampaigns().catch(function(err) { console.error('Initial sync failed:', err.message); });
   }, 30000);
