@@ -73,11 +73,22 @@ async function fetchPortfolios() {
       headers: getHeaders(profileId, token)
     });
     const map = {};
-    res.data.forEach(function(p) { map[p.portfolioId] = p.name; });
+    res.data.forEach(function(p) { map[String(p.portfolioId)] = p.name; });
     state.portfolios = map;
     console.log('Portfolios fetched: ' + Object.keys(map).length);
   } catch(e) {
-    console.log('Portfolios from campaign data only');
+    // Try v2 with state filter
+    try {
+      const res2 = await axios.get('https://advertising-api-eu.amazon.com/v2/portfolios?portfolioStateFilter=enabled,paused', {
+        headers: getHeaders(profileId, token)
+      });
+      const map = {};
+      res2.data.forEach(function(p) { map[String(p.portfolioId)] = p.name; });
+      state.portfolios = map;
+      console.log('Portfolios fetched (v2): ' + Object.keys(map).length);
+    } catch(e2) {
+      console.log('Portfolio API unavailable - using IDs only: ' + e2.message);
+    }
   }
 }
 
@@ -138,7 +149,7 @@ async function fetchCampaignStats() {
   }
 
   // Request a new report if we dont have one pending and data is older than 1 hour
-  if (!reportState.pendingReportId && (now - reportState.requested) > 60 * 60 * 1000) {
+  if (!reportState.pendingReportId && (now - reportState.requested) > 2 * 60 * 60 * 1000) {
     try {
       const reportRes = await axios.post(
         'https://advertising-api-eu.amazon.com/reporting/reports',
@@ -393,6 +404,7 @@ let keywordState = {
 async function requestSearchTermReport() {
   const now = Date.now();
   // Only request new report once per week
+  // Only auto-request weekly; manual refresh resets keywordState.requested to 0
   if (keywordState.reportId || (now - keywordState.requested) < 7 * 24 * 60 * 60 * 1000) {
     return;
   }
