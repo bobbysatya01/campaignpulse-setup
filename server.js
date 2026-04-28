@@ -149,7 +149,7 @@ async function fetchCampaignStats() {
           configuration: {
             adProduct: 'SPONSORED_PRODUCTS',
             groupBy: ['campaign'],
-            columns: ['campaignId', 'campaignName', 'cost', 'sales14d', 'clicks', 'impressions', 'purchases14d'],
+            columns: ['campaignId', 'campaignName', 'cost', 'sales14d', 'clicks', 'impressions', 'purchases14d', 'clickThroughRate'],
             reportTypeId: 'spCampaigns',
             timeUnit: 'SUMMARY',
             format: 'GZIP_JSON'
@@ -277,10 +277,12 @@ async function syncCampaigns() {
     if (stats && stats.length) {
       stats.forEach(function(s) {
         statsMap[s.campaignId] = {
-          spend: parseFloat(s.cost || s.spend || s['Spend'] || 0),
-          sales: parseFloat(s.sales14d || s['7 Day Total Sales'] || s.sales || 0),
-          clicks: parseInt(s.clicks || s['Clicks'] || 0),
-          impressions: parseInt(s.impressions || s['Impressions'] || 0)
+          spend: parseFloat(s.cost || 0),
+          sales: parseFloat(s.sales14d || 0),
+          clicks: parseInt(s.clicks || 0),
+          impressions: parseInt(s.impressions || 0),
+          conversions: parseInt(s.purchases14d || 0),
+          ctr: parseFloat(s.clickThroughRate || 0)
         };
       });
       console.log('Stats loaded for ' + Object.keys(statsMap).length + ' campaigns');
@@ -300,14 +302,17 @@ async function syncCampaigns() {
         campaignId: c.campaignId,
         name: c.name || '',
         state: (c.state || '').toLowerCase(),
+        targetingType: (c.targetingType || '').toLowerCase(),
         portfolio: portfolioName,
         agent: agent,
         dailyBudget: budget,
-        spend: Math.round(spend * 100) / 100,
-        sales: Math.round(sales * 100) / 100,
+        spend: spend !== null ? Math.round(spend * 100) / 100 : null,
+        sales: sales !== null ? Math.round(sales * 100) / 100 : null,
         acos: acos,
         clicks: s.clicks || 0,
         impressions: s.impressions || 0,
+        conversions: s.conversions || 0,
+        ctr: s.ctr ? (s.ctr * 100).toFixed(2) : '0.00',
         budgetRemaining: Math.round(remaining * 100) / 100,
         budgetPct: pct
       };
@@ -361,7 +366,7 @@ app.post('/api/ai/analyse', async function(req, res) {
     const prompt = 'You are an Amazon Advertising expert for FK Sports UK. Give 4 specific recommendations based on: Total campaigns: ' + allCamps.length + ', Out of budget: ' + outOfBudget.length + ' (' + outOfBudget.slice(0,3).map(function(c){return c.name;}).join(', ') + '), High ACOS >35%: ' + highAcos.length + ' (' + highAcos.slice(0,3).map(function(c){return c.name + ' ' + c.acos + '%';}).join(', ') + '), Scale opportunities ACOS<15%: ' + lowAcos.length + ' (' + lowAcos.slice(0,3).map(function(c){return c.name + ' ' + c.acos + '%';}).join(', ') + '. Return ONLY JSON array of 4 objects with fields: type, title, campaign, detail, impact, action. No other text.';
     const aiRes = await axios.post('https://api.anthropic.com/v1/messages', {
       model: 'claude-opus-4-5',
-      max_tokens: 1000,
+      max_tokens: 2000,
       messages: [{ role: 'user', content: prompt }]
     }, {
       headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' }
@@ -464,7 +469,7 @@ async function analyseKeywords() {
     const data = keywordState.data;
     // Find wasters — spend > 0, zero purchases
     const wasters = data.filter(function(r) {
-      return parseFloat(r.cost || 0) > 1 && parseInt(r.purchases14d || 0) === 0;
+      return parseFloat(r.cost || 0) > 5 && parseInt(r.purchases14d || 0) === 0 && parseInt(r.clicks||0) > 3;
     }).sort(function(a,b) { return parseFloat(b.cost||0) - parseFloat(a.cost||0); }).slice(0, 20);
     // Find converters — high purchases, not yet as exact match keyword
     const converters = data.filter(function(r) {
@@ -487,7 +492,7 @@ async function analyseKeywords() {
 
     const aiRes = await axios.post('https://api.anthropic.com/v1/messages', {
       model: 'claude-opus-4-5',
-      max_tokens: 2000,
+      max_tokens: 4000,
       messages: [{ role: 'user', content: prompt }]
     }, {
       headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' }
@@ -495,10 +500,12 @@ async function analyseKeywords() {
 
     const text = aiRes.data.content[0].text;
     const clean = text.replace(/```json|```/g, '').trim();
-   const jsonStart = clean.indexOf('{');
-const jsonEnd = clean.lastIndexOf('}');
-if (jsonStart === -1 || jsonEnd === -1) throw new Error('No JSON found');
-keywordState.analysis = JSON.parse(clean.substring(jsonStart, jsonEnd + 1));
+    // Find JSON boundaries safely
+    const jsonStart = clean.indexOf('{');
+    const jsonEnd = clean.lastIndexOf('}');
+    if (jsonStart === -1 || jsonEnd === -1) throw new Error('No JSON found in response');
+    const jsonStr = clean.substring(jsonStart, jsonEnd + 1);
+    keywordState.analysis = JSON.parse(jsonStr);
     keywordState.lastAnalysed = Date.now();
     console.log('Keyword AI analysis complete');
   } catch(e) {
@@ -509,7 +516,7 @@ keywordState.analysis = JSON.parse(clean.substring(jsonStart, jsonEnd + 1));
 
 function ruleBasedKeywordAnalysis(data) {
   const wasters = data.filter(function(r) {
-    return parseFloat(r.cost||0) > 1 && parseInt(r.purchases14d||0) === 0;
+    return parseFloat(r.cost||0) > 5 && parseInt(r.purchases14d||0) === 0 && parseInt(r.clicks||0) > 3;
   }).sort(function(a,b) { return parseFloat(b.cost||0) - parseFloat(a.cost||0); }).slice(0, 10);
   const converters = data.filter(function(r) {
     return parseInt(r.purchases14d||0) > 0 && r.matchType !== 'EXACT';
@@ -576,7 +583,17 @@ app.post('/api/campaigns/:id/budget', async function(req, res) {
     const newBudget = campaign.dailyBudget + amount;
     await updateBudget(id, newBudget);
     const log = state.exhaustionLog.find(function(e) { return e.campaign === campaign.name && e.action === 'Pending'; });
-    if (log) { log.added = '+£' + amount; log.action = 'Budget added'; }
+    if (log) {
+      log.added = '+£' + amount;
+      log.action = 'Budget added';
+      log.resolvedAt = new Date().toTimeString().slice(0, 5);
+      if (log.time) {
+        const outParts = log.time.split(':');
+        const resParts = log.resolvedAt.split(':');
+        const gapMins = (parseInt(resParts[0]) * 60 + parseInt(resParts[1])) - (parseInt(outParts[0]) * 60 + parseInt(outParts[1]));
+        log.gap = gapMins > 0 ? gapMins + ' min' : '< 1 min';
+      }
+    }
     await sendGoogleChat('✅ *Budget approved*\n*Campaign:* ' + campaign.name + '\n*Portfolio:* ' + (campaign.portfolio || 'N/A') + '\n+£' + amount + ' added. New budget: £' + newBudget.toFixed(2));
     syncCampaigns();
     res.json({ success: true, newBudget: newBudget });
