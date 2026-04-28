@@ -483,8 +483,9 @@ function renderDashboard() {
   document.getElementById('m-spend').textContent = '£' + parseFloat(m.totalSpend || 0).toFixed(2);
   document.getElementById('m-acos').textContent = (m.blendedAcos || 0) + '%';
   document.getElementById('m-action').textContent = m.needsAction || 0;
-  document.getElementById('m-acos-d').textContent = m.blendedAcos > 35 ? '▲ Above 35% target' : '▼ Within target';
-  document.getElementById('m-acos-d').className = 'metric-delta ' + (m.blendedAcos > 35 ? 'delta-down' : 'delta-up');
+  const acosTarget = 12;
+document.getElementById('m-acos-d').textContent = m.blendedAcos > acosTarget ? '▲ Above ' + acosTarget + '% target' : '▼ Within ' + acosTarget + '% target';
+document.getElementById('m-acos-d').className = 'metric-delta ' + (m.blendedAcos > acosTarget ? 'delta-down' : 'delta-up');
   document.getElementById('m-action-d').textContent = (m.needsAction || 0) + ' campaigns need attention';
   const nb = document.getElementById('nb-action');
   if (m.needsAction > 0) { nb.textContent = m.needsAction; nb.style.display = ''; }
