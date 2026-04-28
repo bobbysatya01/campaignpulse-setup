@@ -160,7 +160,7 @@ async function fetchCampaignStats() {
           configuration: {
             adProduct: 'SPONSORED_PRODUCTS',
             groupBy: ['campaign'],
-            columns: ['campaignId', 'campaignName', 'cost', 'sales14d', 'clicks', 'impressions', 'purchases14d', 'clickThroughRate'],
+            columns: ['campaignId', 'campaignName', 'cost', 'sales14d', 'clicks', 'impressions', 'purchases14d', 'clickThroughRate', 'portfolioId', 'portfolioName'],
             reportTypeId: 'spCampaigns',
             timeUnit: 'SUMMARY',
             format: 'GZIP_JSON'
@@ -293,7 +293,9 @@ async function syncCampaigns() {
           clicks: parseInt(s.clicks || 0),
           impressions: parseInt(s.impressions || 0),
           conversions: parseInt(s.purchases14d || 0),
-          ctr: parseFloat(s.clickThroughRate || 0)
+          ctr: parseFloat(s.clickThroughRate || 0),
+          portfolio: s.portfolioName || '',
+          portfolioId: s.portfolioId || ''
         };
       });
       console.log('Stats loaded for ' + Object.keys(statsMap).length + ' campaigns');
