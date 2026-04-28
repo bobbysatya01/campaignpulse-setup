@@ -160,7 +160,7 @@ async function fetchCampaignStats() {
           configuration: {
             adProduct: 'SPONSORED_PRODUCTS',
             groupBy: ['campaign'],
-            columns: ['campaignId', 'campaignName', 'cost', 'sales14d', 'clicks', 'impressions', 'purchases14d', 'clickThroughRate', 'portfolioId', 'portfolioName'],
+            columns: ['campaignId', 'campaignName', 'cost', 'sales14d', 'clicks', 'impressions', 'purchases14d', 'clickThroughRate'],
             reportTypeId: 'spCampaigns',
             timeUnit: 'SUMMARY',
             format: 'GZIP_JSON'
