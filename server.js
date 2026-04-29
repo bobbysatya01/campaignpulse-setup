@@ -450,6 +450,7 @@ async function getSnapshotDates() {
 
 // ── Agent webhook routing ─────────────────────────────────────────────────
 function getAgentWebhook(agentName) {
+  if (!agentName) return null;
   try {
     const mapping = JSON.parse(process.env.AGENT_WEBHOOKS || '{}');
     const varName = mapping[agentName];
@@ -470,18 +471,16 @@ async function sendToAgent(agentName, message) {
   if (webhook) {
     try {
       await axios.post(webhook, { text: message });
-      console.log('Alert sent to agent: ' + agentName);
+      console.log('Sent to agent space: ' + agentName);
       return true;
     } catch(e) {
       console.error('Agent webhook error (' + agentName + '): ' + e.message);
     }
   }
-  // Fall back to main group
-  await sendGoogleChat(message);
   return false;
 }
 
-// ── Task system ───────────────────────────────────────────────────────────
+// ── Tasks table init ───────────────────────────────────────────────────────
 async function initTasksTable() {
   if (!db) return;
   try {
@@ -499,11 +498,14 @@ async function initTasksTable() {
         score INTEGER DEFAULT 0,
         status TEXT DEFAULT 'open',
         agent_notes TEXT,
+        task_source TEXT DEFAULT 'daily',
         created_date DATE DEFAULT CURRENT_DATE,
         updated_at TIMESTAMP DEFAULT NOW(),
-        resolved_at TIMESTAMP,
-        UNIQUE(campaign_id, created_date)
+        resolved_at TIMESTAMP
       );
+      CREATE INDEX IF NOT EXISTS idx_tasks_agent ON campaign_tasks(agent_name);
+      CREATE INDEX IF NOT EXISTS idx_tasks_status ON campaign_tasks(status);
+      CREATE INDEX IF NOT EXISTS idx_tasks_date ON campaign_tasks(created_date);
     `);
     console.log('Tasks table ready');
   } catch(e) {
@@ -511,47 +513,109 @@ async function initTasksTable() {
   }
 }
 
-function scoreCampaign(days) {
-  // days is array of {date, impressions, spend, sales}
-  let score = 0;
-  const last3 = days.slice(0, 3);
-  const noActivityDays = last3.filter(function(d){ return d.impressions === 0; }).length;
-  const spendDays = last3.filter(function(d){ return d.spend > 0; });
-  const noRevDays = spendDays.filter(function(d){ return d.sales === 0; }).length;
-  const totalSpend = last3.reduce(function(s,d){ return s + (d.spend||0); }, 0);
+// ── Scoring logic ─────────────────────────────────────────────────────────
+function scoreCampaignDays(days) {
+  // days = array of {impressions, spend, sales, acos} ordered most recent first
+  let baseScore = 0;
+  let consecutiveDays = days.length;
 
-  // Score no activity
-  if (noActivityDays >= 3) score += 8;
-  else if (noActivityDays >= 2) score += 5;
-  else if (noActivityDays >= 1) score += 2;
+  const totalSpend = days.reduce(function(s,d){ return s+(d.spend||0); }, 0);
+  const totalSales = days.reduce(function(s,d){ return s+(d.sales||0); }, 0);
+  const avgAcos = days.filter(function(d){ return d.spend>0; }).reduce(function(s,d,_,a){ return s+d.acos/a.length; }, 0);
+  const noActivityDays = days.filter(function(d){ return (d.impressions||0)===0; }).length;
+  const spendDays = days.filter(function(d){ return (d.spend||0)>0; });
+  const noRevDays = spendDays.filter(function(d){ return (d.sales||0)===0; }).length;
 
-  // Score wasted spend
-  if (noRevDays >= 2 && totalSpend > 20) score += 10;
-  else if (noRevDays >= 2 && totalSpend > 10) score += 7;
-  else if (noRevDays >= 1 && totalSpend > 5) score += 5;
+  // Wasted spend scoring (spend > X, zero revenue)
+  if (noRevDays >= 1) {
+    if (totalSpend > 15) baseScore += 10;
+    else if (totalSpend > 10) baseScore += 7;
+    else if (totalSpend > 5) baseScore += 5;
+  }
 
-  return { score, noActivityDays, noRevDays, totalSpend };
+  // High ACOS scoring
+  if (avgAcos > 50 && totalSpend > 10) baseScore += 8;
+  else if (avgAcos > 35 && totalSpend > 5) baseScore += 5;
+
+  // No activity scoring
+  if (noActivityDays >= 3) baseScore += 8;
+  else if (noActivityDays >= 2) baseScore += 5;
+  else if (noActivityDays >= 1) baseScore += 2;
+
+  // Multiply by consecutive days (up to 3)
+  const multiplier = Math.min(consecutiveDays, 3);
+  const finalScore = baseScore * multiplier;
+
+  return {
+    score: finalScore,
+    noActivityDays,
+    noRevDays,
+    totalSpend: totalSpend.toFixed(2),
+    totalSales: totalSales.toFixed(2),
+    avgAcos: avgAcos.toFixed(1)
+  };
 }
 
-async function runDailyTaskScheduler() {
-  if (!db) { console.log('No DB — skipping task scheduler'); return; }
-  console.log('Running daily task scheduler...');
+// ── Immediate alert task (out of budget, budget low, high ACOS) ───────────
+async function createAlertTask(campaignId, campaignName, agentName, portfolio, problemType, problemDetail) {
+  if (!db) return;
   try {
-    // Get last 3 days of snapshots
-    const result = await db.query(
-      'SELECT snapshot_date, campaigns FROM daily_snapshots ORDER BY snapshot_date DESC LIMIT 3'
+    const today = new Date().toISOString().split('T')[0];
+    // Check if alert task already exists today for this campaign+type
+    const existing = await db.query(
+      'SELECT id FROM campaign_tasks WHERE campaign_id=$1 AND created_date=$2 AND problem_type=$3 AND task_source=$4',
+      [String(campaignId), today, problemType, 'alert']
     );
-    if (result.rows.length < 1) { console.log('Not enough history for tasks'); return; }
+    if (existing.rows.length > 0) return;
+    const scoreMap = { out_of_budget: 15, budget_low: 8, high_acos: 10 };
+    await db.query(
+      'INSERT INTO campaign_tasks (campaign_id, campaign_name, agent_name, portfolio, problem_type, problem_detail, score, task_source) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
+      [String(campaignId), campaignName, agentName||'Unassigned', portfolio||'', problemType, problemDetail, scoreMap[problemType]||8, 'alert']
+    );
+    console.log('Alert task created: ' + campaignName + ' (' + problemType + ')');
+  } catch(e) {
+    console.error('Alert task error: ' + e.message);
+  }
+}
 
-    // Build campaign history
+// ── Daily 9am task scheduler ──────────────────────────────────────────────
+async function runDailyTaskScheduler() {
+  if (!db) { console.log('No DB - skipping task scheduler'); return; }
+  console.log('Running daily task scheduler...');
+  const dashUrl = process.env.DASHBOARD_URL || 'https://campaignpulse-setup-production.up.railway.app';
+
+  try {
+    // Get last 3 days of snapshots (previous days only, not today)
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = yesterday.toISOString().split('T')[0];
+
+    const result = await db.query(
+      'SELECT snapshot_date, campaigns FROM daily_snapshots WHERE snapshot_date <= $1 ORDER BY snapshot_date DESC LIMIT 3',
+      [yesterdayStr]
+    );
+
+    if (!result.rows.length) {
+      console.log('No historical snapshots yet for task scheduler');
+      return;
+    }
+
+    console.log('Task scheduler using ' + result.rows.length + ' days of history');
+
+    // Build per-campaign history grouped by agent
+    const agentCampaigns = {};
     const campHistory = {};
+
     result.rows.forEach(function(snap) {
       const camps = snap.campaigns || [];
       camps.forEach(function(c) {
+        if (!c.campaignId) return;
+        const agent = extractAgentFromCampaign(c.name) || 'Unassigned';
         if (!campHistory[c.campaignId]) {
           campHistory[c.campaignId] = {
             campaignId: c.campaignId,
             name: c.name || '',
+            agent: agent,
             portfolio: c.portfolio || '',
             targetingType: c.targetingType || '',
             days: []
@@ -562,152 +626,159 @@ async function runDailyTaskScheduler() {
           impressions: c.impressions || 0,
           spend: c.spend || 0,
           sales: c.sales || 0,
-          acos: c.acos || 0
+          acos: c.acos || 0,
+          dailyBudget: c.dailyBudget || 0
         });
+        if (!agentCampaigns[agent]) agentCampaigns[agent] = [];
+        if (!agentCampaigns[agent].find(function(x){ return x.campaignId === c.campaignId; })) {
+          agentCampaigns[agent].push(campHistory[c.campaignId]);
+        }
       });
     });
 
-    // Score all campaigns
-    const scored = [];
-    Object.values(campHistory).forEach(function(camp) {
-      if (camp.days.length < 1) return;
-      const { score, noActivityDays, noRevDays, totalSpend } = scorecamp(camp.days);
-      if (score === 0) return;
-      const agentName = extractAgentFromCampaign(camp.name);
-      let problemType = noActivityDays >= noRevDays ? 'no_activity' : 'no_revenue';
-      let problemDetail = '';
-      if (problemType === 'no_activity') problemDetail = noActivityDays + ' day(s) with zero impressions';
-      else problemDetail = noRevDays + ' day(s) with spend (£' + totalSpend.toFixed(2) + ' total) but zero revenue';
-      scored.push({ score, camp, agentName, problemType, problemDetail, noActivityDays, noRevDays, totalSpend });
-    });
-
-    // Sort by score descending, take top 5
-    scored.sort(function(a,b){ return b.score - a.score; });
-    const top5 = scored.slice(0, 5);
-    console.log('Top 5 task candidates: ' + top5.map(function(t){ return t.camp.name + ' (' + t.score + ')'; }).join(', '));
-
-    const dashUrl = process.env.DASHBOARD_URL || 'https://campaignpulse-setup-production.up.railway.app';
     const today = new Date().toISOString().split('T')[0];
 
-    for (const item of top5) {
-      const c = item.camp;
-      const agentName = item.agentName || 'Unassigned';
+    // Process each agent independently
+    for (const agentName of Object.keys(agentCampaigns)) {
+      const agentCamps = agentCampaigns[agentName];
 
-      // Check if task already exists for today
-      const existing = await db.query(
-        'SELECT id, status, days_persisted FROM campaign_tasks WHERE campaign_id = $1 AND created_date = $2',
-        [c.campaignId, today]
+      // Count agent's current open tasks (daily only, not alert tasks)
+      const openTasksRes = await db.query(
+        'SELECT COUNT(*) as cnt FROM campaign_tasks WHERE agent_name=$1 AND status IN ($2,$3) AND task_source=$4',
+        [agentName, 'open', 'in_progress', 'daily']
       );
+      const openCount = parseInt(openTasksRes.rows[0].cnt || 0);
 
-      if (existing.rows.length > 0) {
-        // Update existing task — problem persisting
-        await db.query(
-          'UPDATE campaign_tasks SET days_persisted = days_persisted + 1, score = $1, updated_at = NOW() WHERE campaign_id = $2 AND created_date = $3',
-          [item.score, c.campaignId, today]
-        );
-        console.log('Task updated (persisting): ' + c.name);
+      // Hard cap at 10 open daily tasks
+      if (openCount >= 10) {
+        console.log(agentName + ' already has ' + openCount + ' open tasks - skipping');
         continue;
       }
 
-      // Check if open task from previous days exists
-      const prevTask = await db.query(
-        'SELECT id, days_persisted FROM campaign_tasks WHERE campaign_id = $1 AND status IN ($2,$3) ORDER BY created_date DESC LIMIT 1',
-        [c.campaignId, 'open', 'in_progress']
+      // Count completed tasks today to know how many slots to fill
+      const completedTodayRes = await db.query(
+        'SELECT COUNT(*) as cnt FROM campaign_tasks WHERE agent_name=$1 AND status=$2 AND DATE(resolved_at)=$3 AND task_source=$4',
+        [agentName, 'complete', today, 'daily']
       );
+      const completedToday = parseInt(completedTodayRes.rows[0].cnt || 0);
 
-      let daysPersisted = 1;
-      if (prevTask.rows.length > 0) {
-        daysPersisted = (prevTask.rows[0].days_persisted || 1) + 1;
-        // Update previous task days
-        await db.query(
-          'UPDATE campaign_tasks SET days_persisted = $1, score = $2, updated_at = NOW() WHERE id = $3',
-          [daysPersisted, item.score, prevTask.rows[0].id]
+      // How many new tasks to assign: up to 5, but respect cap of 10
+      const slotsAvailable = Math.min(5, 10 - openCount);
+      if (slotsAvailable <= 0) continue;
+
+      // Score all campaigns for this agent
+      const scored = [];
+      agentCamps.forEach(function(camp) {
+        if (!camp.days.length) return;
+        const scoring = scoreCampaignDays(camp.days);
+        if (scoring.score === 0) return;
+
+        let problemType = 'investigation';
+        let problemDetail = '';
+        if (scoring.noActivityDays >= 1) {
+          problemType = 'no_activity';
+          problemDetail = scoring.noActivityDays + ' day(s) zero impressions';
+        } else if (scoring.noRevDays >= 1) {
+          problemType = 'no_revenue';
+          problemDetail = '£' + scoring.totalSpend + ' spent over ' + camp.days.length + ' day(s) with zero revenue';
+        } else if (parseFloat(scoring.avgAcos) > 35) {
+          problemType = 'high_acos';
+          problemDetail = scoring.avgAcos + '% avg ACOS over ' + camp.days.length + ' day(s), spend £' + scoring.totalSpend;
+        }
+
+        scored.push({
+          camp: camp,
+          score: scoring.score,
+          problemType: problemType,
+          problemDetail: problemDetail,
+          scoring: scoring
+        });
+      });
+
+      // Sort by score descending
+      scored.sort(function(a,b){ return b.score - a.score; });
+
+      let newTasksCreated = 0;
+
+      for (const item of scored) {
+        if (newTasksCreated >= slotsAvailable) break;
+        const c = item.camp;
+
+        // Check if daily task already exists for this campaign today
+        const existingToday = await db.query(
+          'SELECT id FROM campaign_tasks WHERE campaign_id=$1 AND created_date=$2 AND task_source=$3',
+          [String(c.campaignId), today, 'daily']
         );
-        console.log('Existing task updated — day ' + daysPersisted + ': ' + c.name);
-        // Still send notification on day 2+ with escalation
+        if (existingToday.rows.length > 0) continue;
+
+        // Check if open task exists from previous days - if so increment day counter
+        const prevTask = await db.query(
+          'SELECT id, days_persisted FROM campaign_tasks WHERE campaign_id=$1 AND status IN ($2,$3) AND task_source=$4 ORDER BY created_date DESC LIMIT 1',
+          [String(c.campaignId), 'open', 'in_progress', 'daily']
+        );
+
+        let daysPersisted = 1;
+        let isSuperUrgent = false;
+
+        if (prevTask.rows.length > 0) {
+          daysPersisted = (prevTask.rows[0].days_persisted || 1) + 1;
+          isSuperUrgent = daysPersisted >= 3;
+          // Update previous task with new day count
+          await db.query(
+            'UPDATE campaign_tasks SET days_persisted=$1, score=$2, updated_at=NOW() WHERE id=$3',
+            [daysPersisted, item.score, prevTask.rows[0].id]
+          );
+          // Escalate to manager if super urgent
+          if (isSuperUrgent) {
+            const escParts = [
+              '🚨 SUPER URGENT - Day ' + daysPersisted + ' UNRESOLVED',
+              'Campaign: ' + c.name,
+              'Agent: ' + agentName,
+              'Problem: ' + item.problemDetail,
+              'Score: ' + item.score,
+              'This has been unresolved for ' + daysPersisted + ' days - manager action needed'
+            ];
+            await sendGoogleChat(escParts.join('\n'));
+          }
+          // Still create new daily record for today's log
+        }
+
+        // Insert new task record for today
+        await db.query(
+          'INSERT INTO campaign_tasks (campaign_id, campaign_name, agent_name, portfolio, problem_type, problem_detail, days_persisted, total_wasted, score, task_source) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',
+          [String(c.campaignId), c.name, agentName, c.portfolio||'', item.problemType, item.problemDetail, daysPersisted, parseFloat(item.scoring.totalSpend), item.score, 'daily']
+        );
+
+        // Build task message for agent
+        const urgencyLabel = isSuperUrgent ? '🚨 SUPER URGENT - Day ' + daysPersisted : (daysPersisted > 1 ? '⚠ Day ' + daysPersisted + ' - Unresolved' : '📋 New Task');
+        const msgParts = [
+          urgencyLabel,
+          'Campaign: ' + c.name,
+          'Problem: ' + item.problemDetail,
+          'Score: ' + item.score + ' (higher = more urgent)',
+          '',
+          dashUrl + '/tasks'
+        ];
+        const msg = msgParts.join('\n');
+
+        // Send to agent personal space
+        const sent = await sendToAgent(agentName, msg);
+        if (!sent) {
+          console.log('No webhook for ' + agentName + ' - task created silently');
+        }
+
+        newTasksCreated++;
+        console.log('Daily task created for ' + agentName + ': ' + c.name + ' (Day ' + daysPersisted + ', score ' + item.score + ')');
       }
 
-      // Create new task record
-      await db.query(
-        'INSERT INTO campaign_tasks (campaign_id, campaign_name, agent_name, portfolio, problem_type, problem_detail, days_persisted, total_wasted, score) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT (campaign_id, created_date) DO NOTHING',
-        [c.campaignId, c.name, agentName, c.portfolio, item.problemType, item.problemDetail, daysPersisted, item.totalSpend, item.score]
-      );
-
-      // Build Google Chat message
-      const dayLabel = daysPersisted > 1 ? ' (Day ' + daysPersisted + ' — unresolved)' : '';
-      const emoji = item.problemType === 'no_activity' ? '😴' : '💸';
-const msgParts = [
-        emoji + ' *CAMPAIGN TASK' + dayLabel + '*',
-        '*Campaign:* ' + c.name,
-        '*Agent:* ' + agentName,
-        '*Problem:* ' + item.problemDetail,
-        '*Score:* ' + item.score + ' (higher = more urgent)',
-        '*Portfolio:* ' + (c.portfolio || 'N/A'),
-        '',
-        'Please investigate and update the task status:',
-        'Reply *working* to say you are investigating',
-        'Reply *paused* to say you have paused the campaign',
-        'Reply *discuss* to flag for team discussion',
-        '',
-        dashUrl + '/tasks'
-      ];
-      const msg = msgParts.join('\n');
-      // Send to agent channel or main group
-      if (agentName && agentName !== 'Unassigned') {
-        await sendToAgent(agentName, msg);
-      } else {
-        await sendGoogleChat(msg);
-      }
-
-      // Escalate to main group if day 2+
-      if (daysPersisted >= 2) {
-        const escParts = ['Escalation Day ' + daysPersisted, 'Campaign: ' + c.name, 'Agent: ' + agentName, 'Problem: ' + item.problemDetail, 'Not resolved for ' + daysPersisted + ' days.'];
-        await sendGoogleChat(escParts.join('\n'));
-      }
+      console.log(agentName + ': ' + newTasksCreated + ' new tasks created, ' + openCount + ' already open');
     }
 
-    console.log('Daily task scheduler complete — ' + top5.length + ' tasks processed');
+    console.log('Daily task scheduler complete');
   } catch(e) {
     console.error('Task scheduler error: ' + e.message);
   }
 }
-
-// Helper fix — rename scorecamp to scorecamp
-function scorecamp(days) { return scoreCampaign(days); }
-
-
-// ── Task API routes ───────────────────────────────────────────────────────
-app.get('/api/tasks', async function(req, res) {
-  if (!db) return res.json({ tasks: [] });
-  try {
-    const result = await db.query(
-      'SELECT * FROM campaign_tasks ORDER BY score DESC, created_date DESC LIMIT 100'
-    );
-    res.json({ tasks: result.rows });
-  } catch(e) {
-    res.json({ tasks: [], error: e.message });
-  }
-});
-
-app.post('/api/tasks/:id/status', async function(req, res) {
-  if (!db) return res.status(500).json({ error: 'No DB' });
-  const { status, notes } = req.body;
-  try {
-    const resolved = status === 'complete' ? 'NOW()' : 'NULL';
-    await db.query(
-      'UPDATE campaign_tasks SET status = $1, agent_notes = $2, updated_at = NOW(), resolved_at = ' + (status === 'complete' ? 'NOW()' : 'NULL') + ' WHERE id = $3',
-      [status, notes || '', req.params.id]
-    );
-    res.json({ success: true });
-  } catch(e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-app.post('/api/tasks/run-now', async function(req, res) {
-  runDailyTaskScheduler().catch(function(e){ console.error('Manual task run error: ' + e.message); });
-  res.json({ success: true, message: 'Task scheduler triggered' });
-});
 
 // ── API Routes ────────────────────────────────────────────────────────────
 app.get('/api/dashboard', function(req, res) {
@@ -1173,6 +1244,7 @@ app.post('/api/alerts/:campaignId/dismiss', function(req, res) {
 
 // Daily task scheduler at 9am UK time
 cron.schedule('0 9 * * *', function() {
+  console.log('Running scheduled daily tasks at 9am UK time');
   runDailyTaskScheduler().catch(function(e){ console.error('Scheduled task error: ' + e.message); });
 }, { timezone: 'Europe/London' });
 
