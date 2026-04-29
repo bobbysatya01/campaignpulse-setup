@@ -230,6 +230,9 @@ async function loadHistoryDate() {
     const res = await fetch('/api/snapshots/' + dateClean);
     if (!res.ok) {
       document.getElementById('history-empty').style.display = '';
+      document.getElementById('history-metrics').style.display = '';
+document.getElementById('history-placeholder').style.display = 'none';
+document.getElementById('history-empty').style.display = 'none';
       document.getElementById('history-loading').textContent = '';
       return;
     }
