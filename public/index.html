@@ -635,16 +635,19 @@ function showPage(name, btn) {
 // ── Fetch data ─────────────────────────────────────────────────────────────
 async function fetchData() {
   try {
-    const res = await fetch('/api/dashboard');
-    if (!res.ok) throw new Error('API error');
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    const res = await fetch('/api/dashboard', { signal: controller.signal });
+    clearTimeout(timeout);
+    if (!res.ok) throw new Error('API error ' + res.status);
     appData = await res.json();
     allCampaigns = appData.campaigns || [];
     renderDashboard();
     updateSyncTime();
     populateFilters();
   } catch(e) {
-    console.error('Fetch error:', e);
-    document.getElementById('sync-time').textContent = 'Retrying...';
+    console.error('Fetch error:', e.message);
+    document.getElementById('sync-time').textContent = 'Connection error - retrying...';
     setTimeout(fetchData, 5000);
   }
 }
@@ -1339,7 +1342,7 @@ function showHistoryTab(tab, btn) {
 
 // ── Init ──────────────────────────────────────────────────────────────────
 async function init() {
-  try { await fetchData(); } catch(e) { setTimeout(init, 3000); }
+  try { await fetchData(); } catch(e) { console.error('Init error:', e); setTimeout(init, 3000); }
 }
 init();
 setInterval(fetchData, 5 * 60 * 1000);
