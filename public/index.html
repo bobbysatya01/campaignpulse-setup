@@ -1478,7 +1478,7 @@ async function loadHistoryDates() {
     data.dates.forEach(function(d) {
       // Fix timezone issue - add T00:00:00 to force local date parsing
       const dateStr = typeof d.date === 'string' ? d.date.split('T')[0] : String(d.date).split('T')[0];
-      const date = new Date(dateStr + 'T12:00:00Z');
+      const date = new Date(dateStr + 'T12:00:00');
       const label = date.toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short', year:'numeric' });
       const m = d.metrics || {};
       const opt = document.createElement('option');
