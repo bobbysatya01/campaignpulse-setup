@@ -396,7 +396,7 @@ tbody tr:hover { background: var(--surface2); }
     <div style="display:flex;gap:10px;margin-bottom:14px;align-items:center;flex-wrap:wrap">
       <input type="text" id="camp-search" placeholder="Search campaigns..." oninput="renderAllCampaigns()" style="background:white;border:1px solid var(--border2);color:var(--text);padding:8px 14px;border-radius:8px;font-size:13px;width:260px;font-family:inherit">
       <select id="camp-portfolio-filter" onchange="renderAllCampaigns()" style="background:white;border:1px solid var(--border2);color:var(--text);padding:8px 12px;border-radius:8px;font-size:13px;font-family:inherit;cursor:pointer">
-        <option value="">All portfolios</option>
+        <option value="">All agents</option>
       </select>
       <select id="camp-type-filter" onchange="renderAllCampaigns()" style="background:white;border:1px solid var(--border2);color:var(--text);padding:8px 12px;border-radius:8px;font-size:13px;font-family:inherit;cursor:pointer">
         <option value="">All types</option>
@@ -618,10 +618,19 @@ tbody tr:hover { background: var(--surface2); }
       <div class="metric-card alert"><div class="metric-label">Overdue (2+ days)</div><div class="metric-value" id="task-overdue">—</div><div class="metric-delta delta-down">Needs escalation</div></div>
     </div>
 
+    <div style="display:flex;gap:10px;margin-bottom:14px;align-items:center">
+      <select id="task-agent-filter" onchange="renderTasks(taskTab)" style="background:white;border:1px solid var(--border2);color:var(--text);padding:8px 14px;border-radius:8px;font-size:13px;font-family:inherit;cursor:pointer;min-width:160px">
+        <option value="">All agents</option>
+      </select>
+      <select id="task-source-filter" onchange="renderTasks(taskTab)" style="background:white;border:1px solid var(--border2);color:var(--text);padding:8px 12px;border-radius:8px;font-size:13px;font-family:inherit;cursor:pointer">
+        <option value="">All types</option>
+        <option value="daily">Daily tasks</option>
+        <option value="alert">Alert tasks</option>
+      </select>
+    </div>
     <div class="tabs" style="margin-bottom:16px">
-      <button class="tab-btn active" onclick="showTaskTab('open',this)">Open & In Progress</button>
+      <button class="tab-btn active" onclick="showTaskTab('open',this)">Due</button>
       <button class="tab-btn" onclick="showTaskTab('complete',this)">Completed</button>
-      <button class="tab-btn" onclick="showTaskTab('all',this)">All tasks</button>
     </div>
 
     <div id="tasks-container">
@@ -656,7 +665,18 @@ tbody tr:hover { background: var(--surface2); }
     </div>
     <div class="table-card">
       <div style="overflow-x:auto"><table>
-        <thead><tr><th>Date</th><th>Campaign</th><th>Portfolio</th><th>Agent</th><th>Budget</th><th>Ran out at</th><th>ACOS</th><th>Est. missed</th><th>Resolved at</th><th>Gap</th><th>Added</th><th>Action</th></tr></thead>
+        <thead><tr>
+          <th onclick="sortReport('date')" style="cursor:pointer">Date <span id="rs-date"></span></th>
+          <th onclick="sortReport('campaign')" style="cursor:pointer">Campaign <span id="rs-campaign"></span></th>
+          <th>Portfolio</th><th>Agent</th>
+          <th onclick="sortReport('budget')" style="cursor:pointer">Budget <span id="rs-budget"></span></th>
+          <th onclick="sortReport('time')" style="cursor:pointer">Ran out at <span id="rs-time"></span></th>
+          <th onclick="sortReport('acos')" style="cursor:pointer">ACOS <span id="rs-acos"></span></th>
+          <th onclick="sortReport('missed')" style="cursor:pointer">Est. missed <span id="rs-missed"></span></th>
+          <th>Resolved at</th>
+          <th onclick="sortReport('gap')" style="cursor:pointer">Gap <span id="rs-gap"></span></th>
+          <th>Added</th><th>Action</th>
+        </tr></thead>
         <tbody id="report-table"><tr><td colspan="12"><div class="empty">No events yet. Events appear when campaigns run out of budget.</div></td></tr></tbody>
       </table></div>
     </div>
@@ -725,6 +745,16 @@ let appData = { metrics:{}, campaigns:[], alerts:[], exhaustionLog:[], lastSync:
 let allCampaigns = [];
 let currentFilter = 'action';
 let sortState = { col: null, dir: 1 };
+let reportSortState = { col: 'date', dir: -1 };
+
+function sortReport(col) {
+  if (reportSortState.col === col) { reportSortState.dir *= -1; }
+  else { reportSortState.col = col; reportSortState.dir = -1; }
+  document.querySelectorAll('[id^="rs-"]').forEach(function(el){ el.textContent = ''; });
+  const ind = document.getElementById('rs-' + col);
+  if (ind) ind.textContent = reportSortState.dir === -1 ? ' ↓' : ' ↑';
+  renderReport();
+}
 const pageTitles = { dashboard:'Dashboard', campaigns:'All campaigns', ai:'AI analysis', keywords:'Keyword Intelligence', report:'Budget exhaustion report', activity:'Activity log', settings:'Settings' };
 
 // ── Navigation ─────────────────────────────────────────────────────────────
@@ -919,7 +949,7 @@ function renderAllCampaigns() {
   const typeFilter = document.getElementById('camp-type-filter')?.value || '';
   let filtered = getFilteredCampaigns(currentFilter);
   if (search) filtered = filtered.filter(c => c.name.toLowerCase().includes(search) || (c.portfolio||'').toLowerCase().includes(search));
-  if (portfolioFilter) filtered = filtered.filter(c => (c.portfolio||'') === portfolioFilter);
+  if (portfolioFilter) filtered = filtered.filter(function(c){ return (c.name||'').startsWith(portfolioFilter + ' |') || (c.name||'').startsWith(portfolioFilter + '|'); });
   if (typeFilter) filtered = filtered.filter(c => (c.targetingType||'') === typeFilter);
   // Sort
   if (sortState.col) {
@@ -946,8 +976,11 @@ function renderAllCampaigns() {
   // Populate portfolio filter
   const sel = document.getElementById('camp-portfolio-filter');
   if (sel && sel.options.length <= 1) {
-    const portfolios = [...new Set(allCampaigns.map(c=>c.portfolio||'').filter(Boolean))].sort();
-    portfolios.forEach(p => { const o = document.createElement('option'); o.value=p; o.textContent=p; sel.appendChild(o); });
+    const agents = [...new Set(allCampaigns.map(function(c){
+      const parts = (c.name||'').split('|');
+      return parts.length > 1 ? parts[0].trim() : '';
+    }).filter(Boolean))].sort();
+    agents.forEach(function(a) { const o = document.createElement('option'); o.value=a; o.textContent=a; sel.appendChild(o); });
   }
 }
 
@@ -1001,6 +1034,21 @@ function renderReport() {
   let filtered = log;
   if (campFilter) filtered = filtered.filter(e => e.campaign === campFilter);
   if (typeFilter !== 'all') filtered = filtered.filter(e => e.type === typeFilter);
+  // Sort
+  filtered.sort(function(a,b) {
+    const col = reportSortState.col;
+    let va = col === 'missed' ? parseFloat((a.missed||'0').replace(/[^0-9.]/g,'')) :
+             col === 'budget' ? parseFloat((a.budget||'0').replace(/[^0-9.]/g,'')) :
+             col === 'gap' ? parseInt(a.gap||0) :
+             col === 'acos' ? parseFloat(a.acos||0) :
+             (a[col]||'');
+    let vb = col === 'missed' ? parseFloat((b.missed||'0').replace(/[^0-9.]/g,'')) :
+             col === 'budget' ? parseFloat((b.budget||'0').replace(/[^0-9.]/g,'')) :
+             col === 'gap' ? parseInt(b.gap||0) :
+             col === 'acos' ? parseFloat(b.acos||0) :
+             (b[col]||'');
+    return va < vb ? reportSortState.dir : va > vb ? -reportSortState.dir : 0;
+  });
   document.getElementById('rpt-events').textContent = filtered.length;
   document.getElementById('rpt-events-d').textContent = filtered.length + ' events recorded';
   const missed = filtered.reduce((s,e) => s + parseFloat((e.missed||'0').replace(/[^0-9.]/g,'')), 0);
@@ -1528,6 +1576,14 @@ async function loadTasks() {
     const res = await fetch('/api/tasks');
     const data = await res.json();
     allTasks = data.tasks || [];
+    // Populate agent filter
+    const agentSel = document.getElementById('task-agent-filter');
+    if (agentSel) {
+      const currentVal = agentSel.value;
+      agentSel.innerHTML = '<option value="">All agents</option>';
+      const agents = [...new Set(allTasks.map(function(t){ return t.agent_name||''; }).filter(Boolean))].sort();
+      agents.forEach(function(a){ const o=document.createElement('option');o.value=a;o.textContent=a;if(a===currentVal)o.selected=true;agentSel.appendChild(o); });
+    }
 
     const today = new Date().toISOString().split('T')[0];
     const open = allTasks.filter(function(t){ return t.status === 'open'; });
@@ -1602,6 +1658,46 @@ function renderTasks(tab) {
       }()) +
     '</div>';
   }).join('');
+}
+
+async function completeTask(taskId) {
+  await updateTask(taskId, 'complete', 'Done');
+}
+
+function dismissTask(taskId) {
+  const reasons = ['High ACOS', 'No CVR', 'Test Low Budget', 'Other'];
+  const sel = document.createElement('div');
+  sel.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:white;padding:24px;border-radius:12px;box-shadow:0 8px 40px rgba(0,0,0,0.2);z-index:9999;min-width:320px';
+  sel.setAttribute('data-task-id', taskId);
+  const optionsHtml = reasons.map(function(r){ return '<option>' + r + '</option>'; }).join('');
+  sel.innerHTML = '<div style="font-size:15px;font-weight:700;margin-bottom:16px">Why are you dismissing?</div>' +
+    '<select id="dismiss-reason-sel" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;margin-bottom:10px;font-size:13px">' + optionsHtml + '</select>' +
+    '<textarea id="dismiss-other-text" placeholder="Describe reason" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;font-size:13px;height:60px;display:none;margin-bottom:10px;resize:vertical"></textarea>' +
+    '<div style="display:flex;gap:8px;justify-content:flex-end">' +
+    '<button id="dismiss-cancel-btn" class="btn btn-ghost" style="font-size:12px">Cancel</button>' +
+    '<button id="dismiss-confirm-btn" class="btn btn-primary" style="font-size:12px">Confirm</button></div>';
+  sel.querySelector('#dismiss-reason-sel').onchange = function() {
+    sel.querySelector('#dismiss-other-text').style.display = this.value === 'Other' ? '' : 'none';
+  };
+  sel.querySelector('#dismiss-cancel-btn').onclick = function() { sel.remove(); };
+  sel.querySelector('#dismiss-confirm-btn').onclick = function() { confirmDismiss(taskId, sel); };
+  document.body.appendChild(sel);
+}
+
+async function confirmDismiss(taskId, popup) {
+  if (!popup) return;
+  const reasonSel = popup.querySelector('#dismiss-reason-sel');
+  const otherText = popup.querySelector('#dismiss-other-text');
+  const reason = reasonSel.value === 'Other' ? (otherText.value || 'Other') : reasonSel.value;
+  popup.remove();
+  try {
+    await fetch('/api/tasks/' + taskId + '/status', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'dismissed', dismissedReason: reason, notes: reason })
+    });
+    await loadTasks();
+  } catch(e) { alert('Error: ' + e.message); }
 }
 
 async function updateTask(taskId, status, notes) {
