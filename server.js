@@ -476,6 +476,11 @@ async function initTasksTable() {
       CREATE INDEX IF NOT EXISTS idx_tasks_status ON campaign_tasks(status);
       CREATE INDEX IF NOT EXISTS idx_tasks_date ON campaign_tasks(created_date);
     `);
+    // Add missing columns to existing table (safe migrations)
+    await db.query(`ALTER TABLE campaign_tasks ADD COLUMN IF NOT EXISTS task_source TEXT DEFAULT 'daily'`);
+    await db.query(`ALTER TABLE campaign_tasks ADD COLUMN IF NOT EXISTS days_persisted INTEGER DEFAULT 1`);
+    await db.query(`ALTER TABLE campaign_tasks ADD COLUMN IF NOT EXISTS total_wasted NUMERIC DEFAULT 0`);
+    await db.query(`ALTER TABLE campaign_tasks ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMP`);
     console.log('Tasks table ready');
   } catch(e) {
     console.error('Tasks table error: ' + e.message);
