@@ -1231,7 +1231,10 @@ app.post('/api/campaigns/:id/budget', async function(req, res) {
         log.gap = gapMins > 0 ? gapMins + ' min' : '< 1 min';
       }
     }
-    await sendGoogleChat('✅ *Budget approved*\n*Campaign:* ' + campaign.name + '\n*Portfolio:* ' + (campaign.portfolio || 'N/A') + '\n+£' + amount + ' added. New budget: £' + newBudget.toFixed(2));
+    const approvalAgent = extractAgentFromCampaign(campaign.name) || '';
+    const approvalMsg = ['✅ Budget added', campaign.name, '+£' + amount + ' added. New budget: £' + newBudget.toFixed(2)].join('\n');
+    if (approvalAgent) { await sendToAgent(approvalAgent, approvalMsg); }
+    await sendGoogleChat(approvalMsg);
     syncCampaigns();
     res.json({ success: true, newBudget: newBudget });
   } catch(e) {
