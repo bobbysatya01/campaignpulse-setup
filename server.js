@@ -64,40 +64,7 @@ function getHeaders(profileId, token) {
   };
 }
 
-// ── Fetch portfolios ──────────────────────────────────────────────────────
-async function fetchPortfolios() {
-  const token = await getAccessToken();
-  const profileId = await getProfileId();
-  try {
-    // Try extended portfolios endpoint first (includes all states)
-    const res = await axios.get('https://advertising-api-eu.amazon.com/v2/portfolios/extended', {
-      headers: getHeaders(profileId, token)
-    });
-    const portfolioList = Array.isArray(res.data) ? res.data : (res.data.portfolios || res.data.portfolio || []);
-    const map = {};
-    portfolioList.forEach(function(p) {
-      if (p.portfolioId) map[String(p.portfolioId)] = p.name || ('Portfolio ' + p.portfolioId);
-    });
-    state.portfolios = map;
-    console.log('Portfolios fetched (extended): ' + Object.keys(map).length + ' — ' + JSON.stringify(map));
-  } catch(e) {
-    console.log('Extended portfolios failed (' + e.message + '), trying standard endpoint...');
-    try {
-      const res2 = await axios.get('https://advertising-api-eu.amazon.com/v2/portfolios', {
-        headers: getHeaders(profileId, token)
-      });
-      const portfolioList = Array.isArray(res2.data) ? res2.data : (res2.data.portfolios || []);
-      const map = {};
-      portfolioList.forEach(function(p) {
-        if (p.portfolioId) map[String(p.portfolioId)] = p.name || ('Portfolio ' + p.portfolioId);
-      });
-      state.portfolios = map;
-      console.log('Portfolios fetched (standard): ' + Object.keys(map).length + ' — ' + JSON.stringify(map));
-    } catch(e2) {
-      console.log('Portfolio API unavailable: ' + e2.message);
-    }
-  }
-}
+// ── Portfolio API removed — agent identified from campaign name prefix ────
 
 // ── Fetch campaigns ───────────────────────────────────────────────────────
 async function fetchCampaigns() {
@@ -291,7 +258,6 @@ async function syncCampaigns() {
   state.syncing = true;
   console.log('Syncing at ' + new Date().toTimeString().slice(0, 8));
   try {
-    await fetchPortfolios();
     const raw = await fetchCampaigns();
 
     // Fetch spend/revenue stats
@@ -1006,6 +972,7 @@ async function analyseKeywords() {
       '\n\nTotal search terms analysed: ' + data.length +
       '\n\nProvide analysis in this JSON format only:\n{"wasteReduction":{"totalWasted":"£X","topWasters":[{"searchTerm":"","campaign":"","spend":"£X","recommendation":"Add as negative keyword","reason":""}],"estimatedSaving":"£X/week"},"newKeywords":{"totalOpportunities":0,"topOpportunities":[{"searchTerm":"","campaign":"","purchases":0,"sales":"£X","recommendation":"Add as exact match keyword","estimatedImpact":""}]},"bidChanges":[{"keyword":"","campaign":"","currentIssue":"","recommendation":"","expectedOutcome":""}],"portfolioInsights":{"patterns":"","topPerforming":"","needsAttention":""},"summary":"","estimatedWeeklyImpact":"£X"}';
 
+    console.log('Calling Claude claude-opus-4-7 for keyword analysis...');
     const aiRes = await axios.post('https://api.anthropic.com/v1/messages', {
       model: 'claude-opus-4-7',
       max_tokens: 4000,
