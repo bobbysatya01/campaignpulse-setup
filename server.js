@@ -69,25 +69,32 @@ async function fetchPortfolios() {
   const token = await getAccessToken();
   const profileId = await getProfileId();
   try {
-    const res = await axios.get('https://advertising-api-eu.amazon.com/v2/portfolios', {
+    // Try extended portfolios endpoint first (includes all states)
+    const res = await axios.get('https://advertising-api-eu.amazon.com/v2/portfolios/extended', {
       headers: getHeaders(profileId, token)
     });
+    const portfolioList = Array.isArray(res.data) ? res.data : (res.data.portfolios || res.data.portfolio || []);
     const map = {};
-    res.data.forEach(function(p) { map[String(p.portfolioId)] = p.name; });
+    portfolioList.forEach(function(p) {
+      if (p.portfolioId) map[String(p.portfolioId)] = p.name || ('Portfolio ' + p.portfolioId);
+    });
     state.portfolios = map;
-    console.log('Portfolios fetched: ' + Object.keys(map).length);
+    console.log('Portfolios fetched (extended): ' + Object.keys(map).length + ' — ' + JSON.stringify(map));
   } catch(e) {
-    // Try v2 with state filter
+    console.log('Extended portfolios failed (' + e.message + '), trying standard endpoint...');
     try {
-      const res2 = await axios.get('https://advertising-api-eu.amazon.com/v2/portfolios?portfolioStateFilter=enabled,paused', {
+      const res2 = await axios.get('https://advertising-api-eu.amazon.com/v2/portfolios', {
         headers: getHeaders(profileId, token)
       });
+      const portfolioList = Array.isArray(res2.data) ? res2.data : (res2.data.portfolios || []);
       const map = {};
-      res2.data.forEach(function(p) { map[String(p.portfolioId)] = p.name; });
+      portfolioList.forEach(function(p) {
+        if (p.portfolioId) map[String(p.portfolioId)] = p.name || ('Portfolio ' + p.portfolioId);
+      });
       state.portfolios = map;
-      console.log('Portfolios fetched (v2): ' + Object.keys(map).length);
+      console.log('Portfolios fetched (standard): ' + Object.keys(map).length + ' — ' + JSON.stringify(map));
     } catch(e2) {
-      console.log('Portfolio API unavailable - using IDs only: ' + e2.message);
+      console.log('Portfolio API unavailable: ' + e2.message);
     }
   }
 }
@@ -814,6 +821,10 @@ app.get('/api/snapshots/:date', async function(req, res) {
 
 app.get('/api/health', function(req, res) {
   res.json({ status: 'ok', lastSync: state.lastSync, campaigns: state.campaigns.length, error: state.error });
+});
+
+app.get('/api/portfolios', function(req, res) {
+  res.json({ portfolios: state.portfolios, count: Object.keys(state.portfolios).length });
 });
 
 app.post('/api/sync', function(req, res) {
