@@ -263,7 +263,6 @@ tbody tr:hover { background: var(--surface2); }
     </div>
     <div style="display:flex;align-items:center;gap:6px">
       <span style="font-size:17px;font-weight:700;color:#fff">CampaignPulse</span>
-      <span style="font-size:9px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;background:var(--accent);color:white;padding:2px 5px;border-radius:3px">LIVE</span>
     </div>
     <div style="font-size:11px;color:rgba(255,255,255,0.35);margin-top:2px;font-family:var(--mono)">amazon.co.uk</div>
   </div>
@@ -271,7 +270,7 @@ tbody tr:hover { background: var(--surface2); }
     <div class="nav-section">Monitor</div>
     <button class="nav-item active" onclick="showPage('dashboard',this)">
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="1" width="6" height="6" rx="1.5"/><rect x="9" y="1" width="6" height="6" rx="1.5"/><rect x="1" y="9" width="6" height="6" rx="1.5"/><rect x="9" y="9" width="6" height="6" rx="1.5"/></svg>
-      Dashboard
+      Live Dashboard
       <span class="nav-badge" id="nb-action" style="display:none">0</span>
     </button>
     <button class="nav-item" onclick="showPage('campaigns',this)">
@@ -281,12 +280,17 @@ tbody tr:hover { background: var(--surface2); }
     <button class="nav-item" onclick="showPage('ai',this)">
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M6 8l1.5 1.5L10 6"/></svg>
       AI analysis
-      <span class="nav-badge amber">Live</span>
     </button>
     <button class="nav-item" onclick="showPage('keywords',this)">
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="6" cy="6" r="4"/><path d="M10 10l4 4"/></svg>
       Keyword intelligence
       <span class="nav-badge green">AI</span>
+    </button>
+    <div class="nav-section">Tasks</div>
+    <button class="nav-item" onclick="showPage('tasks',this)">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="12" height="12" rx="2"/><path d="M5 8l2 2 4-4"/></svg>
+      Campaign tasks
+      <span class="nav-badge" id="tasks-badge" style="display:none;background:var(--red)">0</span>
     </button>
     <div class="nav-section">Reports</div>
     <button class="nav-item" onclick="showPage('history',this)">
@@ -591,6 +595,37 @@ tbody tr:hover { background: var(--surface2); }
     </div>
   </div>
 
+  <!-- TASKS PAGE -->
+  <div class="page" id="page-tasks">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+      <div>
+        <div class="section-title">Campaign Tasks</div>
+        <div class="section-sub">Daily investigation tasks assigned to agents based on 3-day performance history</div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-ghost" onclick="runTasksNow()">Run now (test)</button>
+        <button class="btn btn-primary" onclick="loadTasks()">Refresh</button>
+      </div>
+    </div>
+
+    <div class="metrics-grid" style="grid-template-columns:repeat(4,minmax(0,1fr));margin-bottom:20px">
+      <div class="metric-card alert"><div class="metric-label">Open tasks</div><div class="metric-value" id="task-open">—</div><div class="metric-delta delta-down">Awaiting action</div></div>
+      <div class="metric-card"><div class="metric-label">In progress</div><div class="metric-value" id="task-inprogress">—</div><div class="metric-delta">Being investigated</div></div>
+      <div class="metric-card success"><div class="metric-label">Completed today</div><div class="metric-value" id="task-complete">—</div><div class="metric-delta delta-up">Resolved</div></div>
+      <div class="metric-card alert"><div class="metric-label">Overdue (2+ days)</div><div class="metric-value" id="task-overdue">—</div><div class="metric-delta delta-down">Needs escalation</div></div>
+    </div>
+
+    <div class="tabs" style="margin-bottom:16px">
+      <button class="tab-btn active" onclick="showTaskTab('open',this)">Open & In Progress</button>
+      <button class="tab-btn" onclick="showTaskTab('complete',this)">Completed</button>
+      <button class="tab-btn" onclick="showTaskTab('all',this)">All tasks</button>
+    </div>
+
+    <div id="tasks-container">
+      <div class="loading"><div class="spinner"></div> Loading tasks...</div>
+    </div>
+  </div>
+
   <!-- BUDGET REPORT -->
   <div class="page" id="page-report">
     <div class="report-filters">
@@ -672,9 +707,10 @@ tbody tr:hover { background: var(--surface2); }
         <div class="settings-row"><div><div class="settings-label">Negative keyword suggestions</div><div class="settings-sub">Zero-conversion terms</div></div><button class="toggle on" onclick="this.classList.toggle('on')"></button></div>
       </div>
     </div>
-    <div style="margin-top:14px;display:flex;gap:8px">
-      <button class="btn btn-primary">Save settings</button>
-      <button class="btn btn-ghost">Reset to defaults</button>
+    <div style="margin-top:14px;display:flex;gap:8px;align-items:center">
+      <button class="btn btn-primary" onclick="saveSettings()">Save settings</button>
+      <button class="btn btn-ghost" onclick="resetSettings()">Reset to defaults</button>
+      <span id="settings-status" style="font-size:12px;color:var(--green);display:none">✓ Settings saved</span>
     </div>
   </div>
 
@@ -699,6 +735,8 @@ function showPage(name, btn) {
   if (name === 'report') renderReport();
   if (name === 'history') loadHistoryDates();
   if (name === 'stuck') loadStuckCampaigns();
+  if (name === 'tasks') loadTasks();
+  if (name === 'settings') loadSettings();
   if (name === 'activity') renderActivity();
   if (name === 'ai') runAI();
   if (name === 'keywords') loadKeywords();
@@ -1212,7 +1250,8 @@ function exportCSV() {
   if (!allCampaigns.length) { alert('No data to export'); return; }
   const headers = ['Campaign','Portfolio','Agent','Type','State','Daily Budget','Spend','Revenue','ACOS','Impressions','Clicks','CTR','Conversions','Budget Remaining','Budget %'];
   const rows = allCampaigns.map(c => [c.name,c.portfolio||'',c.agent||'',c.targetingType||'',c.state,c.dailyBudget,c.spend||0,c.sales||0,c.acos+'%',c.impressions||0,c.clicks||0,(c.ctr||'0')+'%',c.conversions||0,c.budgetRemaining,c.budgetPct+'%']);
-  downloadCSV(headers, rows, 'fksports-campaigns-' + new Date().toISOString().split('T')[0] + '.csv');
+  const exportDate = document.getElementById('history-date-select')?.value || new Date().toISOString().split('T')[0];
+  downloadCSV(headers, rows, 'fksports-campaigns-' + exportDate + '.csv');
 }
 
 function exportReportCSV() {
@@ -1330,11 +1369,13 @@ async function loadHistoryDates() {
     const sel = document.getElementById('history-date-select');
     sel.innerHTML = '<option value="">Select a date...</option>';
     data.dates.forEach(function(d) {
-      const date = new Date(d.date);
+      // Fix timezone issue - add T00:00:00 to force local date parsing
+      const dateStr = typeof d.date === 'string' ? d.date.split('T')[0] : d.date;
+      const date = new Date(dateStr + 'T12:00:00');
       const label = date.toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short', year:'numeric' });
       const m = d.metrics || {};
       const opt = document.createElement('option');
-      opt.value = d.date;
+      opt.value = dateStr;
       opt.textContent = label + ' — £' + (m.totalRevenue||'0') + ' rev · £' + (m.totalSpend||'0') + ' spend · ' + (m.blendedAcos||'0') + '% ACOS';
       sel.appendChild(opt);
     });
@@ -1416,9 +1457,165 @@ function showHistoryTab(tab, btn) {
   if (btn) btn.classList.add('active');
 }
 
+
+// ── Tasks ──────────────────────────────────────────────────────────────────
+let allTasks = [];
+let taskTab = 'open';
+
+async function loadTasks() {
+  try {
+    const res = await fetch('/api/tasks');
+    const data = await res.json();
+    allTasks = data.tasks || [];
+
+    const today = new Date().toISOString().split('T')[0];
+    const open = allTasks.filter(function(t){ return t.status === 'open'; });
+    const inprog = allTasks.filter(function(t){ return t.status === 'in_progress'; });
+    const complete = allTasks.filter(function(t){ return t.status === 'complete' && (t.resolved_at||'').startsWith(today); });
+    const overdue = allTasks.filter(function(t){ return (t.status === 'open' || t.status === 'in_progress') && t.days_persisted >= 2; });
+
+    document.getElementById('task-open').textContent = open.length;
+    document.getElementById('task-inprogress').textContent = inprog.length;
+    document.getElementById('task-complete').textContent = complete.length;
+    document.getElementById('task-overdue').textContent = overdue.length;
+
+    const badge = document.getElementById('tasks-badge');
+    const urgent = open.length + overdue.length;
+    if (urgent > 0) { badge.textContent = urgent; badge.style.display = ''; }
+    else badge.style.display = 'none';
+
+    renderTasks(taskTab);
+  } catch(e) {
+    document.getElementById('tasks-container').innerHTML = '<div class="empty">Error loading tasks: ' + e.message + '</div>';
+  }
+}
+
+function showTaskTab(tab, btn) {
+  taskTab = tab;
+  document.querySelectorAll('#page-tasks .tab-btn').forEach(function(b){ b.classList.remove('active'); });
+  if (btn) btn.classList.add('active');
+  renderTasks(tab);
+}
+
+function renderTasks(tab) {
+  let filtered = allTasks;
+  if (tab === 'open') filtered = allTasks.filter(function(t){ return t.status === 'open' || t.status === 'in_progress'; });
+  else if (tab === 'complete') filtered = allTasks.filter(function(t){ return t.status === 'complete'; });
+
+  const container = document.getElementById('tasks-container');
+  if (!filtered.length) {
+    container.innerHTML = '<div class="empty" style="padding:50px"><div style="font-size:28px;margin-bottom:12px">✅</div><div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:6px">' + (tab === 'open' ? 'No open tasks' : 'No tasks yet') + '</div><div style="font-size:12px;color:var(--text3)">Tasks are created daily at 9am based on campaign performance history.<br>Use "Run now" to test the scheduler.</div></div>';
+    return;
+  }
+
+  container.innerHTML = filtered.map(function(t) {
+    const isOverdue = t.days_persisted >= 2 && (t.status === 'open' || t.status === 'in_progress');
+    const statusColors = { open: 'badge-red', in_progress: 'badge-amber', complete: 'badge-green', escalated: 'badge-red' };
+    const statusLabels = { open: 'Open', in_progress: 'In Progress', complete: 'Complete', escalated: 'Escalated' };
+    const problemIcon = t.problem_type === 'no_activity' ? '😴' : '💸';
+    const dateStr = typeof t.created_date === 'string' ? t.created_date.split('T')[0] : String(t.created_date).split('T')[0];
+
+    return '<div class="ai-card" style="' + (isOverdue ? 'border-left:3px solid var(--red)' : '') + '">' +
+      '<div class="ai-header">' +
+        '<div class="ai-icon">' + problemIcon + '</div>' +
+        '<div style="flex:1">' +
+          '<div class="ai-title">' + escHtml(t.campaign_name) + '</div>' +
+          '<div class="ai-sub">Agent: ' + escHtml(t.agent_name||'Unassigned') + ' · Portfolio: ' + escHtml(t.portfolio||'—') + ' · Created: ' + dateStr + '</div>' +
+        '</div>' +
+        '<div style="display:flex;gap:6px;align-items:center">' +
+          (isOverdue ? '<span class="badge badge-red">Day ' + t.days_persisted + ' — Overdue</span>' : '') +
+          '<span class="badge ' + (statusColors[t.status]||'badge-blue') + '">' + (statusLabels[t.status]||t.status) + '</span>' +
+        '</div>' +
+      '</div>' +
+      '<div class="ai-desc">' + escHtml(t.problem_detail||'') + '</div>' +
+      (t.agent_notes ? '<div style="background:var(--blue-light);border:1px solid rgba(26,111,189,0.15);border-radius:8px;padding:8px 12px;font-size:12px;color:var(--blue);margin-bottom:12px"><strong>Agent notes:</strong> ' + escHtml(t.agent_notes) + '</div>' : '') +
+      (t.status !== 'complete' ? '<div class="ag">' +
+        '<button class="btn btn-amber" style="font-size:12px" onclick="updateTask(' + t.id + ','in_progress','')">Working on it</button>' +
+        '<button class="btn btn-green" style="font-size:12px" onclick="promptTaskComplete(' + t.id + ')">Mark complete</button>' +
+        '<button class="btn btn-red" style="font-size:12px" onclick="updateTask(' + t.id + ','complete','Campaign paused')">Paused campaign</button>' +
+      '</div>' : '<div style="font-size:12px;color:var(--green)">✓ Resolved' + (t.resolved_at ? ' at ' + new Date(t.resolved_at).toLocaleTimeString('en-GB', {hour:'2-digit',minute:'2-digit'}) : '') + '</div>') +
+    '</div>';
+  }).join('');
+}
+
+async function updateTask(taskId, status, notes) {
+  try {
+    await fetch('/api/tasks/' + taskId + '/status', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status, notes })
+    });
+    await loadTasks();
+  } catch(e) { alert('Error updating task: ' + e.message); }
+}
+
+function promptTaskComplete(taskId) {
+  const notes = prompt('What did you do to resolve this? (optional)');
+  if (notes === null) return;
+  updateTask(taskId, 'complete', notes);
+}
+
+async function runTasksNow() {
+  if (!confirm('Run the task scheduler now? This will check 3 days of history and create tasks. Use for testing only.')) return;
+  try {
+    await fetch('/api/tasks/run-now', { method: 'POST' });
+    setTimeout(loadTasks, 2000);
+    alert('Task scheduler triggered. Tasks will appear in a moment.');
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+// ── Settings ──────────────────────────────────────────────────────────────
+async function loadSettings() {
+  try {
+    const res = await fetch('/api/settings');
+    const data = await res.json();
+    if (!data.settings) return;
+    const s = data.settings;
+    const fields = document.querySelectorAll('#page-settings input[type="number"]');
+    if (s.acosCritical && fields[0]) fields[0].value = s.acosCritical;
+    if (s.acosWarning && fields[1]) fields[1].value = s.acosWarning;
+    if (s.budgetLowPct && fields[2]) fields[2].value = s.budgetLowPct;
+    if (s.pollInterval && fields[3]) fields[3].value = s.pollInterval;
+    if (s.maxAlertsPerSync && fields[5]) fields[5].value = s.maxAlertsPerSync;
+    if (s.maxAutoAdd && fields[4]) fields[4].value = s.maxAutoAdd;
+  } catch(e) { console.error('Load settings error:', e); }
+}
+
+async function saveSettings() {
+  const fields = document.querySelectorAll('#page-settings input[type="number"]');
+  const settings = {
+    acosCritical: parseFloat(fields[0]?.value || 35),
+    acosWarning: parseFloat(fields[1]?.value || 25),
+    budgetLowPct: parseFloat(fields[2]?.value || 20),
+    pollInterval: parseInt(fields[3]?.value || 15),
+    maxAutoAdd: parseFloat(fields[4]?.value || 50),
+    maxAlertsPerSync: parseInt(fields[5]?.value || 5)
+  };
+  try {
+    const res = await fetch('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ settings })
+    });
+    const data = await res.json();
+    if (data.success) {
+      const status = document.getElementById('settings-status');
+      status.style.display = '';
+      setTimeout(function(){ status.style.display = 'none'; }, 3000);
+    }
+  } catch(e) { alert('Error saving settings: ' + e.message); }
+}
+
+function resetSettings() {
+  const fields = document.querySelectorAll('#page-settings input[type="number"]');
+  const defaults = [35, 25, 20, 15, 50, 5];
+  fields.forEach(function(f, i) { f.value = defaults[i] || ''; });
+}
+
 // ── Init ──────────────────────────────────────────────────────────────────
 async function init() {
   try { await fetchData(); } catch(e) { console.error('Init error:', e); setTimeout(init, 3000); }
+  loadSettings();
 }
 init();
 setInterval(fetchData, 5 * 60 * 1000);
