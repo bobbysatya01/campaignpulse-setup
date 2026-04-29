@@ -974,7 +974,7 @@ async function runAI() {
 
 function renderAIResult(container, result) {
   const lastRun = aiCache.lastRun ? new Date(aiCache.lastRun).toLocaleTimeString('en-GB', {hour:'2-digit',minute:'2-digit'}) : '';
-  const daysLabel = result.daysOfData > 0 ? 'Based on ' + result.daysOfData + ' days of historical data' : 'Based on today data';
+  const daysLabel = result.daysOfData > 0 ? 'Based on ' + result.daysOfData + ' days of historical data' : "Based on today data";
 
   // Update metrics
   document.getElementById('ai-opps').textContent = result.scaleList?.length || 0;
@@ -1001,9 +1001,9 @@ function renderAIResult(container, result) {
 
   container.innerHTML = refreshBtn + strategicBox +
     '<div class="tabs" id="ai-tabs" style="margin-bottom:16px">' +
-      '<button class="tab-btn active" onclick="showAITab('scale',this)">📈 Scale (' + (result.scaleList?.length||0) + ')</button>' +
-      '<button class="tab-btn" onclick="showAITab('pause',this)">⏸ Pause (' + (result.pauseList?.length||0) + ')</button>' +
-      '<button class="tab-btn" onclick="showAITab('reduce',this)">✂️ Reduce budget (' + (result.reduceList?.length||0) + ')</button>' +
+      '<button class="tab-btn active" onclick="showAITab(\"scale\",this)">📈 Scale (' + (result.scaleList?.length||0) + ')</button>' +
+      '<button class="tab-btn" onclick="showAITab(\"pause\",this)">⏸ Pause (' + (result.pauseList?.length||0) + ')</button>' +
+      '<button class="tab-btn" onclick="showAITab(\"reduce\",this)">✂️ Reduce budget (' + (result.reduceList?.length||0) + ')</button>' +
     '</div>' +
     '<div id="ai-tab-scale">' + renderTable(result.scaleList, ['Campaign','Portfolio','ACOS','7d Spend','Why scale','Recommended action'], 'No scale opportunities identified') + '</div>' +
     '<div id="ai-tab-pause" style="display:none">' + renderTable(result.pauseList, ['Campaign','Portfolio','ACOS','Spend','Why pause','Recommended action'], 'No campaigns recommended for pausing') + '</div>' +
