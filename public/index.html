@@ -1,1 +1,741 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FK Sports — CampaignPulse</title>
 
+<style>
+:root {
+  --bg: #f0f2f5;
+  --surface: #ffffff;
+  --surface2: #f7f8fa;
+  --surface3: #eef0f4;
+  --border: rgba(0,0,0,0.07);
+  --border2: rgba(0,0,0,0.12);
+  --text: #0f1923;
+  --text2: #4a5568;
+  --text3: #8a97a8;
+  --green: #00875a;
+  --green-bg: rgba(0,135,90,0.08);
+  --green-light: #e6f4ef;
+  --amber: #b45309;
+  --amber-bg: rgba(180,83,9,0.08);
+  --amber-light: #fef3e2;
+  --red: #c0392b;
+  --red-bg: rgba(192,57,43,0.08);
+  --red-light: #fdecea;
+  --blue: #1a6fbd;
+  --blue-bg: rgba(26,111,189,0.08);
+  --blue-light: #e8f2fb;
+  --accent: #e8391d;
+  --accent2: #ff5c3f;
+  --accent-bg: rgba(232,57,29,0.08);
+  --navy: #1a2036;
+  --navy2: #232b45;
+  --navy3: #2d3654;
+  --mono: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  --display: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; font-size: 13px; }
+
+/* Layout */
+.shell { display: flex; min-height: 100vh; }
+.sidebar { width: 260px; flex-shrink: 0; background: var(--navy); display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
+.main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+
+/* Sidebar */
+.logo { padding: 20px 22px 16px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+.logo-img-wrap { display: flex; align-items: center; justify-content: flex-start; margin-bottom: 10px; }
+.logo-img { height: 44px; width: auto; max-width: 180px; object-fit: contain; filter: brightness(0) invert(1); display: block; }
+.logo-img.loaded { filter: none; }
+.logo-divider { width: 100%; height: 1px; background: rgba(255,255,255,0.1); margin: 10px 0 8px; }
+.logo-product { font-family: var(--display); font-size: 18px; font-weight: 700; color: #ffffff; letter-spacing: -0.3px; display: flex; align-items: center; gap: 6px; }
+.logo-product-badge { font-size: 9px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; background: var(--accent); color: white; padding: 2px 6px; border-radius: 4px; vertical-align: middle; }
+.logo-sub { font-size: 11px; color: rgba(255,255,255,0.35); margin-top: 2px; font-family: var(--mono); }
+.nav { padding: 14px 12px; flex: 1; }
+.nav-section { font-size: 10px; font-weight: 600; color: rgba(255,255,255,0.25); letter-spacing: 0.12em; text-transform: uppercase; padding: 14px 10px 7px; }
+.nav-item { display: flex; align-items: center; gap: 11px; padding: 10px 12px; border-radius: 8px; cursor: pointer; color: rgba(255,255,255,0.55); font-size: 13.5px; font-weight: 400; transition: all 0.15s; border: none; background: none; width: 100%; text-align: left; }
+.nav-item:hover { background: rgba(255,255,255,0.07); color: rgba(255,255,255,0.85); }
+.nav-item.active { background: rgba(232,57,29,0.15); color: #ffffff; font-weight: 500; border-left: 2px solid var(--accent); }
+.nav-item svg { flex-shrink: 0; opacity: 0.7; }
+.nav-item.active svg { opacity: 1; }
+.nav-badge { margin-left: auto; background: var(--accent); color: white; font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 20px; min-width: 20px; text-align: center; }
+.nav-badge.amber { background: #d97706; }
+.nav-badge.green { background: var(--green); }
+.sidebar-footer { padding: 16px 18px; border-top: 1px solid rgba(255,255,255,0.08); }
+.profile-row { display: flex; align-items: center; gap: 10px; }
+.avatar { width: 32px; height: 32px; border-radius: 50%; background: var(--accent); display: flex; align-items: center; justify-content: center; font-family: var(--display); font-size: 13px; font-weight: 700; color: white; flex-shrink: 0; }
+.profile-name { font-size: 13px; font-weight: 600; color: #ffffff; }
+.profile-role { font-size: 11px; color: rgba(255,255,255,0.35); }
+
+/* Topbar */
+.topbar { background: var(--surface); border-bottom: 1px solid var(--border); padding: 13px 28px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 10; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+.page-title { font-family: var(--display); font-size: 16px; font-weight: 700; color: var(--text); letter-spacing: -0.2px; }
+.topbar-right { display: flex; align-items: center; gap: 10px; }
+.sync-info { font-family: var(--mono); font-size: 11px; color: var(--text3); display: flex; align-items: center; gap: 6px; background: var(--surface2); padding: 5px 10px; border-radius: 6px; border: 1px solid var(--border); }
+.sync-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
+.sync-dot.syncing { animation: pulse 1s infinite; }
+@keyframes pulse { 0%,100%{opacity:1}50%{opacity:0.3} }
+.btn { padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.15s; border: 1px solid var(--border2); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; }
+.btn-ghost { background: white; color: var(--text2); }
+.btn-ghost:hover { background: var(--surface2); color: var(--text); border-color: var(--border2); }
+.btn-primary { background: var(--accent); color: white; border-color: transparent; }
+.btn-primary:hover { background: var(--accent2); }
+.btn-green { background: var(--green-light); color: var(--green); border-color: rgba(0,135,90,0.2); font-weight: 600; }
+.btn-green:hover { background: rgba(0,135,90,0.15); }
+.btn-red { background: var(--red-light); color: var(--red); border-color: rgba(192,57,43,0.2); }
+.btn-red:hover { background: rgba(192,57,43,0.12); }
+.btn-amber { background: var(--amber-light); color: var(--amber); border-color: rgba(180,83,9,0.2); }
+
+/* Pages */
+.page { padding: 24px 28px; display: none; flex: 1; }
+.page.active { display: block; }
+
+/* Metrics */
+.metrics-grid { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 14px; margin-bottom: 24px; }
+.metric-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+.metric-card.alert { border-color: rgba(192,57,43,0.25); background: linear-gradient(135deg, #fff 0%, #fdecea 100%); }
+.metric-card.success { border-color: rgba(0,135,90,0.2); background: linear-gradient(135deg, #fff 0%, #e6f4ef 100%); }
+.metric-label { font-size: 11px; color: var(--text3); font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 10px; }
+.metric-value { font-family: var(--display); font-size: 24px; font-weight: 700; color: var(--text); letter-spacing: -0.5px; }
+.metric-delta { font-size: 12px; margin-top: 6px; color: var(--text3); display: flex; align-items: center; gap: 4px; }
+.delta-up { color: var(--green); }
+.delta-down { color: var(--red); }
+
+/* Alert banner */
+.alert-banner { background: #fff5f5; border: 1px solid rgba(192,57,43,0.2); border-left: 3px solid var(--red); border-radius: 10px; padding: 12px 16px; margin-bottom: 12px; display: flex; align-items: center; gap: 12px; }
+.alert-banner-text { font-size: 13px; color: var(--text); flex: 1; line-height: 1.5; }
+.alert-banner-text strong { color: var(--red); }
+
+/* Section */
+.section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.section-title { font-family: var(--display); font-size: 14px; font-weight: 700; color: var(--text); }
+.section-sub { font-size: 12px; color: var(--text3); margin-top: 2px; }
+
+/* Table */
+.table-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin-bottom: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+table { width: 100%; border-collapse: collapse; }
+thead th { font-size: 11px; font-weight: 600; color: var(--text3); text-transform: uppercase; letter-spacing: 0.07em; padding: 11px 14px; text-align: left; background: var(--surface2); border-bottom: 1px solid var(--border); white-space: nowrap; }
+thead th[onclick] { cursor: pointer; user-select: none; }
+thead th[onclick]:hover { color: var(--text); background: var(--surface3); }
+tbody td { padding: 12px 14px; border-bottom: 1px solid var(--border); font-size: 13px; color: var(--text); vertical-align: middle; }
+tbody tr:last-child td { border-bottom: none; }
+tbody tr:hover { background: var(--surface2); }
+.camp-name { font-weight: 600; font-size: 13px; color: var(--text); }
+.camp-meta { font-size: 11px; color: var(--text3); margin-top: 2px; font-family: var(--mono); }
+.mono { font-family: var(--mono); }
+
+/* Badge */
+.badge { font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 6px; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.badge-green { background: var(--green-light); color: var(--green); }
+.badge-red { background: var(--red-light); color: var(--red); }
+.badge-amber { background: var(--amber-light); color: var(--amber); }
+.badge-blue { background: var(--blue-light); color: var(--blue); }
+.dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
+
+/* Progress */
+.prog { width: 80px; height: 4px; background: var(--surface3); border-radius: 4px; overflow: hidden; margin-top: 5px; }
+.prog-fill { height: 100%; border-radius: 4px; }
+
+/* Action group */
+.ag { display: flex; gap: 5px; flex-wrap: wrap; }
+
+/* Report */
+.report-filters { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; align-items: center; }
+.filter-select { background: white; border: 1px solid var(--border2); color: var(--text); padding: 8px 12px; border-radius: 8px; font-size: 13px; font-family: 'DM Sans',sans-serif; cursor: pointer; }
+.filter-select:focus { outline: none; border-color: var(--accent); }
+.report-summary { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 14px; margin-bottom: 22px; }
+
+/* AI card */
+.ai-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+.ai-header { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 10px; }
+.ai-icon { width: 34px; height: 34px; border-radius: 9px; background: linear-gradient(135deg, #f5f0ff, #e8e0ff); border: 1px solid rgba(120,80,220,0.15); display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; }
+.ai-title { font-family: var(--display); font-size: 14px; font-weight: 700; color: var(--text); }
+.ai-sub { font-size: 11px; color: var(--text3); margin-top: 2px; }
+.ai-desc { font-size: 13px; color: var(--text2); line-height: 1.6; margin-bottom: 12px; }
+.ai-impact { background: var(--green-light); border: 1px solid rgba(0,135,90,0.15); border-radius: 8px; padding: 8px 12px; font-size: 12px; color: var(--green); margin-bottom: 12px; font-weight: 500; }
+.kw-list { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 12px; }
+.kw-pill { font-size: 11px; padding: 3px 9px; border-radius: 5px; background: var(--blue-light); color: var(--blue); border: 1px solid rgba(26,111,189,0.15); font-family: var(--mono); }
+.kw-pill.neg { background: var(--red-light); color: var(--red); border-color: rgba(192,57,43,0.15); }
+
+/* Loading */
+.loading { display: flex; align-items: center; justify-content: center; padding: 60px; color: var(--text3); font-size: 13px; gap: 10px; }
+.spinner { width: 16px; height: 16px; border: 2px solid var(--border2); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.empty { text-align: center; padding: 50px; color: var(--text3); font-size: 13px; }
+
+/* Tabs */
+.tabs { display: flex; gap: 3px; margin-bottom: 18px; background: var(--surface3); padding: 3px; border-radius: 9px; width: fit-content; }
+.tab-btn { padding: 7px 16px; border-radius: 7px; font-size: 13px; font-weight: 500; cursor: pointer; border: none; background: transparent; color: var(--text3); font-family: 'DM Sans',sans-serif; transition: all 0.15s; }
+.tab-btn.active { background: white; color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+
+/* Insight */
+.insight-box { background: linear-gradient(135deg, #f8f5ff, #f0ebff); border: 1px solid rgba(120,80,220,0.15); border-radius: 10px; padding: 14px 18px; margin-bottom: 18px; }
+.insight-title { font-family: var(--display); font-size: 12px; font-weight: 700; color: #6040c0; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.06em; }
+.insight-text { font-size: 13px; color: #3d2e6b; line-height: 1.7; }
+
+/* Settings */
+.settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.settings-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+.settings-title { font-family: var(--display); font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 14px; }
+.settings-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.settings-row:last-child { border-bottom: none; }
+.settings-label { font-size: 13px; color: var(--text); font-weight: 500; }
+.settings-sub { font-size: 11px; color: var(--text3); margin-top: 1px; }
+.toggle { width: 36px; height: 20px; background: var(--surface3); border-radius: 20px; position: relative; cursor: pointer; transition: background 0.2s; border: 1px solid var(--border2); flex-shrink: 0; }
+.toggle.on { background: var(--accent); border-color: var(--accent); }
+.toggle::after { content:''; position:absolute; width:14px; height:14px; background:white; border-radius:50%; top:2px; left:2px; transition:left 0.2s; box-shadow: 0 1px 2px rgba(0,0,0,0.2); }
+.toggle.on::after { left:18px; }
+.input-sm { background: white; border: 1px solid var(--border2); color: var(--text); padding: 6px 10px; border-radius: 7px; font-size: 13px; width: 75px; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif; }
+
+/* ACOS colors for light theme */
+.acos-high { color: var(--red); font-weight: 600; }
+.acos-warn { color: var(--amber); font-weight: 500; }
+.acos-ok { color: var(--green); font-weight: 500; }
+
+/* ── Mobile responsive ─────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .shell { flex-direction: column; }
+  .sidebar {
+    width: 100%; height: auto; position: relative; flex-direction: column;
+    overflow-y: visible; overflow-x: hidden;
+  }
+  .logo { padding: 14px 16px 12px; }
+  .nav { padding: 8px; display: flex; flex-direction: row; flex-wrap: wrap; gap: 2px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+  .nav-section { display: none; }
+  .nav-item { padding: 7px 10px; font-size: 12px; gap: 6px; flex: 0 0 auto; border-radius: 6px; border-left: none !important; }
+  .nav-item.active { border-left: none !important; border-bottom: 2px solid var(--accent); }
+  .sidebar-footer { display: none; }
+  .main { min-width: 0; width: 100%; }
+  .topbar { padding: 10px 14px; flex-wrap: wrap; gap: 8px; }
+  .topbar-right { flex-wrap: wrap; gap: 6px; }
+  .page-title { font-size: 14px; }
+  .content { padding: 14px; }
+  .metrics-grid { grid-template-columns: 1fr 1fr !important; gap: 10px; }
+  .metric-value { font-size: 22px; }
+  .section-header { flex-direction: column; align-items: flex-start; gap: 10px; }
+  .section-header > div:last-child { flex-wrap: wrap; gap: 6px; }
+  .tabs { flex-wrap: wrap; gap: 4px; }
+  .tab-btn { font-size: 12px; padding: 6px 12px; }
+  .table-card { border-radius: 8px; }
+  .table-card .table-header { flex-direction: column; align-items: flex-start; gap: 8px; }
+  table { font-size: 12px; }
+  thead th { padding: 9px 10px; font-size: 10px; }
+  td { padding: 9px 10px; }
+  .camp-name { font-size: 12px; max-width: 160px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .btn { font-size: 12px; padding: 7px 12px; }
+  select, input { font-size: 13px; }
+  .filters { flex-direction: column; gap: 8px; }
+  .filters > * { width: 100%; }
+  /* ensure all tables scroll horizontally on mobile */
+  .table-card > div { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  /* metric grid for 3-col sections */
+  div[style*="grid-template-columns:repeat(3"] { grid-template-columns: 1fr 1fr !important; }
+  div[style*="grid-template-columns:repeat(4"] { grid-template-columns: 1fr 1fr !important; }
+  /* dashboard alert cards */
+  .alert-row { flex-direction: column; align-items: flex-start; gap: 6px; }
+  .alert-actions { margin-left: 0 !important; }
+}
+@media (max-width: 420px) {
+  .metrics-grid { grid-template-columns: 1fr !important; }
+  .metric-card { padding: 14px; }
+  .nav-item span:not(.nav-badge) { display: none; }
+  .nav-item svg { width: 18px; height: 18px; }
+}
+</style>
+</head>
+<body>
+<div class="shell">
+
+<!-- SIDEBAR -->
+<nav class="sidebar">
+  <div class="logo">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+      <img src="https://cdn.shopify.com/s/files/1/0622/7886/9490/files/FK_Sports_logo.png" 
+           onerror="this.style.display='none';document.getElementById('fk-text-logo').style.display='flex'" 
+           style="height:36px;width:auto;max-width:150px;object-fit:contain;filter:brightness(0) invert(1)" 
+           alt="FK Sports">
+      <div id="fk-text-logo" style="display:none;flex-direction:column">
+        <span style="font-size:16px;font-weight:800;color:#fff;letter-spacing:0.05em;text-transform:uppercase">FK SPORTS</span>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:6px">
+      <span style="font-size:17px;font-weight:700;color:#fff">CampaignPulse</span>
+    </div>
+    <div style="font-size:11px;color:rgba(255,255,255,0.35);margin-top:2px;font-family:var(--mono)">amazon.co.uk</div>
+  </div>
+  <div class="nav">
+    <div class="nav-section">Monitor</div>
+    <button class="nav-item active" onclick="showPage('dashboard',this)">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="1" width="6" height="6" rx="1.5"/><rect x="9" y="1" width="6" height="6" rx="1.5"/><rect x="1" y="9" width="6" height="6" rx="1.5"/><rect x="9" y="9" width="6" height="6" rx="1.5"/></svg>
+      Live Dashboard
+      <span class="nav-badge" id="nb-action" style="display:none">0</span>
+    </button>
+    <button class="nav-item" onclick="showPage('campaigns',this)">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 4h14M1 8h10M1 12h6"/></svg>
+      All campaigns
+    </button>
+    <button class="nav-item" onclick="showPage('ai',this)">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M6 8l1.5 1.5L10 6"/></svg>
+      AI analysis
+    </button>
+    <button class="nav-item" onclick="showPage('keywords',this)">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="6" cy="6" r="4"/><path d="M10 10l4 4"/></svg>
+      Keyword intelligence
+      <span class="nav-badge green">AI</span>
+    </button>
+    <div class="nav-section">Tasks</div>
+    <button class="nav-item" onclick="showPage('tasks',this)">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="12" height="12" rx="2"/><path d="M5 8l2 2 4-4"/></svg>
+      Campaign tasks
+      <span class="nav-badge" id="tasks-badge" style="display:none;background:var(--red)">0</span>
+    </button>
+    <div class="nav-section">Reports</div>
+    <button class="nav-item" onclick="showPage('history',this)">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 3v5l3 3"/><circle cx="8" cy="8" r="6"/></svg>
+      Daily history
+    </button>
+    <button class="nav-item" onclick="showPage('stuck',this)">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 1v7M5 11l3 3 3-3"/><circle cx="8" cy="5" r="2"/></svg>
+      Underperforming
+      <span class="nav-badge" id="stuck-badge" style="display:none;background:var(--amber);color:#000">0</span>
+    </button>
+    <button class="nav-item" onclick="showPage('report',this)">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="12" height="12" rx="1.5"/><path d="M5 8h6M5 11h4M5 5h3"/></svg>
+      Budget report
+    </button>
+    <button class="nav-item" onclick="showPage('activity',this)">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 5v3l2 2"/></svg>
+      Activity log
+    </button>
+    <div class="nav-section">Admin</div>
+    <button class="nav-item" onclick="showPage('settings',this)">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="2.5"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.05 3.05l1.41 1.41M11.54 11.54l1.41 1.41M3.05 12.95l1.41-1.41M11.54 4.46l1.41-1.41"/></svg>
+      Settings
+    </button>
+  </div>
+  <div class="sidebar-footer">
+    <div class="profile-row">
+      <div class="avatar">B</div>
+      <div><div class="profile-name">Bobby</div><div class="profile-role">Account owner</div></div>
+    </div>
+  </div>
+</nav>
+
+<!-- MAIN -->
+<div class="main">
+  <div class="topbar">
+    <div class="page-title" id="page-title">Dashboard</div>
+    <div class="topbar-right">
+      <div class="sync-info"><div class="sync-dot" id="sync-dot"></div><span id="sync-time">Loading...</span></div>
+      <button class="btn btn-ghost" onclick="exportCSV()">Export CSV</button>
+      <button class="btn btn-primary" onclick="refreshData()">↻ Refresh</button>
+    </div>
+  </div>
+
+  <!-- DASHBOARD -->
+  <div class="page active" id="page-dashboard">
+    <div id="alert-container"></div>
+    <div class="metrics-grid" id="metrics-grid">
+      <div class="metric-card success"><div class="metric-label">Today's revenue</div><div class="metric-value" id="m-revenue">—</div><div class="metric-delta delta-up" id="m-revenue-d"></div></div>
+      <div class="metric-card"><div class="metric-label">Total ad spend</div><div class="metric-value" id="m-spend">—</div><div class="metric-delta" id="m-spend-d"></div></div>
+      <div class="metric-card"><div class="metric-label">Blended ACOS</div><div class="metric-value" id="m-acos">—</div><div class="metric-delta" id="m-acos-d"></div></div>
+      <div class="metric-card alert"><div class="metric-label">Needs action</div><div class="metric-value" id="m-action">—</div><div class="metric-delta delta-down" id="m-action-d"></div></div>
+    </div>
+    <div class="section-header">
+      <div><div class="section-title">Campaigns needing action</div><div class="section-sub" id="camp-sub">Loading...</div></div>
+      <button class="btn btn-ghost" onclick="showPage('campaigns',document.querySelectorAll('.nav-item')[1])">View all →</button>
+    </div>
+    <div class="tabs" style="margin-bottom:14px">
+      <button class="tab-btn active" id="dash-tab-all" onclick="setDashTab('all',this)">All issues</button>
+      <button class="tab-btn" id="dash-tab-spend" onclick="setDashTab('spend_no_revenue',this)">Spend, no revenue <span id="cnt-spend-no-rev" style="background:rgba(192,57,43,0.15);color:var(--red);padding:1px 6px;border-radius:10px;font-size:10px;margin-left:4px">0</span></button>
+      <button class="tab-btn" id="dash-tab-no-activity" onclick="setDashTab('no_activity',this)">No activity <span id="cnt-no-activity" style="background:rgba(0,0,0,0.07);color:var(--text3);padding:1px 6px;border-radius:10px;font-size:10px;margin-left:4px">0</span></button>
+    </div>
+
+    <!-- Wasted spend banner -->
+    <div id="wasted-spend-banner" style="display:none;background:#fff5f5;border:1px solid rgba(192,57,43,0.2);border-left:3px solid var(--red);border-radius:10px;padding:14px 18px;margin-bottom:16px;display:none">
+      <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+        <div>
+          <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:var(--red);margin-bottom:4px">Total wasted spend today</div>
+          <div style="font-size:28px;font-weight:700;color:var(--red);font-family:var(--mono)" id="wasted-total">£0</div>
+        </div>
+        <div style="width:1px;height:40px;background:rgba(192,57,43,0.2)"></div>
+        <div>
+          <div style="font-size:11px;color:var(--text3);margin-bottom:2px">Campaigns spending with zero revenue</div>
+          <div style="font-size:20px;font-weight:600;color:var(--text)" id="wasted-count">0</div>
+        </div>
+        <div style="margin-left:auto">
+          <div style="font-size:12px;color:var(--text3);margin-bottom:6px">These campaigns need review — spend is not converting to revenue</div>
+          <button class="btn btn-ghost" style="font-size:12px" onclick="showPage('keywords',document.querySelectorAll('.nav-item')[3])">Check keyword intelligence →</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- No activity banner -->
+    <div id="no-activity-banner" style="display:none;background:var(--surface2);border:1px solid var(--border);border-left:3px solid var(--text3);border-radius:10px;padding:14px 18px;margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:12px">
+        <div style="font-size:20px">😴</div>
+        <div>
+          <div style="font-size:13px;font-weight:600;color:var(--text)"><span id="no-activity-count">0</span> campaigns with zero impressions and zero spend today</div>
+          <div style="font-size:12px;color:var(--text3);margin-top:2px">These campaigns are not delivering — check targeting, bids, or whether they are paused in Amazon Ads</div>
+        </div>
+      </div>
+    </div>
+    <div class="table-card">
+      <div style="overflow-x:auto"><table>
+        <thead><tr><th>Campaign</th><th>Portfolio</th><th>Budget left</th><th>Impressions</th><th>Clicks</th><th>CTR</th><th>Conversions</th><th>Revenue</th><th>Spend</th><th>ACOS</th><th>Status</th><th>Action</th></tr></thead>
+        <tbody id="dash-table"><tr><td colspan="12"><div class="loading"><div class="spinner"></div> Loading campaigns...</div></td></tr></tbody>
+      </table></div>
+    </div>
+  </div>
+
+  <!-- ALL CAMPAIGNS -->
+  <div class="page" id="page-campaigns">
+    <div style="display:flex;gap:10px;margin-bottom:14px;align-items:center;flex-wrap:wrap">
+      <input type="text" id="camp-search" placeholder="Search campaigns..." oninput="renderAllCampaigns()" style="background:white;border:1px solid var(--border2);color:var(--text);padding:8px 14px;border-radius:8px;font-size:13px;width:260px;font-family:inherit">
+      <select id="camp-portfolio-filter" onchange="renderAllCampaigns()" style="background:white;border:1px solid var(--border2);color:var(--text);padding:8px 12px;border-radius:8px;font-size:13px;font-family:inherit;cursor:pointer">
+        <option value="">All agents</option>
+      </select>
+      <select id="camp-type-filter" onchange="renderAllCampaigns()" style="background:white;border:1px solid var(--border2);color:var(--text);padding:8px 12px;border-radius:8px;font-size:13px;font-family:inherit;cursor:pointer">
+        <option value="">All types</option>
+        <option value="auto">Auto</option>
+        <option value="manual">Manual</option>
+      </select>
+    </div>
+    <div class="tabs">
+      <button class="tab-btn active" onclick="filterCamps('action',this)">Needs action (<span id="t-action">0</span>)</button>
+      <button class="tab-btn" onclick="filterCamps('all',this)">All (<span id="t-all">0</span>)</button>
+      <button class="tab-btn" onclick="filterCamps('healthy',this)">Healthy (<span id="t-healthy">0</span>)</button>
+    </div>
+    <div class="table-card">
+      <div style="overflow-x:auto"><table>
+        <thead><tr>
+          <th onclick="sortCamps('name')" style="cursor:pointer">Campaign <span id="sort-name"></span></th>
+          <th>Portfolio / Agent</th>
+          <th onclick="sortCamps('targetingType')" style="cursor:pointer">Type <span id="sort-targetingType"></span></th>
+          <th onclick="sortCamps('dailyBudget')" style="cursor:pointer">Daily budget <span id="sort-dailyBudget"></span></th>
+          <th onclick="sortCamps('budgetPct')" style="cursor:pointer">Budget left <span id="sort-budgetPct"></span></th>
+          <th onclick="sortCamps('impressions')" style="cursor:pointer">Impressions <span id="sort-impressions"></span></th>
+          <th onclick="sortCamps('clicks')" style="cursor:pointer">Clicks <span id="sort-clicks"></span></th>
+          <th onclick="sortCamps('ctr')" style="cursor:pointer">CTR <span id="sort-ctr"></span></th>
+          <th onclick="sortCamps('conversions')" style="cursor:pointer">Conversions <span id="sort-conversions"></span></th>
+          <th onclick="sortCamps('sales')" style="cursor:pointer">Revenue <span id="sort-sales"></span></th>
+          <th onclick="sortCamps('spend')" style="cursor:pointer">Spend <span id="sort-spend"></span></th>
+          <th onclick="sortCamps('acos')" style="cursor:pointer">ACOS <span id="sort-acos"></span></th>
+          <th>Status</th>
+          <th>Action</th>
+        </tr></thead>
+        <tbody id="all-table"><tr><td colspan="14"><div class="loading"><div class="spinner"></div> Loading...</div></td></tr></tbody>
+      </table></div>
+    </div>
+  </div>
+
+  <!-- AI ANALYSIS -->
+  <div class="page" id="page-ai">
+    <div class="metrics-grid" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+      <div class="metric-card success"><div class="metric-label">Scale opportunities</div><div class="metric-value" id="ai-opps">—</div><div class="metric-delta delta-up">Campaigns to grow</div></div>
+      <div class="metric-card alert"><div class="metric-label">Reduce budget</div><div class="metric-value" id="ai-waste">—</div><div class="metric-delta delta-down">High ACOS campaigns</div></div>
+      <div class="metric-card"><div class="metric-label">Pause candidates</div><div class="metric-value" id="ai-gain">—</div><div class="metric-delta delta-down">No activity or revenue</div></div>
+    </div>
+    <div id="ai-container"><div class="loading"><div class="spinner"></div> Analysing your campaigns...</div></div>
+  </div>
+
+  <!-- KEYWORD INTELLIGENCE -->
+  <div class="page" id="page-keywords">
+    <div class="metrics-grid" style="grid-template-columns:repeat(4,minmax(0,1fr))">
+      <div class="metric-card"><div class="metric-label">Search terms analysed</div><div class="metric-value" id="kw-total">—</div><div class="metric-delta">Last 7 days</div></div>
+      <div class="metric-card alert"><div class="metric-label">Wasted spend found</div><div class="metric-value" id="kw-waste">—</div><div class="metric-delta delta-down">Zero conversion terms</div></div>
+      <div class="metric-card success"><div class="metric-label">New keyword opps</div><div class="metric-value" id="kw-opps">—</div><div class="metric-delta delta-up">Converting search terms</div></div>
+      <div class="metric-card"><div class="metric-label">Est. weekly impact</div><div class="metric-value" id="kw-impact">—</div><div class="metric-delta delta-up">If all actioned</div></div>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <div><div class="section-title">Keyword Intelligence</div><div class="section-sub" id="kw-status">Checking report status...</div></div>
+      <button class="btn btn-primary" onclick="refreshKeywords()">Request fresh analysis</button>
+    </div>
+    <div id="kw-container"><div class="loading"><div class="spinner"></div> Loading keyword analysis...</div></div>
+  </div>
+
+  <!-- DAILY HISTORY PAGE -->
+  <div class="page" id="page-history">
+    <div style="display:flex;gap:10px;margin-bottom:20px;align-items:center;flex-wrap:wrap">
+      <select id="history-date-select" onchange="loadHistoryDate()" style="background:white;border:1px solid var(--border2);color:var(--text);padding:8px 14px;border-radius:8px;font-size:13px;font-family:inherit;cursor:pointer;min-width:200px">
+        <option value="">Select a date...</option>
+      </select>
+      <select id="history-agent-filter" onchange="filterHistoryByAgent()" style="background:white;border:1px solid var(--border2);color:var(--text);padding:8px 14px;border-radius:8px;font-size:13px;font-family:inherit;cursor:pointer;min-width:160px">
+        <option value="">All agents</option>
+      </select>
+      <span id="history-loading" style="font-size:12px;color:var(--text3)"></span>
+    </div>
+
+    <div id="history-metrics" style="display:none">
+      <div class="metrics-grid" style="margin-bottom:20px">
+        <div class="metric-card success"><div class="metric-label">Total revenue</div><div class="metric-value" id="h-revenue">—</div></div>
+        <div class="metric-card"><div class="metric-label">Total ad spend</div><div class="metric-value" id="h-spend">—</div></div>
+        <div class="metric-card"><div class="metric-label">Blended ACOS</div><div class="metric-value" id="h-acos">—</div></div>
+        <div class="metric-card alert"><div class="metric-label">Wasted spend</div><div class="metric-value" id="h-wasted">—</div><div class="metric-delta delta-down" id="h-wasted-d"></div></div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-bottom:22px">
+        <div class="metric-card"><div class="metric-label">Active campaigns</div><div class="metric-value" id="h-active">—</div></div>
+        <div class="metric-card alert"><div class="metric-label">Out of budget events</div><div class="metric-value" id="h-oob">—</div></div>
+        <div class="metric-card"><div class="metric-label">Spend no revenue</div><div class="metric-value" id="h-snr">—</div><div class="metric-delta delta-down">campaigns</div></div>
+      </div>
+
+      <div class="tabs" style="margin-bottom:16px">
+        <button class="tab-btn active" onclick="showHistoryTab('campaigns',this)">All campaigns</button>
+        <button class="tab-btn" onclick="showHistoryTab('spend_no_revenue',this)">Spend, no revenue <span id="h-snr-badge" style="background:rgba(192,57,43,0.15);color:var(--red);padding:1px 6px;border-radius:10px;font-size:10px;margin-left:4px">0</span></button>
+        <button class="tab-btn" onclick="showHistoryTab('no_activity',this)">No activity <span id="h-na-badge" style="background:rgba(0,0,0,0.07);color:var(--text3);padding:1px 6px;border-radius:10px;font-size:10px;margin-left:4px">0</span></button>
+        <button class="tab-btn" onclick="showHistoryTab('exhaustion',this)">Budget exhaustion log</button>
+      </div>
+
+      <div id="history-campaigns-tab">
+        <div class="table-card">
+          <div style="overflow-x:auto"><table>
+            <thead><tr><th>Campaign</th><th>Portfolio</th><th>Type</th><th>Budget</th><th>Impressions</th><th>Clicks</th><th>CTR</th><th>Conversions</th><th>Revenue</th><th>Spend</th><th>ACOS</th><th>Status</th></tr></thead>
+            <tbody id="history-table"></tbody>
+          </table></div>
+        </div>
+      </div>
+
+      <div id="history-snr-tab" style="display:none">
+        <div class="insight-box" style="margin-bottom:16px">
+          <div class="insight-title">✦ Spend with no revenue</div>
+          <div class="insight-text" id="history-snr-insight">Campaigns that spent budget but generated zero attributed revenue on this day. Review these with your team.</div>
+        </div>
+        <div class="table-card">
+          <div style="overflow-x:auto"><table>
+            <thead><tr><th>Campaign</th><th>Portfolio</th><th>Type</th><th>Spend</th><th>Impressions</th><th>Clicks</th><th>CTR</th><th>Conversions</th><th>Status</th></tr></thead>
+            <tbody id="history-snr-table"></tbody>
+          </table></div>
+        </div>
+      </div>
+
+      <div id="history-no-activity-tab" style="display:none">
+        <div class="insight-box" style="margin-bottom:16px">
+          <div class="insight-title">✦ No activity on this day</div>
+          <div class="insight-text" id="history-na-insight">Campaigns with zero impressions and zero spend on this day. Share with your team to review targeting, bids, or whether to pause.</div>
+        </div>
+        <div class="table-card">
+          <div style="overflow-x:auto"><table>
+            <thead><tr><th>Campaign</th><th>Portfolio</th><th>Type</th><th>Budget</th><th>Impressions</th><th>Clicks</th><th>Spend</th><th>Status</th></tr></thead>
+            <tbody id="history-no-activity-table"></tbody>
+          </table></div>
+        </div>
+      </div>
+
+      <div id="history-exhaustion-tab" style="display:none">
+        <div class="table-card">
+          <div style="overflow-x:auto"><table>
+            <thead><tr><th>Time</th><th>Campaign</th><th>Portfolio</th><th>Agent</th><th>Budget</th><th>ACOS</th><th>Est. missed</th><th>Resolved at</th><th>Gap</th><th>Action</th></tr></thead>
+            <tbody id="history-exhaustion-table"></tbody>
+          </table></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="history-empty" style="display:none">
+      <div class="empty" style="padding:60px">
+        <div style="font-size:32px;margin-bottom:16px">📅</div>
+        <div style="font-size:15px;font-weight:600;color:var(--text);margin-bottom:8px">No data for this date</div>
+        <div style="font-size:13px;color:var(--text3)">Data is saved automatically every sync. Select a different date.</div>
+      </div>
+    </div>
+
+    <div id="history-placeholder">
+      <div class="empty" style="padding:60px">
+        <div style="font-size:32px;margin-bottom:16px">📊</div>
+        <div style="font-size:15px;font-weight:600;color:var(--text);margin-bottom:8px">Daily campaign history</div>
+        <div style="font-size:13px;color:var(--text3);line-height:1.7">Select a date above to review that day's campaign performance.<br>Use this for your morning team discussions — see exactly what happened the day before.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- UNDERPERFORMING CAMPAIGNS PAGE -->
+  <div class="page" id="page-stuck">
+    <div class="metrics-grid" style="grid-template-columns:repeat(2,minmax(0,1fr));margin-bottom:20px">
+      <div class="metric-card alert">
+        <div class="metric-label">No activity — 3+ days</div>
+        <div class="metric-value" id="stuck-no-activity">—</div>
+        <div class="metric-delta delta-down">Zero impressions · Check targeting</div>
+      </div>
+      <div class="metric-card alert">
+        <div class="metric-label">Spend, no revenue — 7+ days</div>
+        <div class="metric-value" id="stuck-no-revenue">—</div>
+        <div class="metric-delta delta-down">Wasting budget · Consider pausing</div>
+      </div>
+    </div>
+
+    <div class="tabs" style="margin-bottom:16px">
+      <button class="tab-btn active" onclick="showStuckTab('no-activity',this)">No activity — 3+ days (<span id="stuck-na-count">0</span>)</button>
+      <button class="tab-btn" onclick="showStuckTab('no-revenue',this)">Spend, no revenue — 7+ days (<span id="stuck-nr-count">0</span>)</button>
+    </div>
+
+    <div id="stuck-no-activity-tab">
+      <div class="insight-box" style="margin-bottom:14px">
+        <div class="insight-title">⚠ No activity for 3+ consecutive days</div>
+        <div class="insight-text">These campaigns have had zero impressions for 3 or more days in a row. They are not showing ads at all — likely due to bids too low to compete, exhausted targeting, or accidentally paused. Review and either increase bids, fix targeting, or pause and replace with new campaigns.</div>
+      </div>
+      <div class="table-card">
+        <div style="overflow-x:auto"><table>
+          <thead><tr><th>Campaign</th><th>Portfolio</th><th>Type</th><th>Days no activity</th><th>Total spend (period)</th><th>Daily budget</th><th>Reason</th><th>Action</th></tr></thead>
+          <tbody id="stuck-na-table"><tr><td colspan="8"><div class="loading"><div class="spinner"></div> Loading...</div></td></tr></tbody>
+        </table></div>
+      </div>
+    </div>
+
+    <div id="stuck-no-revenue-tab" style="display:none">
+      <div class="insight-box" style="margin-bottom:14px">
+        <div class="insight-title">⚠ Spending budget with no revenue for 7+ days</div>
+        <div class="insight-text">These campaigns have been spending your budget for 7 or more days without generating any attributed revenue. This is wasted spend. Review the keywords, check if the product page converts, and consider pausing or restructuring these campaigns.</div>
+      </div>
+      <div class="table-card">
+        <div style="overflow-x:auto"><table>
+          <thead><tr><th>Campaign</th><th>Portfolio</th><th>Type</th><th>Days no revenue</th><th>Total wasted spend</th><th>Avg ACOS</th><th>Reason</th><th>Action</th></tr></thead>
+          <tbody id="stuck-nr-table"><tr><td colspan="8"><div class="loading"><div class="spinner"></div> Loading...</div></td></tr></tbody>
+        </table></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TASKS PAGE -->
+  <div class="page" id="page-tasks">
+    <div style="margin-bottom:20px">
+      <div class="section-title">Campaign Tasks</div>
+      <div class="section-sub">Daily investigation tasks at 9am · Alert tasks fire immediately · Auto-archived after 3 working days</div>
+    </div>
+
+    <div class="metrics-grid" style="grid-template-columns:repeat(4,minmax(0,1fr));margin-bottom:20px">
+      <div class="metric-card alert"><div class="metric-label">Open tasks</div><div class="metric-value" id="task-open">—</div><div class="metric-delta delta-down">Awaiting action</div></div>
+      <div class="metric-card"><div class="metric-label">In progress</div><div class="metric-value" id="task-inprogress">—</div><div class="metric-delta">Being investigated</div></div>
+      <div class="metric-card success"><div class="metric-label">Completed today</div><div class="metric-value" id="task-complete">—</div><div class="metric-delta delta-up">Resolved</div></div>
+      <div class="metric-card alert"><div class="metric-label">Overdue (2+ days)</div><div class="metric-value" id="task-overdue">—</div><div class="metric-delta delta-down">Needs escalation</div></div>
+    </div>
+
+    <!-- Agent profile tabs -->
+    <div id="agent-tabs" style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap"></div>
+
+    <div style="display:flex;gap:10px;margin-bottom:14px;align-items:center;flex-wrap:wrap">
+      <select id="task-source-filter" onchange="renderTasks(taskTab)" style="background:white;border:1px solid var(--border2);color:var(--text);padding:8px 12px;border-radius:8px;font-size:13px;font-family:inherit;cursor:pointer">
+        <option value="">All types</option>
+        <option value="daily">Daily tasks</option>
+        <option value="alert">Alert tasks</option>
+      </select>
+    </div>
+    <div class="tabs" style="margin-bottom:16px">
+      <button class="tab-btn active" onclick="showTaskTab('open',this)">Due (<span id="tab-due-count">0</span>)</button>
+      <button class="tab-btn" onclick="showTaskTab('paused',this)">Paused (<span id="tab-paused-count">0</span>)</button>
+      <button class="tab-btn" onclick="showTaskTab('complete',this)">Completed (<span id="tab-complete-count">0</span>)</button>
+    </div>
+
+    <div id="tasks-container">
+      <div class="loading"><div class="spinner"></div> Loading tasks...</div>
+    </div>
+  </div>
+
+  <!-- BUDGET REPORT -->
+  <div class="page" id="page-report">
+    <div class="report-filters">
+      <select class="filter-select" id="rf-campaign"><option value="">All campaigns</option></select>
+      <select class="filter-select" id="rf-type">
+        <option value="all">All events</option>
+        <option value="out_of_budget">Out of budget</option>
+        <option value="budget_low">Budget low</option>
+        <option value="acos_high">High ACOS</option>
+      </select>
+      <button class="btn btn-ghost" onclick="exportReportCSV()">📥 Export CSV</button>
+      <button class="btn btn-ghost" onclick="window.print()">📄 Print / PDF</button>
+    </div>
+    <div class="report-summary">
+      <div class="metric-card alert"><div class="metric-label">Total events</div><div class="metric-value" id="rpt-events">—</div><div class="metric-delta delta-down" id="rpt-events-d"></div></div>
+      <div class="metric-card"><div class="metric-label">Est. missed revenue</div><div class="metric-value" id="rpt-missed">—</div><div class="metric-delta delta-down">From budget exhaustion</div></div>
+      <div class="metric-card"><div class="metric-label">Avg response time</div><div class="metric-value" id="rpt-avg-gap">—</div><div class="metric-delta">Time to resolve</div></div>
+    </div>
+    <div class="insight-box" id="rpt-insight" style="display:none">
+      <div class="insight-title">✦ Pattern detected</div>
+      <div class="insight-text" id="rpt-insight-text"></div>
+    </div>
+    <div class="section-header">
+      <div><div class="section-title">Budget exhaustion log</div><div class="section-sub">Full incident history — ran out at, resolved at, gap, action taken</div></div>
+    </div>
+    <div class="table-card">
+      <div style="overflow-x:auto"><table>
+        <thead><tr>
+          <th onclick="sortReport('date')" style="cursor:pointer">Date <span id="rs-date"></span></th>
+          <th onclick="sortReport('campaign')" style="cursor:pointer">Campaign <span id="rs-campaign"></span></th>
+          <th>Portfolio</th><th>Agent</th>
+          <th onclick="sortReport('budget')" style="cursor:pointer">Budget <span id="rs-budget"></span></th>
+          <th onclick="sortReport('time')" style="cursor:pointer">Ran out at <span id="rs-time"></span></th>
+          <th onclick="sortReport('acos')" style="cursor:pointer">ACOS <span id="rs-acos"></span></th>
+          <th onclick="sortReport('missed')" style="cursor:pointer">Est. missed <span id="rs-missed"></span></th>
+          <th>Resolved at</th>
+          <th onclick="sortReport('gap')" style="cursor:pointer">Gap <span id="rs-gap"></span></th>
+          <th>Added</th><th>Action</th>
+        </tr></thead>
+        <tbody id="report-table"><tr><td colspan="12"><div class="empty">No events yet. Events appear when campaigns run out of budget.</div></td></tr></tbody>
+      </table></div>
+    </div>
+  </div>
+
+  <!-- ACTIVITY LOG -->
+  <div class="page" id="page-activity">
+    <div style="display:flex;gap:10px;margin-bottom:18px;align-items:center">
+      <select class="filter-select" id="activity-filter" onchange="renderActivity()">
+        <option value="">All campaigns</option>
+      </select>
+      <select class="filter-select" id="activity-type" onchange="renderActivity()">
+        <option value="">All event types</option>
+        <option value="out_of_budget">Out of budget</option>
+        <option value="acos_high">High ACOS</option>
+        <option value="budget_low">Budget low</option>
+      </select>
+    </div>
+    <div class="table-card" style="padding:0 20px">
+      <div id="activity-log"><div class="loading"><div class="spinner"></div> Loading activity...</div></div>
+    </div>
+  </div>
+
+  <!-- SETTINGS -->
+  <div class="page" id="page-settings">
+    <div class="settings-grid">
+      <div class="settings-card">
+        <div class="settings-title">Alert thresholds</div>
+        <div class="settings-row"><div><div class="settings-label">ACOS critical (%)</div><div class="settings-sub">Trigger Google Chat alert</div></div><input class="input-sm" type="number" value="35"/></div>
+        <div class="settings-row"><div><div class="settings-label">ACOS warning (%)</div><div class="settings-sub">Show warning badge</div></div><input class="input-sm" type="number" value="25"/></div>
+        <div class="settings-row"><div><div class="settings-label">Budget low (%)</div><div class="settings-sub">Alert when % remaining</div></div><input class="input-sm" type="number" value="20"/></div>
+        <div class="settings-row"><div><div class="settings-label">Poll interval (min)</div><div class="settings-sub">How often to sync</div></div><input class="input-sm" type="number" value="15"/></div>
+      </div>
+      <div class="settings-card">
+        <div class="settings-title">Notifications</div>
+        <div class="settings-row"><div><div class="settings-label">Google Chat alerts</div><div class="settings-sub">Out of budget + high ACOS</div></div><button class="toggle on" onclick="this.classList.toggle('on')"></button></div>
+        <div class="settings-row"><div><div class="settings-label">Include portfolio name</div><div class="settings-sub">Show in every alert</div></div><button class="toggle on" onclick="this.classList.toggle('on')"></button></div>
+        <div class="settings-row"><div><div class="settings-label">Include agent name</div><div class="settings-sub">From portfolio</div></div><button class="toggle on" onclick="this.classList.toggle('on')"></button></div>
+        <div class="settings-row"><div><div class="settings-label">Max alerts per sync</div><div class="settings-sub">Prevent flooding</div></div><input class="input-sm" type="number" value="5"/></div>
+      </div>
+      <div class="settings-card">
+        <div class="settings-title">Auto-actions</div>
+        <div class="settings-row"><div><div class="settings-label">Auto-pause at ACOS > 50%</div><div class="settings-sub">No approval needed</div></div><button class="toggle" onclick="this.classList.toggle('on')"></button></div>
+        <div class="settings-row"><div><div class="settings-label">Auto-add budget (ACOS &lt; 15%)</div><div class="settings-sub">When out of budget</div></div><button class="toggle" onclick="this.classList.toggle('on')"></button></div>
+        <div class="settings-row"><div><div class="settings-label">Max auto-add per event (£)</div><div class="settings-sub">Hard cap</div></div><input class="input-sm" type="number" value="50"/></div>
+      </div>
+      <div class="settings-card">
+        <div class="settings-title">AI analysis</div>
+        <div class="settings-row"><div><div class="settings-label">Keyword gap analysis</div><div class="settings-sub">Weekly via Claude AI</div></div><button class="toggle on" onclick="this.classList.toggle('on')"></button></div>
+        <div class="settings-row"><div><div class="settings-label">Scale recommendations</div><div class="settings-sub">When ACOS stable 7+ days</div></div><button class="toggle on" onclick="this.classList.toggle('on')"></button></div>
+        <div class="settings-row"><div><div class="settings-label">Negative keyword suggestions</div><div class="settings-sub">Zero-conversion terms</div></div><button class="toggle on" onclick="this.classList.toggle('on')"></button></div>
+      </div>
+    </div>
+    <div style="margin-top:14px;display:flex;gap:8px;align-items:center">
+      <button class="btn btn-primary" onclick="saveSettings()">Save settings</button>
+      <button class="btn btn-ghost" onclick="resetSettings()">Reset to defaults</button>
+      <span id="settings-status" style="font-size:12px;color:var(--green);display:none">✓ Settings saved</span>
+    </div>
+  </div>
+
+</div>
+</div>
+
+<script src="/app1.js"></script>
+<script src="/app2.js"></script>
+</body>
+</html>
