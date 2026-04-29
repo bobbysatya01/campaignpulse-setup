@@ -221,6 +221,16 @@ async function analyseCampaigns(campaigns) {
       return a.campaignId === c.campaignId && a.date === dateStr && a.type === alertType;
     });
     if (alreadyAlerted) continue;
+    // Check if suppressed (dismissed today)
+    if (db) {
+      try {
+        const suppressed = await db.query(
+          'SELECT id FROM campaign_tasks WHERE campaign_id=$1 AND status=$2 AND DATE(suppressed_until)=CURRENT_DATE',
+          [String(c.campaignId), 'dismissed']
+        );
+        if (suppressed.rows.length > 0) continue;
+      } catch(e) {}
+    }
 
     const name = c.name || 'Unknown';
     const agent = extractAgentFromCampaign(name) || '';
@@ -478,6 +488,8 @@ async function initTasksTable() {
     `);
     // Add missing columns to existing table (safe migrations)
     await db.query(`ALTER TABLE campaign_tasks ADD COLUMN IF NOT EXISTS task_source TEXT DEFAULT 'daily'`);
+    await db.query(`ALTER TABLE campaign_tasks ADD COLUMN IF NOT EXISTS dismissed_reason TEXT`);
+    await db.query(`ALTER TABLE campaign_tasks ADD COLUMN IF NOT EXISTS suppressed_until TIMESTAMP`);
     await db.query(`ALTER TABLE campaign_tasks ADD COLUMN IF NOT EXISTS days_persisted INTEGER DEFAULT 1`);
     await db.query(`ALTER TABLE campaign_tasks ADD COLUMN IF NOT EXISTS total_wasted NUMERIC DEFAULT 0`);
     await db.query(`ALTER TABLE campaign_tasks ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMP`);
@@ -535,7 +547,6 @@ async function createAlertTask(campaignId, campaignName, agentName, portfolio, p
   if (!db) return;
   try {
     const today = new Date().toISOString().split('T')[0];
-    // Check if alert task already exists today for this campaign+type
     const existing = await db.query(
       'SELECT id FROM campaign_tasks WHERE campaign_id=$1 AND created_date=$2 AND problem_type=$3 AND task_source=$4',
       [String(campaignId), today, problemType, 'alert']
@@ -973,12 +984,36 @@ async function analyseKeywords() {
       return spend > 5 && purchases > 0 && spend > sales;
     }).sort(function(a,b) { return parseFloat(b.cost||0) - parseFloat(a.cost||0); }).slice(0, 20);
 
-    const prompt = 'You are an Amazon Advertising expert for FK Sports UK (sports equipment seller). Analyse this search term data and provide specific actionable recommendations.\n\nTop wasting search terms (spend, zero conversions):\n' +
-      wasters.slice(0,10).map(function(r){ return r.searchTerm + ' | spend: £' + parseFloat(r.cost||0).toFixed(2) + ' | campaign: ' + r.campaignName; }).join('\n') +
-      '\n\nTop converting search terms (not yet exact match keywords):\n' +
-      converters.slice(0,10).map(function(r){ return r.searchTerm + ' | purchases: ' + r.purchases14d + ' | sales: £' + parseFloat(r.sales14d||0).toFixed(2) + ' | campaign: ' + r.campaignName; }).join('\n') +
-      '\n\nTotal search terms analysed: ' + data.length +
-      '\n\nProvide analysis in this JSON format only:\n{"wasteReduction":{"totalWasted":"£X","topWasters":[{"searchTerm":"","campaign":"","spend":"£X","recommendation":"Add as negative keyword","reason":""}],"estimatedSaving":"£X/week"},"newKeywords":{"totalOpportunities":0,"topOpportunities":[{"searchTerm":"","campaign":"","purchases":0,"sales":"£X","recommendation":"Add as exact match keyword","estimatedImpact":""}]},"bidChanges":[{"keyword":"","campaign":"","currentIssue":"","recommendation":"","expectedOutcome":""}],"portfolioInsights":{"patterns":"","topPerforming":"","needsAttention":""},"summary":"","estimatedWeeklyImpact":"£X"}';
+    const autoWasters = wasters.filter(function(r){ return (r.campaignName||'').toLowerCase().includes('auto'); });
+    const manualWasters = wasters.filter(function(r){ return !(r.campaignName||'').toLowerCase().includes('auto'); });
+    const autoConverters = converters.filter(function(r){ return (r.campaignName||'').toLowerCase().includes('auto'); });
+    const manualConverters = converters.filter(function(r){ return !(r.campaignName||'').toLowerCase().includes('auto'); });
+    const totalWastedSpend = wasters.reduce(function(s,r){ return s+parseFloat(r.cost||0); }, 0);
+    const totalConvValue = converters.reduce(function(s,r){ return s+parseFloat(r.sales14d||0); }, 0);
+
+    const NL = '\n';
+    const wasteAutoLines = autoWasters.slice(0,25).map(function(r){ return r.searchTerm + ' | £' + parseFloat(r.cost||0).toFixed(2) + ' | ' + (r.clicks||0) + ' clicks | ' + r.campaignName; }).join(NL);
+    const wasteManualLines = manualWasters.slice(0,25).map(function(r){ return r.searchTerm + ' | £' + parseFloat(r.cost||0).toFixed(2) + ' | ' + (r.clicks||0) + ' clicks | ' + r.campaignName; }).join(NL);
+    const convAutoLines = autoConverters.slice(0,25).map(function(r){ return r.searchTerm + ' | ' + r.purchases14d + ' purchases | £' + parseFloat(r.sales14d||0).toFixed(2) + ' | ' + (r.matchType||'') + ' | ' + r.campaignName; }).join(NL);
+    const convManualLines = manualConverters.slice(0,25).map(function(r){ return r.searchTerm + ' | ' + r.purchases14d + ' purchases | £' + parseFloat(r.sales14d||0).toFixed(2) + ' | ' + (r.matchType||'') + ' | ' + r.campaignName; }).join(NL);
+    const jsonFmt = '{"wasteReduction":{"totalWasted":"£X","estimatedSaving":"£X/week","topWasters":[{"searchTerm":"","campaign":"","campaignType":"auto or manual","spend":"£X","clicks":0,"recommendation":"","reason":""}]},"newKeywords":{"totalOpportunities":0,"estimatedRevenue":"£X/week","topOpportunities":[{"searchTerm":"","campaign":"","campaignType":"auto or manual","purchases":0,"sales":"£X","matchType":"","recommendation":"","estimatedImpact":""}]},"patterns":{"wastePatterns":"","keyInsight":""},"structuralChange":{"recommendation":"","expectedImpact":"","priority":"high"},"summary":"","estimatedWeeklyImpact":"£X"}';
+    const prompt = [
+      'You are an Amazon Advertising expert for FK Sports UK (fitness equipment).',
+      'Analyse 7-day search term data. Total: ' + data.length + ' terms. Wasted: £' + totalWastedSpend.toFixed(2) + '. Converting value: £' + totalConvValue.toFixed(2),
+      '',
+      'WASTING TERMS AUTO (' + autoWasters.length + '):', wasteAutoLines,
+      'WASTING TERMS MANUAL (' + manualWasters.length + '):', wasteManualLines,
+      '',
+      'CONVERTING NOT EXACT - AUTO (' + autoConverters.length + '):', convAutoLines,
+      'CONVERTING NOT EXACT - MANUAL (' + manualConverters.length + '):', convManualLines,
+      '',
+      'Q1: Which terms need NEGATIVE KEYWORDS? Auto=negatives only. Manual=negate irrelevant high-spend.',
+      'Q2: Which converting terms become EXACT MATCH? Auto=create new manual campaign. Manual=add directly.',
+      'Q3: Patterns in wasting terms? Irrelevant categories, competitor names, wrong intent?',
+      'Q4: Single most impactful structural change FK Sports should make?',
+      '',
+      'Return ONLY valid JSON, no other text:', jsonFmt
+    ].join(NL);
 
     console.log('Calling Claude claude-opus-4-7 for keyword analysis...');
     const aiRes = await axios.post('https://api.anthropic.com/v1/messages', {
@@ -996,7 +1031,21 @@ async function analyseKeywords() {
     const jsonEnd = clean.lastIndexOf('}');
     if (jsonStart === -1 || jsonEnd === -1) throw new Error('No JSON found in response');
     const jsonStr = clean.substring(jsonStart, jsonEnd + 1);
-    keywordState.analysis = JSON.parse(jsonStr);
+    const parsed = JSON.parse(jsonStr);
+    // Normalise to consistent format
+    keywordState.analysis = {
+      wasteReduction: parsed.wasteReduction || {},
+      newKeywords: parsed.newKeywords || {},
+      bidChanges: parsed.bidChanges || [],
+      portfolioInsights: {
+        patterns: (parsed.patterns && parsed.patterns.keyInsight) || (parsed.portfolioInsights && parsed.portfolioInsights.patterns) || '',
+        topPerforming: (parsed.portfolioInsights && parsed.portfolioInsights.topPerforming) || '',
+        needsAttention: (parsed.portfolioInsights && parsed.portfolioInsights.needsAttention) || ''
+      },
+      structuralChange: parsed.structuralChange || null,
+      summary: parsed.summary || '',
+      estimatedWeeklyImpact: parsed.estimatedWeeklyImpact || ''
+    };
     keywordState.lastAnalysed = Date.now();
     console.log('Keyword AI analysis complete');
   } catch(e) {
@@ -1183,12 +1232,20 @@ app.get('/api/tasks', async function(req, res) {
 
 app.post('/api/tasks/:id/status', async function(req, res) {
   if (!db) return res.status(500).json({ error: 'No DB' });
-  const { status, notes } = req.body;
+  const { status, notes, dismissedReason } = req.body;
   try {
-    await db.query(
-      'UPDATE campaign_tasks SET status=$1, agent_notes=$2, updated_at=NOW(), resolved_at=' + (status === 'complete' ? 'NOW()' : 'NULL') + ' WHERE id=$3',
-      [status, notes || '', req.params.id]
-    );
+    let query, params;
+    if (status === 'dismissed') {
+      // Set suppressed_until to end of today
+      const endOfDay = new Date();
+      endOfDay.setHours(23, 59, 59, 999);
+      query = 'UPDATE campaign_tasks SET status=$1, agent_notes=$2, dismissed_reason=$3, updated_at=NOW(), resolved_at=NOW(), suppressed_until=$4 WHERE id=$5';
+      params = [status, notes||'', dismissedReason||'', endOfDay.toISOString(), req.params.id];
+    } else {
+      query = 'UPDATE campaign_tasks SET status=$1, agent_notes=$2, updated_at=NOW(), resolved_at=' + (status === 'complete' ? 'NOW()' : 'NULL') + ' WHERE id=$3';
+      params = [status, notes||'', req.params.id];
+    }
+    await db.query(query, params);
     res.json({ success: true });
   } catch(e) {
     res.status(500).json({ error: e.message });
@@ -1235,6 +1292,15 @@ app.post('/api/campaigns/:id/budget', async function(req, res) {
         const gapMins = (parseInt(resParts[0]) * 60 + parseInt(resParts[1])) - (parseInt(outParts[0]) * 60 + parseInt(outParts[1]));
         log.gap = gapMins > 0 ? gapMins + ' min' : '< 1 min';
       }
+    }
+    // Auto-close any open alert tasks for this campaign
+    if (db) {
+      try {
+        await db.query(
+          'UPDATE campaign_tasks SET status=$1, agent_notes=$2, updated_at=NOW(), resolved_at=NOW() WHERE campaign_id=$3 AND status IN ($4,$5) AND task_source=$6',
+          ['complete', 'Budget +£' + amount + ' added', String(id), 'open', 'in_progress', 'alert']
+        );
+      } catch(e) { console.error('Auto-close task error: ' + e.message); }
     }
     const approvalAgent = extractAgentFromCampaign(campaign.name) || '';
     const approvalMsg = ['✅ Budget added', campaign.name, '+£' + amount + ' added. New budget: £' + newBudget.toFixed(2)].join('\n');
