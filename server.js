@@ -219,7 +219,12 @@ async function analyseCampaigns(campaigns) {
   const acosCritical = parseFloat(process.env.ACOS_CRITICAL_THRESHOLD || 35);
   const budgetLowPct = parseFloat(process.env.BUDGET_LOW_PERCENT || 20);
   const now = new Date();
-  const timeStr = now.toTimeString().slice(0, 5);
+  // Clear yesterday's alerts at start of new day
+  const todayStr = now.toLocaleDateString('en-GB', {timeZone:'Europe/London'});
+  state.alerts = state.alerts.filter(function(a) {
+    return a.date === now.toDateString();
+  });
+  const timeStr = now.toLocaleTimeString('en-GB', {timeZone:'Europe/London', hour:'2-digit', minute:'2-digit'});
   const dateStr = now.toDateString();
   let chatCount = 0;
   const maxChats = 5;
@@ -336,7 +341,7 @@ async function syncCampaigns() {
     // Check search term report in background
     checkSearchTermReport().catch(function(e){ console.error('KW check error: ' + e.message); });
     requestSearchTermReport().catch(function(e){ console.error('KW request error: ' + e.message); });
-    state.lastSync = new Date().toTimeString().slice(0, 8);
+    state.lastSync = new Date().toLocaleTimeString('en-GB', {timeZone:'Europe/London', hour:'2-digit', minute:'2-digit', second:'2-digit'});
     state.error = null;
     console.log('Sync done. ' + campaigns.length + ' campaigns.');
     // Save snapshot to DB on every sync
@@ -452,25 +457,94 @@ app.get('/api/dashboard', function(req, res) {
 app.post('/api/ai/analyse', async function(req, res) {
   try {
     const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) return res.json({ error: 'No API key', suggestions: null });
-    const allCamps = state.campaigns;
-    const lowAcos = allCamps.filter(function(c) { return c.acos > 0 && c.acos < 15 && c.dailyBudget > 0; });
-    const highAcos = allCamps.filter(function(c) { return c.acos > 35 && c.spend > 5; });
-    const outOfBudget = allCamps.filter(function(c) { return c.budgetRemaining <= 0.01 && c.dailyBudget > 0; });
-    const prompt = 'You are an Amazon Advertising expert for FK Sports UK. Give 4 specific recommendations based on: Total campaigns: ' + allCamps.length + ', Out of budget: ' + outOfBudget.length + ' (' + outOfBudget.slice(0,3).map(function(c){return c.name;}).join(', ') + '), High ACOS >35%: ' + highAcos.length + ' (' + highAcos.slice(0,3).map(function(c){return c.name + ' ' + c.acos + '%';}).join(', ') + '), Scale opportunities ACOS<15%: ' + lowAcos.length + ' (' + lowAcos.slice(0,3).map(function(c){return c.name + ' ' + c.acos + '%';}).join(', ') + '. Return ONLY JSON array of 4 objects with fields: type, title, campaign, detail, impact, action. No other text.';
-    const aiRes = await axios.post('https://api.anthropic.com/v1/messages', {
-      model: 'claude-opus-4-5',
-      max_tokens: 2000,
-      messages: [{ role: 'user', content: prompt }]
-    }, {
-      headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' }
+    if (!apiKey) return res.json({ error: 'No API key', result: null });
+    const acosTarget = parseFloat(process.env.ACOS_WARNING_THRESHOLD || 12);
+    const acosCritical = parseFloat(process.env.ACOS_CRITICAL_THRESHOLD || 35);
+
+    // Get historical data from Postgres if available
+    let historicalSummary = '';
+    let campHistory = {};
+    if (db) {
+      try {
+        const result = await db.query('SELECT snapshot_date, metrics, campaigns FROM daily_snapshots ORDER BY snapshot_date DESC LIMIT 7');
+        if (result.rows.length > 0) {
+          // Build per-campaign history
+          result.rows.forEach(function(snap) {
+            const camps = snap.campaigns || [];
+            camps.forEach(function(c) {
+              if (!campHistory[c.campaignId]) campHistory[c.campaignId] = { name: c.name, portfolio: c.portfolio||'', days: [] };
+              campHistory[c.campaignId].days.push({ date: snap.snapshot_date, spend: c.spend||0, sales: c.sales||0, acos: c.acos||0, impressions: c.impressions||0, budget: c.dailyBudget||0 });
+            });
+          });
+          const metrics = result.rows[0].metrics || {};
+          historicalSummary = 'Historical data available: ' + result.rows.length + ' days. Latest day: Revenue £' + metrics.totalRevenue + ', Spend £' + metrics.totalSpend + ', ACOS ' + metrics.blendedAcos + '%, Wasted spend £' + metrics.totalWastedSpend;
+        }
+      } catch(e) { console.error('AI history fetch: ' + e.message); }
+    }
+
+    // Classify campaigns using history
+    const scaleList = [];
+    const pauseList = [];
+    const reduceList = [];
+
+    Object.values(campHistory).forEach(function(camp) {
+      const days = camp.days;
+      if (!days.length) return;
+      const spendDays = days.filter(function(d){ return d.spend > 0; });
+      if (!spendDays.length) return;
+      const avgAcos = spendDays.reduce(function(s,d){ return s+d.acos; }, 0) / spendDays.length;
+      const totalSpend = days.reduce(function(s,d){ return s+d.spend; }, 0);
+      const totalSales = days.reduce(function(s,d){ return s+d.sales; }, 0);
+      const noRevDays = spendDays.filter(function(d){ return d.sales === 0; }).length;
+      const noActDays = days.filter(function(d){ return d.impressions === 0; }).length;
+      const avgBudget = spendDays.reduce(function(s,d){ return s+d.budget; }, 0) / spendDays.length;
+
+      if (noActDays >= 3) {
+        pauseList.push({ name: camp.name, portfolio: camp.portfolio, reason: 'Zero impressions for ' + noActDays + ' days', action: 'Pause and review targeting', spend: totalSpend.toFixed(2), acos: '—' });
+      } else if (noRevDays >= 5 && totalSpend > 10) {
+        pauseList.push({ name: camp.name, portfolio: camp.portfolio, reason: noRevDays + ' days spend with zero revenue, £' + totalSpend.toFixed(2) + ' wasted', action: 'Pause campaign', spend: totalSpend.toFixed(2), acos: avgAcos.toFixed(1) + '%' });
+      } else if (avgAcos > acosCritical && spendDays.length >= 3) {
+        reduceList.push({ name: camp.name, portfolio: camp.portfolio, reason: avgAcos.toFixed(1) + '% avg ACOS over ' + spendDays.length + ' days (target: ' + acosTarget + '%)', action: 'Reduce bids by 20% or add negative keywords', spend: totalSpend.toFixed(2), acos: avgAcos.toFixed(1) + '%' });
+      } else if (avgAcos > 0 && avgAcos < acosTarget && totalSales > 20 && spendDays.length >= 3) {
+        scaleList.push({ name: camp.name, portfolio: camp.portfolio, reason: avgAcos.toFixed(1) + '% avg ACOS over ' + spendDays.length + ' days, £' + totalSales.toFixed(2) + ' revenue', action: 'Increase daily budget from £' + avgBudget.toFixed(2) + ' to £' + (avgBudget * 1.5).toFixed(2), spend: totalSpend.toFixed(2), acos: avgAcos.toFixed(1) + '%' });
+      }
     });
-    const text = aiRes.data.content[0].text;
-    const clean = text.replace(/```json|```/g, '').trim();
-    res.json({ suggestions: JSON.parse(clean) });
+
+    // Use current state if no history
+    if (!Object.keys(campHistory).length) {
+      const allCamps = state.campaigns;
+      allCamps.forEach(function(c) {
+        if (c.acos > 0 && c.acos < acosTarget && c.sales > 5) scaleList.push({ name: c.name, portfolio: c.portfolio||'', reason: c.acos + '% ACOS today', action: 'Increase daily budget from £' + c.dailyBudget + ' to £' + (c.dailyBudget * 1.5).toFixed(2), spend: (c.spend||0).toString(), acos: c.acos + '%' });
+        else if (c.acos > acosCritical && c.spend > 5) reduceList.push({ name: c.name, portfolio: c.portfolio||'', reason: c.acos + '% ACOS today', action: 'Reduce bids or add negative keywords', spend: (c.spend||0).toString(), acos: c.acos + '%' });
+      });
+    }
+
+    // Ask Claude for strategic insight only (lists already done by rules)
+    let strategicInsight = '';
+    if (apiKey && (scaleList.length || pauseList.length || reduceList.length)) {
+      const promptParts = [
+        'You are an Amazon Advertising expert for FK Sports UK (sports equipment). ACOS target is ' + acosTarget + '%.',
+        historicalSummary,
+        'Scale candidates (' + scaleList.length + '): ' + scaleList.slice(0,5).map(function(c){ return c.name + ' (' + c.acos + ')'; }).join(', '),
+        'Pause candidates (' + pauseList.length + '): ' + pauseList.slice(0,5).map(function(c){ return c.name; }).join(', '),
+        'Reduce budget candidates (' + reduceList.length + '): ' + reduceList.slice(0,5).map(function(c){ return c.name + ' (' + c.acos + ')'; }).join(', '),
+        'In 3-4 sentences give ONE strategic insight about FK Sports campaign performance that would not be obvious from looking at individual campaigns. Focus on patterns, seasonality, or structural issues. Be specific and actionable.'
+      ];
+      const prompt = promptParts.join(' ');
+      try {
+        const aiRes = await axios.post('https://api.anthropic.com/v1/messages', {
+          model: 'claude-opus-4-5',
+          max_tokens: 500,
+          messages: [{ role: 'user', content: prompt }]
+        }, { headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' } });
+        strategicInsight = aiRes.data.content[0].text;
+      } catch(e) { console.error('AI insight error: ' + e.message); }
+    }
+
+    res.json({ result: { scaleList, pauseList, reduceList, strategicInsight, acosTarget, daysOfData: Object.values(campHistory)[0]?.days?.length || 0 } });
   } catch(e) {
     console.error('AI error: ' + e.message);
-    res.json({ error: e.message, suggestions: null });
+    res.json({ error: e.message, result: null });
   }
 });
 
@@ -664,6 +738,68 @@ app.get('/api/snapshots', async function(req, res) {
   })});
 });
 
+app.get('/api/stuck-campaigns', async function(req, res) {
+  if (!db) return res.json({ noActivity: [], noRevenue: [] });
+  try {
+    // Get last 7 snapshots
+    const result = await db.query(
+      'SELECT snapshot_date, campaigns FROM daily_snapshots ORDER BY snapshot_date DESC LIMIT 7'
+    );
+    const snapshots = result.rows;
+    if (snapshots.length < 3) return res.json({ noActivity: [], noRevenue: [], days: snapshots.length });
+
+    // Build campaign history map
+    const campHistory = {};
+    snapshots.forEach(function(snap) {
+      const camps = snap.campaigns || [];
+      const date = snap.snapshot_date;
+      camps.forEach(function(c) {
+        if (!campHistory[c.campaignId]) campHistory[c.campaignId] = { name: c.name, portfolio: c.portfolio||'', agent: c.agent||'', targetingType: c.targetingType||'', days: [] };
+        campHistory[c.campaignId].days.push({ date, impressions: c.impressions||0, spend: c.spend||0, sales: c.sales||0, acos: c.acos||0, dailyBudget: c.dailyBudget||0 });
+      });
+    });
+
+    const noActivity = [];
+    const noRevenue = [];
+
+    Object.values(campHistory).forEach(function(camp) {
+      const days = camp.days;
+      if (days.length < 3) return;
+      // No activity: 3+ consecutive days zero impressions
+      const last3 = days.slice(0, 3);
+      if (last3.every(function(d){ return d.impressions === 0; })) {
+        const totalSpend = last3.reduce(function(s,d){ return s+d.spend; }, 0);
+        noActivity.push(Object.assign({}, camp, {
+          daysNoActivity: last3.length,
+          totalSpend: totalSpend.toFixed(2),
+          lastBudget: last3[0].dailyBudget
+        }));
+      }
+      // No revenue: 7+ consecutive days spend > 0 but zero sales
+      const last7 = days.slice(0, Math.min(7, days.length));
+      const spendDays = last7.filter(function(d){ return d.spend > 0; });
+      if (spendDays.length >= 3 && last7.every(function(d){ return d.spend === 0 || d.sales === 0; })) {
+        const totalSpend = last7.reduce(function(s,d){ return s+d.spend; }, 0);
+        const avgAcos = spendDays.length > 0 ? spendDays.reduce(function(s,d){ return s+d.acos; }, 0) / spendDays.length : 0;
+        noRevenue.push(Object.assign({}, camp, {
+          daysNoRevenue: spendDays.length,
+          totalWastedSpend: totalSpend.toFixed(2),
+          avgAcos: avgAcos.toFixed(1)
+        }));
+      }
+    });
+
+    // Sort by worst first
+    noActivity.sort(function(a,b){ return b.daysNoActivity - a.daysNoActivity; });
+    noRevenue.sort(function(a,b){ return parseFloat(b.totalWastedSpend) - parseFloat(a.totalWastedSpend); });
+
+    res.json({ noActivity, noRevenue, daysOfData: snapshots.length });
+  } catch(e) {
+    console.error('Stuck campaigns error: ' + e.message);
+    res.json({ noActivity: [], noRevenue: [], error: e.message });
+  }
+});
+
 app.get('/api/snapshots/:date', async function(req, res) {
   const snap = await getDailySnapshot(req.params.date);
   if (!snap) return res.status(404).json({ error: 'No snapshot for ' + req.params.date });
@@ -700,7 +836,7 @@ app.post('/api/campaigns/:id/budget', async function(req, res) {
     if (log) {
       log.added = '+£' + amount;
       log.action = 'Budget added';
-      log.resolvedAt = new Date().toTimeString().slice(0, 5);
+      log.resolvedAt = new Date().toLocaleTimeString('en-GB', {timeZone:'Europe/London', hour:'2-digit', minute:'2-digit'});
       if (log.time) {
         const outParts = log.time.split(':');
         const resParts = log.resolvedAt.split(':');
