@@ -408,7 +408,9 @@ async function saveDailySnapshot() {
 async function getDailySnapshot(date) {
   if (!db) return null;
   try {
-    const res = await db.query('SELECT * FROM daily_snapshots WHERE snapshot_date = $1', [date]);
+    // Ensure date is in YYYY-MM-DD format
+    const dateStr = String(date).split('T')[0];
+    const res = await db.query("SELECT *, TO_CHAR(snapshot_date, 'YYYY-MM-DD') as snapshot_date FROM daily_snapshots WHERE snapshot_date = $1", [dateStr]);
     return res.rows[0] || null;
   } catch(e) {
     console.error('Snapshot fetch error: ' + e.message);
@@ -419,7 +421,7 @@ async function getDailySnapshot(date) {
 async function getSnapshotDates() {
   if (!db) return [];
   try {
-    const res = await db.query('SELECT snapshot_date, metrics FROM daily_snapshots ORDER BY snapshot_date DESC LIMIT 30');
+    const res = await db.query("SELECT TO_CHAR(snapshot_date, 'YYYY-MM-DD') as snapshot_date, metrics FROM daily_snapshots ORDER BY snapshot_date DESC LIMIT 30");
     return res.rows;
   } catch(e) {
     return [];
@@ -1125,7 +1127,8 @@ app.post('/api/keywords/refresh', async function(req, res) {
 app.get('/api/snapshots', async function(req, res) {
   const dates = await getSnapshotDates();
   res.json({ dates: dates.map(function(r) {
-    return { date: r.snapshot_date, metrics: r.metrics };
+    const d = typeof r.snapshot_date === 'string' ? r.snapshot_date : new Date(r.snapshot_date).toISOString().split('T')[0];
+    return { date: d, metrics: r.metrics };
   })});
 });
 
