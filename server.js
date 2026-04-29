@@ -223,8 +223,8 @@ async function analyseCampaigns(campaigns) {
     if (alreadyAlerted) continue;
 
     const name = c.name || 'Unknown';
-    const portfolioName = c.portfolio || 'No portfolio';
-    const agent = portfolioName.replace('@', '').split(' ')[0];
+    const agent = extractAgentFromCampaign(name) || '';
+    const portfolioName = c.portfolio || '';
 
     state.alerts.push({ campaignId: c.campaignId, name: name, portfolio: portfolioName, agent: agent, type: alertType, time: timeStr, date: dateStr, budget: budget, acos: Math.round(acos * 10) / 10 });
 
@@ -236,16 +236,19 @@ async function analyseCampaigns(campaigns) {
       const hourly = spend / Math.max(now.getHours(), 1);
       const missed = Math.round(hourly * hoursLeft * roas);
       state.exhaustionLog.unshift({ date: now.toLocaleDateString('en-GB'), time: timeStr, campaign: name, portfolio: portfolioName, agent: agent, budget: '£' + budget.toFixed(2), acos: acos.toFixed(1) + '%', missed: '£' + missed, added: 'Pending', action: 'Pending' });
-      const msg = '⚠ *OUT OF BUDGET*\n*Campaign:* ' + name + '\n*Portfolio:* ' + portfolioName + '\n*Agent:* ' + agent + '\n*Time:* ' + timeStr + '\n*Budget:* £' + budget.toFixed(2) + '\n*ACOS:* ' + acos.toFixed(1) + '%\n*Est. missed:* ~£' + missed + '\n\n' + dashUrl;
-      await sendGoogleChat(msg);
+      const m1 = ['⚠ OUT OF BUDGET', name, 'Time: ' + timeStr, 'Budget: £' + budget.toFixed(2), 'ACOS: ' + acos.toFixed(1) + '%', 'Est. missed: ~£' + missed, '', dashUrl].join('\n');
+      if (agent) { await sendToAgent(agent, m1); } else { await sendGoogleChat(m1); }
+      createAlertTask(c.campaignId, name, agent, portfolioName, 'out_of_budget', 'Ran out at ' + timeStr + '. Budget £' + budget.toFixed(2) + ', ACOS ' + acos.toFixed(1) + '%');
       chatCount++;
     } else if (acosHigh && chatCount < maxChats) {
-      const msg = '📈 *HIGH ACOS*\n*Campaign:* ' + name + '\n*Portfolio:* ' + portfolioName + '\n*Agent:* ' + agent + '\n*ACOS:* ' + acos.toFixed(1) + '%\n*Spend:* £' + spend.toFixed(2) + '\n\n' + dashUrl;
-      await sendGoogleChat(msg);
+      const m2 = ['📈 HIGH ACOS', name, 'ACOS: ' + acos.toFixed(1) + '%', 'Spend: £' + spend.toFixed(2), '', dashUrl].join('\n');
+      if (agent) { await sendToAgent(agent, m2); } else { await sendGoogleChat(m2); }
+      createAlertTask(c.campaignId, name, agent, portfolioName, 'high_acos', 'ACOS ' + acos.toFixed(1) + '% with £' + spend.toFixed(2) + ' spend');
       chatCount++;
     } else if (budgetLow && chatCount < maxChats) {
-      const msg = '⚡ *BUDGET LOW*\n*Campaign:* ' + name + '\n*Portfolio:* ' + portfolioName + '\n*Agent:* ' + agent + '\n*Remaining:* £' + remaining.toFixed(2) + ' (' + remainingPct.toFixed(0) + '%)\n\n' + dashUrl;
-      await sendGoogleChat(msg);
+      const m3 = ['⚡ BUDGET LOW', name, 'Remaining: £' + remaining.toFixed(2) + ' (' + remainingPct.toFixed(0) + '%)', '', dashUrl].join('\n');
+      if (agent) { await sendToAgent(agent, m3); } else { await sendGoogleChat(m3); }
+      createAlertTask(c.campaignId, name, agent, portfolioName, 'budget_low', 'Budget ' + remainingPct.toFixed(0) + '% used, £' + remaining.toFixed(2) + ' left');
       chatCount++;
     }
   }
@@ -1157,6 +1160,39 @@ app.post('/api/settings', async function(req, res) {
     console.error('Settings save error: ' + e.message);
     res.status(500).json({ error: e.message });
   }
+});
+
+
+// ── Task API routes ───────────────────────────────────────────────────────
+app.get('/api/tasks', async function(req, res) {
+  if (!db) return res.json({ tasks: [] });
+  try {
+    const result = await db.query(
+      'SELECT * FROM campaign_tasks ORDER BY score DESC, created_date DESC LIMIT 200'
+    );
+    res.json({ tasks: result.rows });
+  } catch(e) {
+    res.json({ tasks: [], error: e.message });
+  }
+});
+
+app.post('/api/tasks/:id/status', async function(req, res) {
+  if (!db) return res.status(500).json({ error: 'No DB' });
+  const { status, notes } = req.body;
+  try {
+    await db.query(
+      'UPDATE campaign_tasks SET status=$1, agent_notes=$2, updated_at=NOW(), resolved_at=' + (status === 'complete' ? 'NOW()' : 'NULL') + ' WHERE id=$3',
+      [status, notes || '', req.params.id]
+    );
+    res.json({ success: true });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/tasks/run-now', async function(req, res) {
+  runDailyTaskScheduler().catch(function(e){ console.error('Manual task run error: ' + e.message); });
+  res.json({ success: true, message: 'Task scheduler triggered' });
 });
 
 app.get('/api/health', function(req, res) {
