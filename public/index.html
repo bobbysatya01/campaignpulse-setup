@@ -223,8 +223,13 @@ tbody tr:hover { background: var(--surface2); }
     </button>
     <div class="nav-section">Reports</div>
     <button class="nav-item" onclick="showPage('history',this)">
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 3v5l3 3"/><circle cx="8" cy="8" r="6"/><path d="M2 2l2 2"/></svg>
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 3v5l3 3"/><circle cx="8" cy="8" r="6"/></svg>
       Daily history
+    </button>
+    <button class="nav-item" onclick="showPage('stuck',this)">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 1v7M5 11l3 3 3-3"/><circle cx="8" cy="5" r="2"/></svg>
+      Underperforming
+      <span class="nav-badge" id="stuck-badge" style="display:none;background:var(--amber);color:#000">0</span>
     </button>
     <button class="nav-item" onclick="showPage('report',this)">
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="12" height="12" rx="1.5"/><path d="M5 8h6M5 11h4M5 5h3"/></svg>
@@ -359,9 +364,9 @@ tbody tr:hover { background: var(--surface2); }
   <!-- AI ANALYSIS -->
   <div class="page" id="page-ai">
     <div class="metrics-grid" style="grid-template-columns:repeat(3,minmax(0,1fr))">
-      <div class="metric-card success"><div class="metric-label">Est. revenue gain</div><div class="metric-value" id="ai-gain">—</div><div class="metric-delta delta-up">If all suggestions approved</div></div>
-      <div class="metric-card alert"><div class="metric-label">Wasted spend</div><div class="metric-value" id="ai-waste">—</div><div class="metric-delta delta-down">High ACOS campaigns</div></div>
-      <div class="metric-card"><div class="metric-label">Scale opportunities</div><div class="metric-value" id="ai-opps">—</div><div class="metric-delta delta-up">Low ACOS, budget headroom</div></div>
+      <div class="metric-card success"><div class="metric-label">Scale opportunities</div><div class="metric-value" id="ai-opps">—</div><div class="metric-delta delta-up">Campaigns to grow</div></div>
+      <div class="metric-card alert"><div class="metric-label">Reduce budget</div><div class="metric-value" id="ai-waste">—</div><div class="metric-delta delta-down">High ACOS campaigns</div></div>
+      <div class="metric-card"><div class="metric-label">Pause candidates</div><div class="metric-value" id="ai-gain">—</div><div class="metric-delta delta-down">No activity or revenue</div></div>
     </div>
     <div id="ai-container"><div class="loading"><div class="spinner"></div> Analysing your campaigns...</div></div>
   </div>
@@ -431,6 +436,15 @@ tbody tr:hover { background: var(--surface2); }
         </div>
       </div>
 
+      <div id="history-no-activity-tab" style="display:none">
+        <div class="table-card">
+          <div style="overflow-x:auto"><table>
+            <thead><tr><th>Campaign</th><th>Portfolio</th><th>Type</th><th>Budget</th><th>Impressions</th><th>Clicks</th><th>Spend</th><th>Status</th></tr></thead>
+            <tbody id="history-no-activity-table"></tbody>
+          </table></div>
+        </div>
+      </div>
+
       <div id="history-exhaustion-tab" style="display:none">
         <div class="table-card">
           <div style="overflow-x:auto"><table>
@@ -454,6 +468,53 @@ tbody tr:hover { background: var(--surface2); }
         <div style="font-size:32px;margin-bottom:16px">📊</div>
         <div style="font-size:15px;font-weight:600;color:var(--text);margin-bottom:8px">Daily campaign history</div>
         <div style="font-size:13px;color:var(--text3);line-height:1.7">Select a date above to review that day's campaign performance.<br>Use this for your morning team discussions — see exactly what happened the day before.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- UNDERPERFORMING CAMPAIGNS PAGE -->
+  <div class="page" id="page-stuck">
+    <div class="metrics-grid" style="grid-template-columns:repeat(2,minmax(0,1fr));margin-bottom:20px">
+      <div class="metric-card alert">
+        <div class="metric-label">No activity — 3+ days</div>
+        <div class="metric-value" id="stuck-no-activity">—</div>
+        <div class="metric-delta delta-down">Zero impressions · Check targeting</div>
+      </div>
+      <div class="metric-card alert">
+        <div class="metric-label">Spend, no revenue — 7+ days</div>
+        <div class="metric-value" id="stuck-no-revenue">—</div>
+        <div class="metric-delta delta-down">Wasting budget · Consider pausing</div>
+      </div>
+    </div>
+
+    <div class="tabs" style="margin-bottom:16px">
+      <button class="tab-btn active" onclick="showStuckTab('no-activity',this)">No activity — 3+ days (<span id="stuck-na-count">0</span>)</button>
+      <button class="tab-btn" onclick="showStuckTab('no-revenue',this)">Spend, no revenue — 7+ days (<span id="stuck-nr-count">0</span>)</button>
+    </div>
+
+    <div id="stuck-no-activity-tab">
+      <div class="insight-box" style="margin-bottom:14px">
+        <div class="insight-title">⚠ No activity for 3+ consecutive days</div>
+        <div class="insight-text">These campaigns have had zero impressions for 3 or more days in a row. They are not showing ads at all — likely due to bids too low to compete, exhausted targeting, or accidentally paused. Review and either increase bids, fix targeting, or pause and replace with new campaigns.</div>
+      </div>
+      <div class="table-card">
+        <div style="overflow-x:auto"><table>
+          <thead><tr><th>Campaign</th><th>Portfolio</th><th>Type</th><th>Days no activity</th><th>Total spend (period)</th><th>Daily budget</th><th>Reason</th><th>Action</th></tr></thead>
+          <tbody id="stuck-na-table"><tr><td colspan="8"><div class="loading"><div class="spinner"></div> Loading...</div></td></tr></tbody>
+        </table></div>
+      </div>
+    </div>
+
+    <div id="stuck-no-revenue-tab" style="display:none">
+      <div class="insight-box" style="margin-bottom:14px">
+        <div class="insight-title">⚠ Spending budget with no revenue for 7+ days</div>
+        <div class="insight-text">These campaigns have been spending your budget for 7 or more days without generating any attributed revenue. This is wasted spend. Review the keywords, check if the product page converts, and consider pausing or restructuring these campaigns.</div>
+      </div>
+      <div class="table-card">
+        <div style="overflow-x:auto"><table>
+          <thead><tr><th>Campaign</th><th>Portfolio</th><th>Type</th><th>Days no revenue</th><th>Total wasted spend</th><th>Avg ACOS</th><th>Reason</th><th>Action</th></tr></thead>
+          <tbody id="stuck-nr-table"><tr><td colspan="8"><div class="loading"><div class="spinner"></div> Loading...</div></td></tr></tbody>
+        </table></div>
       </div>
     </div>
   </div>
@@ -565,6 +626,7 @@ function showPage(name, btn) {
   if (name === 'campaigns') renderAllCampaigns();
   if (name === 'report') renderReport();
   if (name === 'history') loadHistoryDates();
+  if (name === 'stuck') loadStuckCampaigns();
   if (name === 'activity') renderActivity();
   if (name === 'ai') runAI();
   if (name === 'keywords') loadKeywords();
@@ -887,54 +949,71 @@ let aiCache = { suggestions: null, lastRun: 0 };
 
 async function runAI() {
   const container = document.getElementById('ai-container');
-  const camps = allCampaigns;
-  if (!camps.length) { container.innerHTML = '<div class="empty">No campaign data available.</div>'; return; }
-  const lowAcos = camps.filter(c => c.acos > 0 && c.acos < 15 && c.dailyBudget > 0);
-  const highAcos = camps.filter(c => c.acos > 35 && c.spend > 5);
-  const outOfBudget = camps.filter(c => c.budgetRemaining <= 0.01 && c.dailyBudget > 0);
-  document.getElementById('ai-opps').textContent = lowAcos.length;
-  document.getElementById('ai-waste').textContent = '£' + highAcos.reduce((s,c) => s+(c.spend||0), 0).toFixed(0);
-  document.getElementById('ai-gain').textContent = '+£' + (lowAcos.length * 80).toFixed(0) + '/day';
+  if (!allCampaigns.length) { container.innerHTML = '<div class="empty">No campaign data available.</div>'; return; }
 
   // Use cache if less than 30 minutes old
-  if (aiCache.suggestions && (Date.now() - aiCache.lastRun) < 30 * 60 * 1000) {
-    renderAISuggestions(container, aiCache.suggestions);
+  if (aiCache.result && (Date.now() - aiCache.lastRun) < 30 * 60 * 1000) {
+    renderAIResult(container, aiCache.result);
     return;
   }
 
-  container.innerHTML = '<div class="loading"><div class="spinner"></div> Analysing ' + camps.length + ' FK Sports campaigns with Claude AI...<br><span style="font-size:11px;color:var(--text3);margin-top:8px;display:block">This takes 10-15 seconds · Results cached for 30 minutes</span></div>';
+  container.innerHTML = '<div class="loading"><div class="spinner"></div> Analysing FK Sports campaign history with Claude AI...<br><span style="font-size:11px;color:var(--text3);margin-top:8px;display:block">Reviewing 7 days of data · Results cached for 30 minutes</span></div>';
   try {
     const res = await fetch('/api/ai/analyse', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
     const data = await res.json();
-    if (data.error && !data.suggestions) throw new Error(data.error);
-    const suggestions = data.suggestions;
-    if (!suggestions || !suggestions.length) throw new Error('No suggestions');
-    aiCache = { suggestions, lastRun: Date.now() };
-    renderAISuggestions(container, suggestions);
+    if (!data.result) throw new Error(data.error || 'No result');
+    aiCache = { result: data.result, lastRun: Date.now() };
+    renderAIResult(container, data.result);
   } catch(e) {
-    renderFallbackAI(container, lowAcos, highAcos, outOfBudget);
+    container.innerHTML = '<div class="empty">AI analysis unavailable: ' + e.message + '</div>';
   }
 }
 
-function renderAISuggestions(container, suggestions) {
-  const typeIcons = { scale:'📈', waste:'✂️', budget:'💰', keyword:'🔍' };
-  const typeBadgeClass = { scale:'badge-green', waste:'badge-red', budget:'badge-amber', keyword:'badge-blue' };
+function renderAIResult(container, result) {
   const lastRun = aiCache.lastRun ? new Date(aiCache.lastRun).toLocaleTimeString('en-GB', {hour:'2-digit',minute:'2-digit'}) : '';
-  container.innerHTML = (lastRun ? '<div style="font-size:11px;color:var(--text3);margin-bottom:12px">Last analysed: ' + lastRun + ' · <button onclick="aiCache.lastRun=0;runAI()" style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:11px;font-family:inherit">Refresh analysis</button></div>' : '') +
-  suggestions.map(s => `
-    <div class="ai-card">
-      <div class="ai-header">
-        <div class="ai-icon">${typeIcons[s.type]||'✦'}</div>
-        <div style="flex:1"><div class="ai-title">${escHtml(s.title)}</div><div class="ai-sub">${escHtml(s.campaign||'')}</div></div>
-        <span class="badge ${typeBadgeClass[s.type]||'badge-blue'}" style="margin-left:auto">${escHtml(s.impact)}</span>
-      </div>
-      <div class="ai-desc">${escHtml(s.detail)}</div>
-      <div class="ai-impact">✓ Recommended action: ${escHtml(s.action)}</div>
-      <div class="ag">
-        <button class="btn btn-green" style="font-size:12px">Apply recommendation</button>
-        <button class="btn btn-ghost" style="font-size:12px">Dismiss</button>
-      </div>
-    </div>`).join('');
+  const daysLabel = result.daysOfData > 0 ? 'Based on ' + result.daysOfData + ' days of historical data' : 'Based on today's data';
+
+  // Update metrics
+  document.getElementById('ai-opps').textContent = result.scaleList?.length || 0;
+  document.getElementById('ai-waste').textContent = result.reduceList?.length || 0;
+  document.getElementById('ai-gain').textContent = result.pauseList?.length || 0;
+
+  const refreshBtn = '<div style="font-size:11px;color:var(--text3);margin-bottom:16px">' + daysLabel + ' · Last run: ' + lastRun + ' · <button onclick="aiCache.lastRun=0;runAI()" style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:11px;font-family:inherit">Refresh</button></div>';
+
+  const strategicBox = result.strategicInsight ? '<div class="insight-box" style="margin-bottom:20px"><div class="insight-title">✦ Strategic insight from Claude AI</div><div class="insight-text">' + escHtml(result.strategicInsight) + '</div></div>' : '';
+
+  const renderTable = function(list, cols, emptyMsg) {
+    if (!list || !list.length) return '<div class="empty" style="padding:20px">' + emptyMsg + '</div>';
+    return '<div class="table-card"><div style="overflow-x:auto"><table><thead><tr>' + cols.map(function(c){ return '<th>' + c + '</th>'; }).join('') + '</tr></thead><tbody>' +
+      list.map(function(c) {
+        return '<tr><td><div class="camp-name">' + escHtml(c.name) + '</div></td>' +
+          '<td style="font-size:12px;color:var(--text2)">' + escHtml(c.portfolio||'—') + '</td>' +
+          '<td class="mono ' + (parseFloat(c.acos)>35?'acos-high':parseFloat(c.acos)>12?'acos-warn':parseFloat(c.acos)>0?'acos-ok':'') + '">' + escHtml(c.acos||'—') + '</td>' +
+          '<td class="mono" style="color:var(--red)">£' + escHtml(c.spend||'0') + '</td>' +
+          '<td style="font-size:12px;color:var(--text3)">' + escHtml(c.reason) + '</td>' +
+          '<td style="font-size:12px;font-weight:500">' + escHtml(c.action) + '</td>' +
+          '</tr>';
+      }).join('') + '</tbody></table></div></div>';
+  };
+
+  container.innerHTML = refreshBtn + strategicBox +
+    '<div class="tabs" id="ai-tabs" style="margin-bottom:16px">' +
+      '<button class="tab-btn active" onclick="showAITab('scale',this)">📈 Scale (' + (result.scaleList?.length||0) + ')</button>' +
+      '<button class="tab-btn" onclick="showAITab('pause',this)">⏸ Pause (' + (result.pauseList?.length||0) + ')</button>' +
+      '<button class="tab-btn" onclick="showAITab('reduce',this)">✂️ Reduce budget (' + (result.reduceList?.length||0) + ')</button>' +
+    '</div>' +
+    '<div id="ai-tab-scale">' + renderTable(result.scaleList, ['Campaign','Portfolio','ACOS','7d Spend','Why scale','Recommended action'], 'No scale opportunities identified') + '</div>' +
+    '<div id="ai-tab-pause" style="display:none">' + renderTable(result.pauseList, ['Campaign','Portfolio','ACOS','Spend','Why pause','Recommended action'], 'No campaigns recommended for pausing') + '</div>' +
+    '<div id="ai-tab-reduce" style="display:none">' + renderTable(result.reduceList, ['Campaign','Portfolio','ACOS','Spend','Why reduce','Recommended action'], 'No campaigns recommended for budget reduction') + '</div>';
+}
+
+function showAITab(tab, btn) {
+  ['scale','pause','reduce'].forEach(function(t) {
+    const el = document.getElementById('ai-tab-' + t);
+    if (el) el.style.display = t === tab ? '' : 'none';
+  });
+  document.querySelectorAll('#ai-tabs .tab-btn').forEach(function(b){ b.classList.remove('active'); });
+  if (btn) btn.classList.add('active');
 }
 
 function renderFallbackAI(container, lowAcos, highAcos, outOfBudget) {
@@ -1098,6 +1177,75 @@ function escHtml(str) {
 }
 
 
+
+// ── Underperforming / Stuck Campaigns ─────────────────────────────────────
+async function loadStuckCampaigns() {
+  try {
+    const res = await fetch('/api/stuck-campaigns');
+    const data = await res.json();
+    const noActivity = data.noActivity || [];
+    const noRevenue = data.noRevenue || [];
+    const total = noActivity.length + noRevenue.length;
+
+    document.getElementById('stuck-no-activity').textContent = noActivity.length;
+    document.getElementById('stuck-no-revenue').textContent = noRevenue.length;
+    document.getElementById('stuck-na-count').textContent = noActivity.length;
+    document.getElementById('stuck-nr-count').textContent = noRevenue.length;
+
+    // Update nav badge
+    const badge = document.getElementById('stuck-badge');
+    if (total > 0) { badge.textContent = total; badge.style.display = ''; }
+    else badge.style.display = 'none';
+
+    if (data.days < 3) {
+      const msg = '<div class="empty" style="padding:40px"><div style="font-size:32px;margin-bottom:12px">⏳</div><div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:6px">Building history...</div><div style="font-size:13px;color:var(--text3)">Need at least 3 days of data. Currently have ' + (data.daysOfData||0) + ' day(s). Check back tomorrow.</div></div>';
+      document.getElementById('stuck-na-table').innerHTML = '<tr><td colspan="8">' + msg + '</td></tr>';
+      document.getElementById('stuck-nr-table').innerHTML = '<tr><td colspan="8">' + msg + '</td></tr>';
+      return;
+    }
+
+    // No activity table
+    const naTbody = document.getElementById('stuck-na-table');
+    naTbody.innerHTML = noActivity.length ? noActivity.map(function(c) {
+      return '<tr>' +
+        '<td><div class="camp-name">' + escHtml(c.name) + '</div></td>' +
+        '<td style="font-size:12px">' + escHtml(c.portfolio||'—') + '</td>' +
+        '<td>' + (c.targetingType==='auto'?'<span class="badge badge-blue" style="font-size:10px">Auto</span>':'<span class="badge" style="background:var(--surface3);color:var(--text3);font-size:10px">Manual</span>') + '</td>' +
+        '<td class="mono" style="color:var(--red);font-weight:600">' + c.daysNoActivity + ' days</td>' +
+        '<td class="mono">£' + c.totalSpend + '</td>' +
+        '<td class="mono">£' + c.lastBudget + '</td>' +
+        '<td style="font-size:12px;color:var(--text3)">Zero impressions — bid too low or targeting broken</td>' +
+        '<td><div class="ag"><button class="btn btn-red" style="font-size:11px">Pause</button><button class="btn btn-ghost" style="font-size:11px">Review</button></div></td>' +
+        '</tr>';
+    }).join('') : '<tr><td colspan="8"><div class="empty">No campaigns with 3+ days zero activity</div></td></tr>';
+
+    // No revenue table
+    const nrTbody = document.getElementById('stuck-nr-table');
+    nrTbody.innerHTML = noRevenue.length ? noRevenue.map(function(c) {
+      return '<tr>' +
+        '<td><div class="camp-name">' + escHtml(c.name) + '</div></td>' +
+        '<td style="font-size:12px">' + escHtml(c.portfolio||'—') + '</td>' +
+        '<td>' + (c.targetingType==='auto'?'<span class="badge badge-blue" style="font-size:10px">Auto</span>':'<span class="badge" style="background:var(--surface3);color:var(--text3);font-size:10px">Manual</span>') + '</td>' +
+        '<td class="mono" style="color:var(--red);font-weight:600">' + c.daysNoRevenue + ' days</td>' +
+        '<td class="mono" style="color:var(--red);font-weight:600">£' + c.totalWastedSpend + '</td>' +
+        '<td class="mono ' + (parseFloat(c.avgAcos)>35?'acos-high':parseFloat(c.avgAcos)>12?'acos-warn':'') + '">' + c.avgAcos + '%</td>' +
+        '<td style="font-size:12px;color:var(--text3)">Spend with zero attributed revenue</td>' +
+        '<td><div class="ag"><button class="btn btn-red" style="font-size:11px">Pause</button><button class="btn btn-ghost" style="font-size:11px">Review</button></div></td>' +
+        '</tr>';
+    }).join('') : '<tr><td colspan="8"><div class="empty">No campaigns with 7+ days spend and no revenue</div></td></tr>';
+
+  } catch(e) {
+    console.error('Stuck campaigns error:', e);
+  }
+}
+
+function showStuckTab(tab, btn) {
+  document.getElementById('stuck-no-activity-tab').style.display = tab === 'no-activity' ? '' : 'none';
+  document.getElementById('stuck-no-revenue-tab').style.display = tab === 'no-revenue' ? '' : 'none';
+  document.querySelectorAll('#page-stuck .tab-btn').forEach(function(b){ b.classList.remove('active'); });
+  if (btn) btn.classList.add('active');
+}
+
 // ── Daily History ─────────────────────────────────────────────────────────
 async function loadHistoryDates() {
   try {
@@ -1160,6 +1308,13 @@ async function loadHistoryDate() {
     snrTbody.innerHTML = snr.sort(function(a,b){ return (b.spend||0)-(a.spend||0); }).map(function(c) {
       return '<tr><td><div class="camp-name">' + escHtml(c.name) + '</div></td><td style="font-size:12px">' + escHtml(c.portfolio||'—') + '</td><td>' + (c.targetingType==='auto'?'<span class="badge badge-blue" style="font-size:10px">Auto</span>':'<span class="badge" style="background:var(--surface3);color:var(--text3);font-size:10px">Manual</span>') + '</td><td class="mono" style="color:var(--red);font-weight:600">£' + (c.spend||0) + '</td><td class="mono">' + (c.impressions||0).toLocaleString() + '</td><td class="mono">' + (c.clicks||0) + '</td><td class="mono">' + (c.ctr||'0') + '%</td><td class="mono">' + (c.conversions||0) + '</td><td><span class="badge badge-red">Wasted spend</span></td></tr>';
     }).join('') || '<tr><td colspan="9"><div class="empty">No wasted spend on this day</div></td></tr>';
+    // No activity table
+    const noAct = camps.filter(function(c){ return c.impressions === 0 && (c.spend === 0 || c.spend === null); });
+    const noActTbody = document.getElementById('history-no-activity-table');
+    noActTbody.innerHTML = noAct.length ? noAct.map(function(c) {
+      return '<tr><td><div class="camp-name">' + escHtml(c.name) + '</div></td><td style="font-size:12px">' + escHtml(c.portfolio||'—') + '</td><td>' + (c.targetingType==='auto'?'<span class="badge badge-blue" style="font-size:10px">Auto</span>':'<span class="badge" style="background:var(--surface3);color:var(--text3);font-size:10px">Manual</span>') + '</td><td class="mono">£' + (c.dailyBudget||0) + '</td><td class="mono" style="color:var(--text3)">0</td><td class="mono" style="color:var(--text3)">0</td><td class="mono">£' + (c.spend||0) + '</td><td><span class="badge badge-amber">No activity</span></td></tr>';
+    }).join('') : '<tr><td colspan="8"><div class="empty">No inactive campaigns on this day</div></td></tr>';
+
     // Exhaustion log table
     const exTbody = document.getElementById('history-exhaustion-table');
     exTbody.innerHTML = (data.exhaustionLog||[]).map(function(e) {
@@ -1176,6 +1331,7 @@ async function loadHistoryDate() {
 function showHistoryTab(tab, btn) {
   document.getElementById('history-campaigns-tab').style.display = tab==='campaigns'?'':'none';
   document.getElementById('history-snr-tab').style.display = tab==='spend_no_revenue'?'':'none';
+  document.getElementById('history-no-activity-tab').style.display = tab==='no_activity'?'':'none';
   document.getElementById('history-exhaustion-tab').style.display = tab==='exhaustion'?'':'none';
   document.querySelectorAll('#page-history .tab-btn').forEach(function(b){ b.classList.remove('active'); });
   if (btn) btn.classList.add('active');
