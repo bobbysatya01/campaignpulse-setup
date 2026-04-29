@@ -600,15 +600,9 @@ tbody tr:hover { background: var(--surface2); }
 
   <!-- TASKS PAGE -->
   <div class="page" id="page-tasks">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
-      <div>
-        <div class="section-title">Campaign Tasks</div>
-        <div class="section-sub">Daily investigation tasks assigned to agents based on 3-day performance history</div>
-      </div>
-      <div style="display:flex;gap:8px">
-        <button class="btn btn-ghost" onclick="runTasksNow()">Run now (test)</button>
-        <button class="btn btn-primary" onclick="loadTasks()">Refresh</button>
-      </div>
+    <div style="margin-bottom:20px">
+      <div class="section-title">Campaign Tasks</div>
+      <div class="section-sub">Daily investigation tasks at 9am · Alert tasks fire immediately · Auto-archived after 3 working days</div>
     </div>
 
     <div class="metrics-grid" style="grid-template-columns:repeat(4,minmax(0,1fr));margin-bottom:20px">
@@ -618,10 +612,8 @@ tbody tr:hover { background: var(--surface2); }
       <div class="metric-card alert"><div class="metric-label">Overdue (2+ days)</div><div class="metric-value" id="task-overdue">—</div><div class="metric-delta delta-down">Needs escalation</div></div>
     </div>
 
-    <div style="display:flex;gap:10px;margin-bottom:14px;align-items:center">
-      <select id="task-agent-filter" onchange="renderTasks(taskTab)" style="background:white;border:1px solid var(--border2);color:var(--text);padding:8px 14px;border-radius:8px;font-size:13px;font-family:inherit;cursor:pointer;min-width:160px">
-        <option value="">All agents</option>
-      </select>
+    <div style="display:flex;gap:10px;margin-bottom:14px;align-items:center;flex-wrap:wrap">
+      <input type="text" id="task-search" placeholder="Search agent or campaign..." oninput="renderTasks(taskTab)" style="background:white;border:1px solid var(--border2);color:var(--text);padding:8px 14px;border-radius:8px;font-size:13px;font-family:inherit;width:260px">
       <select id="task-source-filter" onchange="renderTasks(taskTab)" style="background:white;border:1px solid var(--border2);color:var(--text);padding:8px 12px;border-radius:8px;font-size:13px;font-family:inherit;cursor:pointer">
         <option value="">All types</option>
         <option value="daily">Daily tasks</option>
@@ -629,8 +621,9 @@ tbody tr:hover { background: var(--surface2); }
       </select>
     </div>
     <div class="tabs" style="margin-bottom:16px">
-      <button class="tab-btn active" onclick="showTaskTab('open',this)">Due</button>
-      <button class="tab-btn" onclick="showTaskTab('complete',this)">Completed</button>
+      <button class="tab-btn active" onclick="showTaskTab('open',this)">Due (<span id="tab-due-count">0</span>)</button>
+      <button class="tab-btn" onclick="showTaskTab('paused',this)">Paused (<span id="tab-paused-count">0</span>)</button>
+      <button class="tab-btn" onclick="showTaskTab('complete',this)">Completed (<span id="tab-complete-count">0</span>)</button>
     </div>
 
     <div id="tasks-container">
@@ -889,13 +882,58 @@ function renderAlerts() {
   const alerts = (appData.alerts || []).filter(a => a.type === 'out_of_budget').slice(-3);
   if (!alerts.length) { container.innerHTML = ''; return; }
   container.innerHTML = alerts.map(a => `
-    <div class="alert-banner">
+    <div class="alert-banner" id="alert-${a.campaignId}">
       <span style="font-size:16px">⚠</span>
-      <div class="alert-banner-text"><strong>${escHtml(a.name)}</strong> ran out of budget at ${a.time}. Portfolio: ${escHtml(a.portfolio||'N/A')}. Agent: ${escHtml(a.agent||'N/A')}. ACOS: ${a.acos}%.</div>
+      <div class="alert-banner-text"><strong>${escHtml(a.name)}</strong> ran out of budget at ${a.time}. ACOS: ${a.acos}%.</div>
       <button class="btn btn-green" onclick="approveBudget('${a.campaignId}','')">Add budget</button>
-      <button class="btn btn-ghost" onclick="this.closest('.alert-banner').remove()">Dismiss</button>
+      <button class="btn btn-ghost" onclick="dismissAlert('${a.campaignId}')">Dismiss</button>
     </div>
   `).join('');
+}
+
+// ── Dismiss alert with reason ─────────────────────────────────────────────
+function dismissAlert(campaignId) {
+  const reasons = ['High ACOS', 'No CVR', 'Test Low Budget', 'Other'];
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.4);z-index:9998;display:flex;align-items:center;justify-content:center';
+  const popup = document.createElement('div');
+  popup.style.cssText = 'background:white;padding:24px;border-radius:12px;box-shadow:0 8px 40px rgba(0,0,0,0.2);min-width:320px;max-width:400px;width:90%';
+  const optHtml = reasons.map(function(r){ return '<option>' + r + '</option>'; }).join('');
+  popup.innerHTML = '<div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:6px">Dismiss reason</div>' +
+    '<div style="font-size:12px;color:var(--text3);margin-bottom:14px">Why are you not adding budget?</div>' +
+    '<select id="da-reason" style="width:100%;padding:9px;border:1px solid var(--border2);border-radius:7px;margin-bottom:10px;font-size:13px;font-family:inherit">' + optHtml + '</select>' +
+    '<textarea id="da-other" placeholder="Describe reason..." style="width:100%;padding:9px;border:1px solid var(--border2);border-radius:7px;font-size:13px;height:64px;display:none;margin-bottom:10px;resize:none;font-family:inherit"></textarea>' +
+    '<div style="display:flex;gap:8px;justify-content:flex-end">' +
+    '<button id="da-cancel" class="btn btn-ghost" style="font-size:13px">Cancel</button>' +
+    '<button id="da-confirm" class="btn btn-primary" style="font-size:13px">Confirm dismiss</button></div>';
+  popup.querySelector('#da-reason').onchange = function() {
+    popup.querySelector('#da-other').style.display = this.value === 'Other' ? '' : 'none';
+  };
+  popup.querySelector('#da-cancel').onclick = function() { overlay.remove(); };
+  popup.querySelector('#da-confirm').onclick = async function() {
+    const reason = popup.querySelector('#da-reason').value === 'Other'
+      ? (popup.querySelector('#da-other').value || 'Other')
+      : popup.querySelector('#da-reason').value;
+    overlay.remove();
+    // Find and dismiss the alert task in DB
+    try {
+      const tasksRes = await fetch('/api/tasks');
+      const tasksData = await tasksRes.json();
+      const alertTask = (tasksData.tasks||[]).find(function(t){ return String(t.campaign_id)===String(campaignId) && t.task_source==='alert' && (t.status==='open'||t.status==='in_progress'); });
+      if (alertTask) {
+        await fetch('/api/tasks/' + alertTask.id + '/status', {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ status: 'dismissed', dismissedReason: reason, notes: reason })
+        });
+      }
+    } catch(e) {}
+    // Remove banner
+    const banner = document.getElementById('alert-' + campaignId);
+    if (banner) banner.remove();
+  };
+  overlay.appendChild(popup);
+  overlay.onclick = function(e){ if(e.target===overlay) overlay.remove(); };
+  document.body.appendChild(overlay);
 }
 
 // ── Campaign table ─────────────────────────────────────────────────────────
@@ -1439,6 +1477,16 @@ async function loadHistoryDates() {
 }
 
 let historyData = null;
+let historySortState = { col: 'spend', dir: -1 };
+
+function sortHistoryCol(col) {
+  if (historySortState.col === col) historySortState.dir *= -1;
+  else { historySortState.col = col; historySortState.dir = -1; }
+  document.querySelectorAll('[id^="hs-"]').forEach(function(el){ el.textContent=''; });
+  const ind = document.getElementById('hs-' + col);
+  if (ind) ind.textContent = historySortState.dir === -1 ? ' ↓' : ' ↑';
+  if (historyData) filterHistoryByAgent();
+}
 
 function filterHistoryByAgent() {
   if (!historyData) return;
@@ -1473,7 +1521,14 @@ function filterHistoryByAgent() {
 
 function renderHistoryCampaignsTable(camps) {
   const tbody = document.getElementById('history-table');
-  tbody.innerHTML = camps.sort(function(a,b){ return (b.spend||0)-(a.spend||0); }).map(function(c) {
+  const col = historySortState.col;
+  const dir = historySortState.dir;
+  const sorted = camps.slice().sort(function(a,b){
+    const va = col==='name'?(a.name||''):col==='spend'?(a.spend||0):col==='sales'?(a.sales||0):col==='acos'?(a.acos||0):col==='impressions'?(a.impressions||0):col==='clicks'?(a.clicks||0):(a.conversions||0);
+    const vb = col==='name'?(b.name||''):col==='spend'?(b.spend||0):col==='sales'?(b.sales||0):col==='acos'?(b.acos||0):col==='impressions'?(b.impressions||0):col==='clicks'?(b.clicks||0):(b.conversions||0);
+    return va < vb ? dir : va > vb ? -dir : 0;
+  });
+  tbody.innerHTML = sorted.map(function(c) {
     const acosClass = c.acos > 35 ? 'acos-high' : c.acos > 25 ? 'acos-warn' : c.acos > 0 ? 'acos-ok' : '';
     return '<tr><td><div class="camp-name">' + escHtml(c.name) + '</div></td><td style="font-size:12px">' + escHtml(c.portfolio||'—') + '</td><td>' + (c.targetingType==='auto'?'<span class="badge badge-blue" style="font-size:10px">Auto</span>':'<span class="badge" style="background:var(--surface3);color:var(--text3);font-size:10px">Manual</span>') + '</td><td class="mono">£' + (c.dailyBudget||0) + '</td><td class="mono">' + (c.impressions||0).toLocaleString() + '</td><td class="mono">' + (c.clicks||0) + '</td><td class="mono">' + (c.ctr||'0') + '%</td><td class="mono">' + (c.conversions||0) + '</td><td class="mono" style="color:var(--green)">£' + (c.sales||0) + '</td><td class="mono">£' + (c.spend||0) + '</td><td class="mono ' + acosClass + '">' + (c.acos>0?c.acos+'%':'—') + '</td><td>' + (c.budgetRemaining<=0.01&&c.dailyBudget>0?'<span class="badge badge-red">Out of budget</span>':c.acos>35&&c.spend>5?'<span class="badge badge-red">ACOS high</span>':'<span class="badge badge-green">Healthy</span>') + '</td></tr>';
   }).join('') || '<tr><td colspan="12"><div class="empty">No campaign data</div></td></tr>';
@@ -1523,7 +1578,7 @@ async function loadHistoryDate() {
     const camps = data.campaigns || [];
     // Campaigns table
     const tbody = document.getElementById('history-table');
-    tbody.innerHTML = camps.sort(function(a,b){ return (b.spend||0)-(a.spend||0); }).map(function(c) {
+    tbody.innerHTML = sorted.map(function(c) {
       const acosClass = c.acos > 35 ? 'acos-high' : c.acos > 25 ? 'acos-warn' : c.acos > 0 ? 'acos-ok' : '';
       return '<tr><td><div class="camp-name">' + escHtml(c.name) + '</div></td><td style="font-size:12px">' + escHtml(c.portfolio||'—') + '</td><td>' + (c.targetingType==='auto'?'<span class="badge badge-blue" style="font-size:10px">Auto</span>':'<span class="badge" style="background:var(--surface3);color:var(--text3);font-size:10px">Manual</span>') + '</td><td class="mono">£' + (c.dailyBudget||0) + '</td><td class="mono">' + (c.impressions||0).toLocaleString() + '</td><td class="mono">' + (c.clicks||0) + '</td><td class="mono">' + (c.ctr||'0') + '%</td><td class="mono">' + (c.conversions||0) + '</td><td class="mono" style="color:var(--green)">£' + (c.sales||0) + '</td><td class="mono">£' + (c.spend||0) + '</td><td class="mono ' + acosClass + '">' + (c.acos>0?c.acos+'%':'—') + '</td><td>' + (c.budgetRemaining<=0.01&&c.dailyBudget>0?'<span class="badge badge-red">Out of budget</span>':c.acos>35&&c.spend>5?'<span class="badge badge-red">ACOS high</span>':'<span class="badge badge-green">Healthy</span>') + '</td></tr>';
     }).join('') || '<tr><td colspan="12"><div class="empty">No campaign data</div></td></tr>';
@@ -1662,6 +1717,23 @@ function renderTasks(tab) {
 
 async function completeTask(taskId) {
   await updateTask(taskId, 'complete', 'Done');
+}
+
+function pauseTask(taskId) {
+  const reason = prompt('Reason for pausing this campaign:');
+  if (reason === null) return;
+  fetch('/api/tasks/' + taskId + '/status', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ status: 'paused', pausedReason: reason || 'Campaign paused', notes: reason || 'Campaign paused' })
+  }).then(function(){ loadTasks(); });
+}
+
+async function archiveTask(taskId) {
+  if (!confirm('Archive this task? It will be removed from view but kept in records.')) return;
+  try {
+    await fetch('/api/tasks/' + taskId + '/archive', { method: 'POST' });
+    await loadTasks();
+  } catch(e) { alert('Error: ' + e.message); }
 }
 
 function dismissTask(taskId) {
