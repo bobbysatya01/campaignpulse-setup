@@ -46,10 +46,14 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 
 /* Sidebar */
-.logo { padding: 22px 22px 18px; border-bottom: 1px solid rgba(255,255,255,0.08); }
-.logo-brand { font-family: var(--display); font-size: 11px; font-weight: 700; letter-spacing: 0.2em; text-transform: uppercase; color: var(--accent); margin-bottom: 3px; }
-.logo-product { font-family: var(--display); font-size: 20px; font-weight: 700; color: #ffffff; letter-spacing: -0.3px; }
-.logo-sub { font-size: 11px; color: rgba(255,255,255,0.35); margin-top: 2px; font-family: var(--mono); }
+.logo { padding: 20px 22px 16px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+.logo-img-wrap { display: flex; align-items: center; justify-content: flex-start; margin-bottom: 10px; }
+.logo-img { height: 44px; width: auto; max-width: 180px; object-fit: contain; filter: brightness(0) invert(1); display: block; }
+.logo-img.loaded { filter: none; }
+.logo-divider { width: 100%; height: 1px; background: rgba(255,255,255,0.1); margin: 10px 0 8px; }
+.logo-product { font-family: var(--display); font-size: 18px; font-weight: 700; color: #ffffff; letter-spacing: -0.3px; display: flex; align-items: center; gap: 6px; }
+.logo-product-badge { font-size: 9px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; background: var(--accent); color: white; padding: 2px 6px; border-radius: 4px; vertical-align: middle; }
+.logo-sub
 .nav { padding: 14px 12px; flex: 1; }
 .nav-section { font-size: 10px; font-weight: 600; color: rgba(255,255,255,0.25); letter-spacing: 0.12em; text-transform: uppercase; padding: 14px 10px 7px; }
 .nav-item { display: flex; align-items: center; gap: 11px; padding: 10px 12px; border-radius: 8px; cursor: pointer; color: rgba(255,255,255,0.55); font-size: 13.5px; font-weight: 400; transition: all 0.15s; border: none; background: none; width: 100%; text-align: left; }
@@ -114,6 +118,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sa
 .table-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin-bottom: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
 table { width: 100%; border-collapse: collapse; }
 thead th { font-size: 11px; font-weight: 600; color: var(--text3); text-transform: uppercase; letter-spacing: 0.07em; padding: 11px 14px; text-align: left; background: var(--surface2); border-bottom: 1px solid var(--border); white-space: nowrap; }
+thead th[onclick] { cursor: pointer; user-select: none; }
+thead th[onclick]:hover { color: var(--text); background: var(--surface3); }
 tbody td { padding: 12px 14px; border-bottom: 1px solid var(--border); font-size: 13px; color: var(--text); vertical-align: middle; }
 tbody tr:last-child td { border-bottom: none; }
 tbody tr:hover { background: var(--surface2); }
@@ -188,6 +194,56 @@ tbody tr:hover { background: var(--surface2); }
 .acos-high { color: var(--red); font-weight: 600; }
 .acos-warn { color: var(--amber); font-weight: 500; }
 .acos-ok { color: var(--green); font-weight: 500; }
+
+/* ── Mobile responsive ─────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .shell { flex-direction: column; }
+  .sidebar {
+    width: 100%; height: auto; position: relative; flex-direction: column;
+    overflow-y: visible; overflow-x: hidden;
+  }
+  .logo { padding: 14px 16px 12px; }
+  .nav { padding: 8px; display: flex; flex-direction: row; flex-wrap: wrap; gap: 2px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+  .nav-section { display: none; }
+  .nav-item { padding: 7px 10px; font-size: 12px; gap: 6px; flex: 0 0 auto; border-radius: 6px; border-left: none !important; }
+  .nav-item.active { border-left: none !important; border-bottom: 2px solid var(--accent); }
+  .sidebar-footer { display: none; }
+  .main { min-width: 0; width: 100%; }
+  .topbar { padding: 10px 14px; flex-wrap: wrap; gap: 8px; }
+  .topbar-right { flex-wrap: wrap; gap: 6px; }
+  .page-title { font-size: 14px; }
+  .content { padding: 14px; }
+  .metrics-grid { grid-template-columns: 1fr 1fr !important; gap: 10px; }
+  .metric-value { font-size: 22px; }
+  .section-header { flex-direction: column; align-items: flex-start; gap: 10px; }
+  .section-header > div:last-child { flex-wrap: wrap; gap: 6px; }
+  .tabs { flex-wrap: wrap; gap: 4px; }
+  .tab-btn { font-size: 12px; padding: 6px 12px; }
+  .table-card { border-radius: 8px; }
+  .table-card .table-header { flex-direction: column; align-items: flex-start; gap: 8px; }
+  table { font-size: 12px; }
+  thead th { padding: 9px 10px; font-size: 10px; }
+  td { padding: 9px 10px; }
+  .camp-name { font-size: 12px; max-width: 160px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .btn { font-size: 12px; padding: 7px 12px; }
+  select, input { font-size: 13px; }
+  .filters { flex-direction: column; gap: 8px; }
+  .filters > * { width: 100%; }
+  /* ensure all tables scroll horizontally on mobile */
+  .table-card > div { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  /* metric grid for 3-col sections */
+  div[style*="grid-template-columns:repeat(3"] { grid-template-columns: 1fr 1fr !important; }
+  div[style*="grid-template-columns:repeat(4"] { grid-template-columns: 1fr 1fr !important; }
+  /* dashboard alert cards */
+  .alert-row { flex-direction: column; align-items: flex-start; gap: 6px; }
+  .alert-actions { margin-left: 0 !important; }
+}
+@media (max-width: 420px) {
+  .metrics-grid { grid-template-columns: 1fr !important; }
+  .metric-card { padding: 14px; }
+  .nav-item span:not(.nav-badge) { display: none; }
+  .nav-item svg { width: 18px; height: 18px; }
+}
 </style>
 </head>
 <body>
@@ -410,7 +466,8 @@ tbody tr:hover { background: var(--surface2); }
 
       <div class="tabs" style="margin-bottom:16px">
         <button class="tab-btn active" onclick="showHistoryTab('campaigns',this)">All campaigns</button>
-        <button class="tab-btn" onclick="showHistoryTab('spend_no_revenue',this)">Spend, no revenue</button>
+        <button class="tab-btn" onclick="showHistoryTab('spend_no_revenue',this)">Spend, no revenue <span id="h-snr-badge" style="background:rgba(192,57,43,0.15);color:var(--red);padding:1px 6px;border-radius:10px;font-size:10px;margin-left:4px">0</span></button>
+        <button class="tab-btn" onclick="showHistoryTab('no_activity',this)">No activity <span id="h-na-badge" style="background:rgba(0,0,0,0.07);color:var(--text3);padding:1px 6px;border-radius:10px;font-size:10px;margin-left:4px">0</span></button>
         <button class="tab-btn" onclick="showHistoryTab('exhaustion',this)">Budget exhaustion log</button>
       </div>
 
@@ -437,6 +494,10 @@ tbody tr:hover { background: var(--surface2); }
       </div>
 
       <div id="history-no-activity-tab" style="display:none">
+        <div class="insight-box" style="margin-bottom:16px">
+          <div class="insight-title">✦ No activity on this day</div>
+          <div class="insight-text" id="history-na-insight">Campaigns with zero impressions and zero spend on this day. Share with your team to review targeting, bids, or whether to pause.</div>
+        </div>
         <div class="table-card">
           <div style="overflow-x:auto"><table>
             <thead><tr><th>Campaign</th><th>Portfolio</th><th>Type</th><th>Budget</th><th>Impressions</th><th>Clicks</th><th>Spend</th><th>Status</th></tr></thead>
@@ -1307,12 +1368,15 @@ async function loadHistoryDate() {
     // Spend no revenue table
     const snr = camps.filter(function(c){ return c.spend > 0 && (c.sales === 0 || c.sales === null); });
     document.getElementById('history-snr-insight').textContent = snr.length + ' campaigns spent £' + snr.reduce(function(s,c){ return s+(c.spend||0); }, 0).toFixed(2) + ' with zero attributed revenue on this day.';
+    document.getElementById('h-snr-badge').textContent = snr.length;
     const snrTbody = document.getElementById('history-snr-table');
     snrTbody.innerHTML = snr.sort(function(a,b){ return (b.spend||0)-(a.spend||0); }).map(function(c) {
       return '<tr><td><div class="camp-name">' + escHtml(c.name) + '</div></td><td style="font-size:12px">' + escHtml(c.portfolio||'—') + '</td><td>' + (c.targetingType==='auto'?'<span class="badge badge-blue" style="font-size:10px">Auto</span>':'<span class="badge" style="background:var(--surface3);color:var(--text3);font-size:10px">Manual</span>') + '</td><td class="mono" style="color:var(--red);font-weight:600">£' + (c.spend||0) + '</td><td class="mono">' + (c.impressions||0).toLocaleString() + '</td><td class="mono">' + (c.clicks||0) + '</td><td class="mono">' + (c.ctr||'0') + '%</td><td class="mono">' + (c.conversions||0) + '</td><td><span class="badge badge-red">Wasted spend</span></td></tr>';
     }).join('') || '<tr><td colspan="9"><div class="empty">No wasted spend on this day</div></td></tr>';
     // No activity table
     const noAct = camps.filter(function(c){ return c.impressions === 0 && (c.spend === 0 || c.spend === null); });
+    document.getElementById('history-na-insight').textContent = noAct.length + ' campaign' + (noAct.length !== 1 ? 's' : '') + ' had zero impressions and zero spend on this day. Review bids, targeting, or consider pausing.';
+    document.getElementById('h-na-badge').textContent = noAct.length;
     const noActTbody = document.getElementById('history-no-activity-table');
     noActTbody.innerHTML = noAct.length ? noAct.map(function(c) {
       return '<tr><td><div class="camp-name">' + escHtml(c.name) + '</div></td><td style="font-size:12px">' + escHtml(c.portfolio||'—') + '</td><td>' + (c.targetingType==='auto'?'<span class="badge badge-blue" style="font-size:10px">Auto</span>':'<span class="badge" style="background:var(--surface3);color:var(--text3);font-size:10px">Manual</span>') + '</td><td class="mono">£' + (c.dailyBudget||0) + '</td><td class="mono" style="color:var(--text3)">0</td><td class="mono" style="color:var(--text3)">0</td><td class="mono">£' + (c.spend||0) + '</td><td><span class="badge badge-amber">No activity</span></td></tr>';
