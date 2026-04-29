@@ -382,8 +382,15 @@ async function initDB() {
         alerts JSONB
       );
       CREATE INDEX IF NOT EXISTS idx_snapshot_date ON daily_snapshots(snapshot_date);
+      CREATE TABLE IF NOT EXISTS app_settings (
+        id INTEGER PRIMARY KEY DEFAULT 1,
+        settings JSONB NOT NULL DEFAULT '{}',
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+      INSERT INTO app_settings (id, settings) VALUES (1, '{}') ON CONFLICT (id) DO NOTHING;
     `);
     console.log('Database connected and tables ready');
+    await initTasksTable();
   } catch(e) {
     console.error('DB init error: ' + e.message);
     db = null;
@@ -439,6 +446,268 @@ async function getSnapshotDates() {
     return [];
   }
 }
+
+
+// ── Agent webhook routing ─────────────────────────────────────────────────
+function getAgentWebhook(agentName) {
+  try {
+    const mapping = JSON.parse(process.env.AGENT_WEBHOOKS || '{}');
+    const varName = mapping[agentName];
+    if (varName && process.env[varName]) return process.env[varName];
+  } catch(e) {}
+  return null;
+}
+
+function extractAgentFromCampaign(campaignName) {
+  if (!campaignName) return null;
+  const parts = campaignName.split('|');
+  if (parts.length > 1) return parts[0].trim();
+  return null;
+}
+
+async function sendToAgent(agentName, message) {
+  const webhook = getAgentWebhook(agentName);
+  if (webhook) {
+    try {
+      await axios.post(webhook, { text: message });
+      console.log('Alert sent to agent: ' + agentName);
+      return true;
+    } catch(e) {
+      console.error('Agent webhook error (' + agentName + '): ' + e.message);
+    }
+  }
+  // Fall back to main group
+  await sendGoogleChat(message);
+  return false;
+}
+
+// ── Task system ───────────────────────────────────────────────────────────
+async function initTasksTable() {
+  if (!db) return;
+  try {
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS campaign_tasks (
+        id SERIAL PRIMARY KEY,
+        campaign_id TEXT NOT NULL,
+        campaign_name TEXT NOT NULL,
+        agent_name TEXT,
+        portfolio TEXT,
+        problem_type TEXT NOT NULL,
+        problem_detail TEXT,
+        days_persisted INTEGER DEFAULT 1,
+        total_wasted NUMERIC DEFAULT 0,
+        score INTEGER DEFAULT 0,
+        status TEXT DEFAULT 'open',
+        agent_notes TEXT,
+        created_date DATE DEFAULT CURRENT_DATE,
+        updated_at TIMESTAMP DEFAULT NOW(),
+        resolved_at TIMESTAMP,
+        UNIQUE(campaign_id, created_date)
+      );
+    `);
+    console.log('Tasks table ready');
+  } catch(e) {
+    console.error('Tasks table error: ' + e.message);
+  }
+}
+
+function scoreCampaign(days) {
+  // days is array of {date, impressions, spend, sales}
+  let score = 0;
+  const last3 = days.slice(0, 3);
+  const noActivityDays = last3.filter(function(d){ return d.impressions === 0; }).length;
+  const spendDays = last3.filter(function(d){ return d.spend > 0; });
+  const noRevDays = spendDays.filter(function(d){ return d.sales === 0; }).length;
+  const totalSpend = last3.reduce(function(s,d){ return s + (d.spend||0); }, 0);
+
+  // Score no activity
+  if (noActivityDays >= 3) score += 8;
+  else if (noActivityDays >= 2) score += 5;
+  else if (noActivityDays >= 1) score += 2;
+
+  // Score wasted spend
+  if (noRevDays >= 2 && totalSpend > 20) score += 10;
+  else if (noRevDays >= 2 && totalSpend > 10) score += 7;
+  else if (noRevDays >= 1 && totalSpend > 5) score += 5;
+
+  return { score, noActivityDays, noRevDays, totalSpend };
+}
+
+async function runDailyTaskScheduler() {
+  if (!db) { console.log('No DB — skipping task scheduler'); return; }
+  console.log('Running daily task scheduler...');
+  try {
+    // Get last 3 days of snapshots
+    const result = await db.query(
+      'SELECT snapshot_date, campaigns FROM daily_snapshots ORDER BY snapshot_date DESC LIMIT 3'
+    );
+    if (result.rows.length < 1) { console.log('Not enough history for tasks'); return; }
+
+    // Build campaign history
+    const campHistory = {};
+    result.rows.forEach(function(snap) {
+      const camps = snap.campaigns || [];
+      camps.forEach(function(c) {
+        if (!campHistory[c.campaignId]) {
+          campHistory[c.campaignId] = {
+            campaignId: c.campaignId,
+            name: c.name || '',
+            portfolio: c.portfolio || '',
+            targetingType: c.targetingType || '',
+            days: []
+          };
+        }
+        campHistory[c.campaignId].days.push({
+          date: snap.snapshot_date,
+          impressions: c.impressions || 0,
+          spend: c.spend || 0,
+          sales: c.sales || 0,
+          acos: c.acos || 0
+        });
+      });
+    });
+
+    // Score all campaigns
+    const scored = [];
+    Object.values(campHistory).forEach(function(camp) {
+      if (camp.days.length < 1) return;
+      const { score, noActivityDays, noRevDays, totalSpend } = scorecamp(camp.days);
+      if (score === 0) return;
+      const agentName = extractAgentFromCampaign(camp.name);
+      let problemType = noActivityDays >= noRevDays ? 'no_activity' : 'no_revenue';
+      let problemDetail = '';
+      if (problemType === 'no_activity') problemDetail = noActivityDays + ' day(s) with zero impressions';
+      else problemDetail = noRevDays + ' day(s) with spend (£' + totalSpend.toFixed(2) + ' total) but zero revenue';
+      scored.push({ score, camp, agentName, problemType, problemDetail, noActivityDays, noRevDays, totalSpend });
+    });
+
+    // Sort by score descending, take top 5
+    scored.sort(function(a,b){ return b.score - a.score; });
+    const top5 = scored.slice(0, 5);
+    console.log('Top 5 task candidates: ' + top5.map(function(t){ return t.camp.name + ' (' + t.score + ')'; }).join(', '));
+
+    const dashUrl = process.env.DASHBOARD_URL || 'https://campaignpulse-setup-production.up.railway.app';
+    const today = new Date().toISOString().split('T')[0];
+
+    for (const item of top5) {
+      const c = item.camp;
+      const agentName = item.agentName || 'Unassigned';
+
+      // Check if task already exists for today
+      const existing = await db.query(
+        'SELECT id, status, days_persisted FROM campaign_tasks WHERE campaign_id = $1 AND created_date = $2',
+        [c.campaignId, today]
+      );
+
+      if (existing.rows.length > 0) {
+        // Update existing task — problem persisting
+        await db.query(
+          'UPDATE campaign_tasks SET days_persisted = days_persisted + 1, score = $1, updated_at = NOW() WHERE campaign_id = $2 AND created_date = $3',
+          [item.score, c.campaignId, today]
+        );
+        console.log('Task updated (persisting): ' + c.name);
+        continue;
+      }
+
+      // Check if open task from previous days exists
+      const prevTask = await db.query(
+        'SELECT id, days_persisted FROM campaign_tasks WHERE campaign_id = $1 AND status IN ($2,$3) ORDER BY created_date DESC LIMIT 1',
+        [c.campaignId, 'open', 'in_progress']
+      );
+
+      let daysPersisted = 1;
+      if (prevTask.rows.length > 0) {
+        daysPersisted = (prevTask.rows[0].days_persisted || 1) + 1;
+        // Update previous task days
+        await db.query(
+          'UPDATE campaign_tasks SET days_persisted = $1, score = $2, updated_at = NOW() WHERE id = $3',
+          [daysPersisted, item.score, prevTask.rows[0].id]
+        );
+        console.log('Existing task updated — day ' + daysPersisted + ': ' + c.name);
+        // Still send notification on day 2+ with escalation
+      }
+
+      // Create new task record
+      await db.query(
+        'INSERT INTO campaign_tasks (campaign_id, campaign_name, agent_name, portfolio, problem_type, problem_detail, days_persisted, total_wasted, score) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT (campaign_id, created_date) DO NOTHING',
+        [c.campaignId, c.name, agentName, c.portfolio, item.problemType, item.problemDetail, daysPersisted, item.totalSpend, item.score]
+      );
+
+      // Build Google Chat message
+      const dayLabel = daysPersisted > 1 ? ' (Day ' + daysPersisted + ' — unresolved)' : '';
+      const emoji = item.problemType === 'no_activity' ? '😴' : '💸';
+const msgParts = [
+        emoji + ' *CAMPAIGN TASK' + dayLabel + '*',
+        '*Campaign:* ' + c.name,
+        '*Agent:* ' + agentName,
+        '*Problem:* ' + item.problemDetail,
+        '*Score:* ' + item.score + ' (higher = more urgent)',
+        '*Portfolio:* ' + (c.portfolio || 'N/A'),
+        '',
+        'Please investigate and update the task status:',
+        'Reply *working* to say you are investigating',
+        'Reply *paused* to say you have paused the campaign',
+        'Reply *discuss* to flag for team discussion',
+        '',
+        dashUrl + '/tasks'
+      ];
+      const msg = msgParts.join('\n');
+      // Send to agent channel or main group
+      if (agentName && agentName !== 'Unassigned') {
+        await sendToAgent(agentName, msg);
+      } else {
+        await sendGoogleChat(msg);
+      }
+
+      // Escalate to main group if day 2+
+      if (daysPersisted >= 2) {
+        const escParts = ['Escalation Day ' + daysPersisted, 'Campaign: ' + c.name, 'Agent: ' + agentName, 'Problem: ' + item.problemDetail, 'Not resolved for ' + daysPersisted + ' days.'];
+        await sendGoogleChat(escParts.join('\n'));
+      }
+    }
+
+    console.log('Daily task scheduler complete — ' + top5.length + ' tasks processed');
+  } catch(e) {
+    console.error('Task scheduler error: ' + e.message);
+  }
+}
+
+// Helper fix — rename scorecamp to scorecamp
+function scorecamp(days) { return scoreCampaign(days); }
+
+
+// ── Task API routes ───────────────────────────────────────────────────────
+app.get('/api/tasks', async function(req, res) {
+  if (!db) return res.json({ tasks: [] });
+  try {
+    const result = await db.query(
+      'SELECT * FROM campaign_tasks ORDER BY score DESC, created_date DESC LIMIT 100'
+    );
+    res.json({ tasks: result.rows });
+  } catch(e) {
+    res.json({ tasks: [], error: e.message });
+  }
+});
+
+app.post('/api/tasks/:id/status', async function(req, res) {
+  if (!db) return res.status(500).json({ error: 'No DB' });
+  const { status, notes } = req.body;
+  try {
+    const resolved = status === 'complete' ? 'NOW()' : 'NULL';
+    await db.query(
+      'UPDATE campaign_tasks SET status = $1, agent_notes = $2, updated_at = NOW(), resolved_at = ' + (status === 'complete' ? 'NOW()' : 'NULL') + ' WHERE id = $3',
+      [status, notes || '', req.params.id]
+    );
+    res.json({ success: true });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/tasks/run-now', async function(req, res) {
+  runDailyTaskScheduler().catch(function(e){ console.error('Manual task run error: ' + e.message); });
+  res.json({ success: true, message: 'Task scheduler triggered' });
+});
 
 // ── API Routes ────────────────────────────────────────────────────────────
 app.get('/api/dashboard', function(req, res) {
@@ -819,6 +1088,39 @@ app.get('/api/snapshots/:date', async function(req, res) {
   });
 });
 
+// Settings API
+app.get('/api/settings', async function(req, res) {
+  try {
+    if (!db) return res.json({ settings: null });
+    const result = await db.query('SELECT settings FROM app_settings WHERE id = 1');
+    res.json({ settings: result.rows[0]?.settings || {} });
+  } catch(e) {
+    res.json({ settings: null, error: e.message });
+  }
+});
+
+app.post('/api/settings', async function(req, res) {
+  try {
+    const { settings } = req.body;
+    if (!settings) return res.status(400).json({ error: 'No settings provided' });
+    if (db) {
+      await db.query(
+        'UPDATE app_settings SET settings = $1, updated_at = NOW() WHERE id = 1',
+        [JSON.stringify(settings)]
+      );
+    }
+    // Apply settings immediately to running process
+    if (settings.acosCritical) process.env.ACOS_CRITICAL_THRESHOLD = String(settings.acosCritical);
+    if (settings.acosWarning) process.env.ACOS_WARNING_THRESHOLD = String(settings.acosWarning);
+    if (settings.budgetLowPct) process.env.BUDGET_LOW_PERCENT = String(settings.budgetLowPct);
+    console.log('Settings updated: ' + JSON.stringify(settings));
+    res.json({ success: true });
+  } catch(e) {
+    console.error('Settings save error: ' + e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get('/api/health', function(req, res) {
   res.json({ status: 'ok', lastSync: state.lastSync, campaigns: state.campaigns.length, error: state.error });
 });
@@ -869,6 +1171,11 @@ app.post('/api/alerts/:campaignId/dismiss', function(req, res) {
   res.json({ success: true });
 });
 
+// Daily task scheduler at 9am UK time
+cron.schedule('0 9 * * *', function() {
+  runDailyTaskScheduler().catch(function(e){ console.error('Scheduled task error: ' + e.message); });
+}, { timezone: 'Europe/London' });
+
 const interval = process.env.POLL_INTERVAL_MINUTES || 15;
 cron.schedule('*/' + interval + ' * * * *', function() { syncCampaigns(); });
 
@@ -876,6 +1183,17 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', async function() {
   console.log('App running on port ' + PORT);
   await initDB();
+  // Load saved settings from DB
+  if (db) {
+    try {
+      const result = await db.query('SELECT settings FROM app_settings WHERE id = 1');
+      const settings = result.rows[0]?.settings || {};
+      if (settings.acosCritical) process.env.ACOS_CRITICAL_THRESHOLD = String(settings.acosCritical);
+      if (settings.acosWarning) process.env.ACOS_WARNING_THRESHOLD = String(settings.acosWarning);
+      if (settings.budgetLowPct) process.env.BUDGET_LOW_PERCENT = String(settings.budgetLowPct);
+      if (Object.keys(settings).length) console.log('Settings loaded from DB: ' + JSON.stringify(settings));
+    } catch(e) { console.error('Settings load error: ' + e.message); }
+  }
   setTimeout(function() {
     syncCampaigns().catch(function(err) { console.error('Initial sync failed:', err.message); });
   }, 30000);
