@@ -1529,11 +1529,16 @@ function renderTasks(tab) {
       '</div>' +
       '<div class="ai-desc">' + escHtml(t.problem_detail||'') + '</div>' +
       (t.agent_notes ? '<div style="background:var(--blue-light);border:1px solid rgba(26,111,189,0.15);border-radius:8px;padding:8px 12px;font-size:12px;color:var(--blue);margin-bottom:12px"><strong>Agent notes:</strong> ' + escHtml(t.agent_notes) + '</div>' : '') +
-      (t.status !== 'complete' ? '<div class="ag">' +
-        '<button class="btn btn-amber" style="font-size:12px" onclick="updateTask(' + t.id + ','in_progress','')">Working on it</button>' +
-        '<button class="btn btn-green" style="font-size:12px" onclick="promptTaskComplete(' + t.id + ')">Mark complete</button>' +
-        '<button class="btn btn-red" style="font-size:12px" onclick="updateTask(' + t.id + ','complete','Campaign paused')">Paused campaign</button>' +
-      '</div>' : '<div style="font-size:12px;color:var(--green)">✓ Resolved' + (t.resolved_at ? ' at ' + new Date(t.resolved_at).toLocaleTimeString('en-GB', {hour:'2-digit',minute:'2-digit'}) : '') + '</div>') +
+      (function() {
+        if (t.status === 'complete') {
+          const rt = t.resolved_at ? new Date(t.resolved_at).toLocaleTimeString('en-GB', {hour:'2-digit',minute:'2-digit'}) : '';
+          return '<div style="font-size:12px;color:var(--green)">Resolved' + (rt ? ' at ' + rt : '') + '</div>';
+        }
+        const wip = '<button class="btn btn-amber" style="font-size:12px" onclick="updateTask('+t.id+',\"in_progress\",\"\")">Working on it</button>';
+        const done = '<button class="btn btn-green" style="font-size:12px" onclick="promptTaskComplete('+t.id+')">Mark complete</button>';
+        const paused = '<button class="btn btn-red" style="font-size:12px" onclick="updateTask('+t.id+',\"complete\",\"Campaign paused\")">Paused campaign</button>';
+        return '<div class="ag">' + wip + done + paused + '</div>';
+      }()) +
     '</div>';
   }).join('');
 }
