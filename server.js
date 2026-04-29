@@ -246,17 +246,17 @@ async function analyseCampaigns(campaigns) {
       const hourly = spend / Math.max(now.getHours(), 1);
       const missed = Math.round(hourly * hoursLeft * roas);
       state.exhaustionLog.unshift({ date: now.toLocaleDateString('en-GB'), time: timeStr, campaign: name, portfolio: portfolioName, agent: agent, budget: '£' + budget.toFixed(2), acos: acos.toFixed(1) + '%', missed: '£' + missed, added: 'Pending', action: 'Pending' });
-      const m1 = ['⚠ OUT OF BUDGET', name, 'Time: ' + timeStr, 'Budget: £' + budget.toFixed(2), 'ACOS: ' + acos.toFixed(1) + '%', 'Est. missed: ~£' + missed, '', dashUrl].join('\n');
+      const m1 = ['⚠ OUT OF BUDGET', name, 'Time: ' + timeStr, 'Budget: £' + budget.toFixed(2), 'ACOS: ' + acos.toFixed(1) + '%', 'Est. missed: ~£' + missed, dashUrl].join('\n');
       if (agent) { await sendToAgent(agent, m1); } else { await sendGoogleChat(m1); }
       createAlertTask(c.campaignId, name, agent, portfolioName, 'out_of_budget', 'Ran out at ' + timeStr + '. Budget £' + budget.toFixed(2) + ', ACOS ' + acos.toFixed(1) + '%');
       chatCount++;
     } else if (acosHigh && chatCount < maxChats) {
-      const m2 = ['📈 HIGH ACOS', name, 'ACOS: ' + acos.toFixed(1) + '%', 'Spend: £' + spend.toFixed(2), '', dashUrl].join('\n');
+      const m2 = ['📈 HIGH ACOS', name, 'ACOS: ' + acos.toFixed(1) + '%', 'Spend: £' + spend.toFixed(2), dashUrl].join('\n');
       if (agent) { await sendToAgent(agent, m2); } else { await sendGoogleChat(m2); }
       createAlertTask(c.campaignId, name, agent, portfolioName, 'high_acos', 'ACOS ' + acos.toFixed(1) + '% with £' + spend.toFixed(2) + ' spend');
       chatCount++;
     } else if (budgetLow && chatCount < maxChats) {
-      const m3 = ['⚡ BUDGET LOW', name, 'Remaining: £' + remaining.toFixed(2) + ' (' + remainingPct.toFixed(0) + '%)', '', dashUrl].join('\n');
+      const m3 = ['⚡ BUDGET LOW', name, 'Remaining: £' + remaining.toFixed(2) + ' (' + remainingPct.toFixed(0) + '%)', dashUrl].join('\n');
       if (agent) { await sendToAgent(agent, m3); } else { await sendGoogleChat(m3); }
       createAlertTask(c.campaignId, name, agent, portfolioName, 'budget_low', 'Budget ' + remainingPct.toFixed(0) + '% used, £' + remaining.toFixed(2) + ' left');
       chatCount++;
@@ -490,6 +490,9 @@ async function initTasksTable() {
     await db.query(`ALTER TABLE campaign_tasks ADD COLUMN IF NOT EXISTS task_source TEXT DEFAULT 'daily'`);
     await db.query(`ALTER TABLE campaign_tasks ADD COLUMN IF NOT EXISTS dismissed_reason TEXT`);
     await db.query(`ALTER TABLE campaign_tasks ADD COLUMN IF NOT EXISTS suppressed_until TIMESTAMP`);
+    await db.query(`ALTER TABLE campaign_tasks ADD COLUMN IF NOT EXISTS paused_reason TEXT`);
+    await db.query(`ALTER TABLE campaign_tasks ADD COLUMN IF NOT EXISTS archived_at TIMESTAMP`);
+    await db.query(`ALTER TABLE campaign_tasks ADD COLUMN IF NOT EXISTS first_action_at TIMESTAMP`);
     await db.query(`ALTER TABLE campaign_tasks ADD COLUMN IF NOT EXISTS days_persisted INTEGER DEFAULT 1`);
     await db.query(`ALTER TABLE campaign_tasks ADD COLUMN IF NOT EXISTS total_wasted NUMERIC DEFAULT 0`);
     await db.query(`ALTER TABLE campaign_tasks ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMP`);
@@ -697,6 +700,7 @@ async function runDailyTaskScheduler() {
         if (existingToday.rows.length > 0) continue;
 
         // Check if open task exists from previous days - if so increment day counter
+        // Paused tasks do NOT escalate
         const prevTask = await db.query(
           'SELECT id, days_persisted FROM campaign_tasks WHERE campaign_id=$1 AND status IN ($2,$3) AND task_source=$4 ORDER BY created_date DESC LIMIT 1',
           [String(c.campaignId), 'open', 'in_progress', 'daily']
@@ -1232,20 +1236,36 @@ app.get('/api/tasks', async function(req, res) {
 
 app.post('/api/tasks/:id/status', async function(req, res) {
   if (!db) return res.status(500).json({ error: 'No DB' });
-  const { status, notes, dismissedReason } = req.body;
+  const { status, notes, dismissedReason, pausedReason } = req.body;
   try {
     let query, params;
     if (status === 'dismissed') {
-      // Set suppressed_until to end of today
       const endOfDay = new Date();
       endOfDay.setHours(23, 59, 59, 999);
       query = 'UPDATE campaign_tasks SET status=$1, agent_notes=$2, dismissed_reason=$3, updated_at=NOW(), resolved_at=NOW(), suppressed_until=$4 WHERE id=$5';
       params = [status, notes||'', dismissedReason||'', endOfDay.toISOString(), req.params.id];
+    } else if (status === 'paused') {
+      query = 'UPDATE campaign_tasks SET status=$1, agent_notes=$2, paused_reason=$3, updated_at=NOW(), resolved_at=NOW() WHERE id=$4';
+      params = [status, notes||pausedReason||'', pausedReason||'', req.params.id];
+    } else if (status === 'in_progress') {
+      // Record first action timestamp
+      query = 'UPDATE campaign_tasks SET status=$1, agent_notes=$2, updated_at=NOW(), first_action_at=COALESCE(first_action_at, NOW()) WHERE id=$3';
+      params = [status, notes||'', req.params.id];
     } else {
       query = 'UPDATE campaign_tasks SET status=$1, agent_notes=$2, updated_at=NOW(), resolved_at=' + (status === 'complete' ? 'NOW()' : 'NULL') + ' WHERE id=$3';
       params = [status, notes||'', req.params.id];
     }
     await db.query(query, params);
+    res.json({ success: true });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/tasks/:id/archive', async function(req, res) {
+  if (!db) return res.status(500).json({ error: 'No DB' });
+  try {
+    await db.query('UPDATE campaign_tasks SET status=$1, archived_at=NOW(), updated_at=NOW() WHERE id=$2', ['archived', req.params.id]);
     res.json({ success: true });
   } catch(e) {
     res.status(500).json({ error: e.message });
@@ -1324,6 +1344,43 @@ cron.schedule('0 9 * * *', function() {
   console.log('Running scheduled daily tasks at 9am UK time');
   runDailyTaskScheduler().catch(function(e){ console.error('Scheduled task error: ' + e.message); });
 }, { timezone: 'Europe/London' });
+
+// Auto-archive cron at midnight - 3 working days after resolution
+cron.schedule('0 0 * * *', function() {
+  autoArchiveTasks().catch(function(e){ console.error('Auto-archive error: ' + e.message); });
+}, { timezone: 'Europe/London' });
+
+async function autoArchiveTasks() {
+  if (!db) return;
+  try {
+    // Get all resolved tasks not yet archived
+    const result = await db.query(
+      "SELECT id, resolved_at FROM campaign_tasks WHERE status IN ('complete','dismissed','paused') AND archived_at IS NULL AND resolved_at IS NOT NULL"
+    );
+    let archived = 0;
+    const now = new Date();
+    for (const row of result.rows) {
+      const resolved = new Date(row.resolved_at);
+      // Count working days since resolution
+      let workingDays = 0;
+      const check = new Date(resolved);
+      check.setDate(check.getDate() + 1);
+      while (check <= now) {
+        const day = check.getDay();
+        if (day !== 0 && day !== 6) workingDays++;
+        if (workingDays >= 3) break;
+        check.setDate(check.getDate() + 1);
+      }
+      if (workingDays >= 3) {
+        await db.query('UPDATE campaign_tasks SET status=$1, archived_at=NOW() WHERE id=$2', ['archived', row.id]);
+        archived++;
+      }
+    }
+    if (archived > 0) console.log('Auto-archived ' + archived + ' tasks');
+  } catch(e) {
+    console.error('Auto-archive error: ' + e.message);
+  }
+}
 
 const interval = process.env.POLL_INTERVAL_MINUTES || 15;
 cron.schedule('*/' + interval + ' * * * *', function() { syncCampaigns(); });
