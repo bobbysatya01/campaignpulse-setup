@@ -226,7 +226,7 @@ async function loadHistoryDate() {
   document.getElementById('history-empty').style.display = 'none';
   document.getElementById('history-placeholder').style.display = 'none';
   try {
-    const dateClean = date.split('T')[0];
+    const dateClean = String(date).split('T')[0].split(' ')[0];
     const res = await fetch('/api/snapshots/' + dateClean);
     if (!res.ok) {
       document.getElementById('history-empty').style.display = '';
@@ -300,21 +300,29 @@ function renderAgentTabs() {
   if (!container) return;
   const agents = [...new Set(allTasks.map(function(t){ return getTaskAgent(t); }).filter(Boolean))].sort();
   const allDue = allTasks.filter(function(t){ return t.status==='open'||t.status==='in_progress'; }).length;
-  
-  
-  agents.forEach(function(agent) {
-    const agentDue = allTasks.filter(function(t){ return getTaskAgent(t)===agent && (t.status==='open'||t.status==='in_progress'); }).length;
-    const agentPaused = allTasks.filter(function(t){ return getTaskAgent(t)===agent && t.status==='paused'; }).length;
-    const isSelected = selectedAgent === agent;
-    const hasBadge = agentDue > 0 || agentPaused > 0;
-    const badgeColor = agentDue > 0 ? 'var(--red)' : agentPaused > 0 ? 'var(--blue)' : 'var(--green)';
 
+  const btnStyle = function(selected) {
+    return 'padding:10px 20px;border-radius:10px;border:2px solid ' + (selected?'#e8391d':'#ddd') + ';background:' + (selected?'#e8391d':'white') + ';color:' + (selected?'white':'#333') + ';font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;position:relative;margin:2px';
+  };
+
+  // Build HTML directly - no createElement needed
+  let html = '<button style="' + btnStyle(selectedAgent==='') + '" onclick="selectAgent(this,\'\')">All agents<br><span style="font-size:11px;font-weight:400;opacity:0.8">' + allDue + ' due</span></button>';
+
+  agents.forEach(function(agent) {
+    const due = allTasks.filter(function(t){ return getTaskAgent(t)===agent && (t.status==='open'||t.status==='in_progress'); }).length;
+    const paused = allTasks.filter(function(t){ return getTaskAgent(t)===agent && t.status==='paused'; }).length;
+    const badge = due > 0 ? '<span style="position:absolute;top:-5px;right:-5px;background:#c0392b;color:white;font-size:9px;font-weight:700;padding:1px 5px;border-radius:8px">' + due + '</span>' : '';
+    html += '<button style="' + btnStyle(selectedAgent===agent) + '" data-agent="' + agent.replace(/"/g,'') + '" onclick="selectAgent(this,this.getAttribute(\'data-agent\'))">' + agent + badge + '<br><span style="font-size:11px;font-weight:400;opacity:0.8">' + due + ' due</span></button>';
   });
+
+  container.innerHTML = html;
 }
 
-function selectAgent(agent) {
+function selectAgent(btnEl, agent) {
   selectedAgent = agent;
-  renderAgentTabs();
+  // Update button styles
+  document.querySelectorAll('#agent-tabs button').forEach(function(b){ b.style.background='white'; b.style.color='#333'; b.style.borderColor='#ddd'; });
+  if (btnEl) { btnEl.style.background='#e8391d'; btnEl.style.color='white'; btnEl.style.borderColor='#e8391d'; }
   renderTasks(taskTab);
 }
 
