@@ -809,7 +809,7 @@ app.post('/api/ai/analyse', async function(req, res) {
       const prompt = promptParts.join(' ');
       try {
         const aiRes = await axios.post('https://api.anthropic.com/v1/messages', {
-          model: 'claude-opus-4-5',
+          model: 'claude-opus-4-7',
           max_tokens: 500,
           messages: [{ role: 'user', content: prompt }]
         }, { headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' } });
@@ -936,7 +936,7 @@ async function analyseKeywords() {
       '\n\nProvide analysis in this JSON format only:\n{"wasteReduction":{"totalWasted":"£X","topWasters":[{"searchTerm":"","campaign":"","spend":"£X","recommendation":"Add as negative keyword","reason":""}],"estimatedSaving":"£X/week"},"newKeywords":{"totalOpportunities":0,"topOpportunities":[{"searchTerm":"","campaign":"","purchases":0,"sales":"£X","recommendation":"Add as exact match keyword","estimatedImpact":""}]},"bidChanges":[{"keyword":"","campaign":"","currentIssue":"","recommendation":"","expectedOutcome":""}],"portfolioInsights":{"patterns":"","topPerforming":"","needsAttention":""},"summary":"","estimatedWeeklyImpact":"£X"}';
 
     const aiRes = await axios.post('https://api.anthropic.com/v1/messages', {
-      model: 'claude-opus-4-5',
+      model: 'claude-opus-4-7',
       max_tokens: 4000,
       messages: [{ role: 'user', content: prompt }]
     }, {
