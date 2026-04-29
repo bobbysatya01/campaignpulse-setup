@@ -440,9 +440,10 @@ function getAgentWebhook(agentName) {
 
 function extractAgentFromCampaign(campaignName) {
   if (!campaignName) return null;
-  const parts = campaignName.split('|');
-  if (parts.length > 1) return parts[0].trim();
-  return null;
+  // Split on | or @ - take first part, trim whitespace
+  const parts = campaignName.split(/[|@]/);
+  const name = parts[0].trim();
+  return name.length > 0 && name.length < 30 ? name : null;
 }
 
 async function sendToAgent(agentName, message) {
