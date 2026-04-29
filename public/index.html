@@ -974,7 +974,7 @@ async function runAI() {
 
 function renderAIResult(container, result) {
   const lastRun = aiCache.lastRun ? new Date(aiCache.lastRun).toLocaleTimeString('en-GB', {hour:'2-digit',minute:'2-digit'}) : '';
-  const daysLabel = result.daysOfData > 0 ? 'Based on ' + result.daysOfData + ' days of historical data' : 'Based on today's data';
+  const daysLabel = result.daysOfData > 0 ? 'Based on ' + result.daysOfData + ' days of historical data' : 'Based on today data';
 
   // Update metrics
   document.getElementById('ai-opps').textContent = result.scaleList?.length || 0;
