@@ -1642,13 +1642,19 @@ let selectedAgent = '';
 function renderAgentTabs() {
   const container = document.getElementById('agent-tabs');
   if (!container) return;
-  const agents = [...new Set(allTasks.map(function(t){ return t.agent_name||'Unassigned'; }).filter(Boolean))].sort();
+  // Re-extract agent from campaign name (handles legacy stored agent_name)
+  function getTaskAgent(t) {
+    const parts = (t.campaign_name||t.agent_name||'').split(/[|@]/);
+    const name = parts[0].trim();
+    return name.length > 0 && name.length < 30 ? name : (t.agent_name||'Unassigned');
+  }
+  const agents = [...new Set(allTasks.map(function(t){ return getTaskAgent(t); }).filter(Boolean))].sort();
   const allDue = allTasks.filter(function(t){ return t.status==='open'||t.status==='in_progress'; }).length;
   
   
   agents.forEach(function(agent) {
-    const agentDue = allTasks.filter(function(t){ return (t.agent_name||'Unassigned')===agent && (t.status==='open'||t.status==='in_progress'); }).length;
-    const agentPaused = allTasks.filter(function(t){ return (t.agent_name||'Unassigned')===agent && t.status==='paused'; }).length;
+    const agentDue = allTasks.filter(function(t){ return getTaskAgent(t)===agent && (t.status==='open'||t.status==='in_progress'); }).length;
+    const agentPaused = allTasks.filter(function(t){ return getTaskAgent(t)===agent && t.status==='paused'; }).length;
     const isSelected = selectedAgent === agent;
     const hasBadge = agentDue > 0 || agentPaused > 0;
     const badgeColor = agentDue > 0 ? 'var(--red)' : agentPaused > 0 ? 'var(--blue)' : 'var(--green)';
