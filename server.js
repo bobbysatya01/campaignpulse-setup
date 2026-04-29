@@ -498,6 +498,21 @@ async function initTasksTable() {
     await db.query(`ALTER TABLE campaign_tasks ADD COLUMN IF NOT EXISTS total_wasted NUMERIC DEFAULT 0`);
     await db.query(`ALTER TABLE campaign_tasks ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMP`);
     console.log('Tasks table ready');
+    // Fix stored agent names - re-extract from campaign_name
+    try {
+      const tasks = await db.query('SELECT id, campaign_name FROM campaign_tasks WHERE campaign_name IS NOT NULL');
+      let fixed = 0;
+      for (const row of tasks.rows) {
+        const parts = (row.campaign_name||'').split(/[|@]/);
+        const name = parts[0].trim();
+        const agentName = (name.length > 0 && name.length < 30) ? name : null;
+        if (agentName) {
+          await db.query('UPDATE campaign_tasks SET agent_name=$1 WHERE id=$2', [agentName, row.id]);
+          fixed++;
+        }
+      }
+      if (fixed > 0) console.log('Fixed ' + fixed + ' task agent names');
+    } catch(e) { console.error('Agent name fix error: ' + e.message); }
   } catch(e) {
     console.error('Tasks table error: ' + e.message);
   }
