@@ -612,8 +612,10 @@ tbody tr:hover { background: var(--surface2); }
       <div class="metric-card alert"><div class="metric-label">Overdue (2+ days)</div><div class="metric-value" id="task-overdue">—</div><div class="metric-delta delta-down">Needs escalation</div></div>
     </div>
 
+    <!-- Agent profile tabs -->
+    <div id="agent-tabs" style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap"></div>
+
     <div style="display:flex;gap:10px;margin-bottom:14px;align-items:center;flex-wrap:wrap">
-      <input type="text" id="task-search" placeholder="Search agent or campaign..." oninput="renderTasks(taskTab)" style="background:white;border:1px solid var(--border2);color:var(--text);padding:8px 14px;border-radius:8px;font-size:13px;font-family:inherit;width:260px">
       <select id="task-source-filter" onchange="renderTasks(taskTab)" style="background:white;border:1px solid var(--border2);color:var(--text);padding:8px 12px;border-radius:8px;font-size:13px;font-family:inherit;cursor:pointer">
         <option value="">All types</option>
         <option value="daily">Daily tasks</option>
@@ -987,7 +989,13 @@ function renderAllCampaigns() {
   const typeFilter = document.getElementById('camp-type-filter')?.value || '';
   let filtered = getFilteredCampaigns(currentFilter);
   if (search) filtered = filtered.filter(c => c.name.toLowerCase().includes(search) || (c.portfolio||'').toLowerCase().includes(search));
-  if (portfolioFilter) filtered = filtered.filter(function(c){ return (c.name||'').startsWith(portfolioFilter + ' |') || (c.name||'').startsWith(portfolioFilter + '|'); });
+  if (portfolioFilter) {
+    filtered = filtered.filter(function(c){
+      const parts = (c.name||'').split(/[|@]/);
+      const agentName = parts[0].trim();
+      return agentName === portfolioFilter;
+    });
+  }
   if (typeFilter) filtered = filtered.filter(c => (c.targetingType||'') === typeFilter);
   // Sort
   if (sortState.col) {
@@ -1015,8 +1023,9 @@ function renderAllCampaigns() {
   const sel = document.getElementById('camp-portfolio-filter');
   if (sel && sel.options.length <= 1) {
     const agents = [...new Set(allCampaigns.map(function(c){
-      const parts = (c.name||'').split('|');
-      return parts.length > 1 ? parts[0].trim() : '';
+      const parts = (c.name||'').split(/[|@]/);
+      const name = parts[0].trim();
+      return name.length > 0 && name.length < 30 ? name : '';
     }).filter(Boolean))].sort();
     agents.forEach(function(a) { const o = document.createElement('option'); o.value=a; o.textContent=a; sel.appendChild(o); });
   }
@@ -1459,8 +1468,8 @@ async function loadHistoryDates() {
     sel.innerHTML = '<option value="">Select a date...</option>';
     data.dates.forEach(function(d) {
       // Fix timezone issue - add T00:00:00 to force local date parsing
-      const dateStr = typeof d.date === 'string' ? d.date.split('T')[0] : d.date;
-      const date = new Date(dateStr + 'T12:00:00');
+      const dateStr = typeof d.date === 'string' ? d.date.split('T')[0] : String(d.date).split('T')[0];
+      const date = new Date(dateStr + 'T12:00:00Z');
       const label = date.toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short', year:'numeric' });
       const m = d.metrics || {};
       const opt = document.createElement('option');
@@ -1497,8 +1506,9 @@ function filterHistoryByAgent() {
   const sel = document.getElementById('history-agent-filter');
   if (sel && sel.options.length <= 1) {
     const agents = [...new Set(camps.map(function(c){
-      const parts = (c.name||'').split('|');
-      return parts.length > 1 ? parts[0].trim() : '';
+      const parts = (c.name||'').split(/[|@]/);
+      const name = parts[0].trim();
+      return name.length > 0 && name.length < 30 ? name : '';
     }).filter(Boolean))].sort();
     agents.forEach(function(a) {
       const o = document.createElement('option');
@@ -1509,7 +1519,8 @@ function filterHistoryByAgent() {
 
   if (agentFilter) {
     camps = camps.filter(function(c){
-      return (c.name||'').startsWith(agentFilter + ' |') || (c.name||'').startsWith(agentFilter + '|');
+      const parts = (c.name||'').split(/[|@]/);
+      return parts[0].trim() === agentFilter;
     });
   }
 
@@ -1559,7 +1570,8 @@ async function loadHistoryDate() {
   document.getElementById('history-empty').style.display = 'none';
   document.getElementById('history-placeholder').style.display = 'none';
   try {
-    const res = await fetch('/api/snapshots/' + date);
+    const dateClean = date.split('T')[0];
+    const res = await fetch('/api/snapshots/' + dateClean);
     if (!res.ok) {
       document.getElementById('history-empty').style.display = '';
       document.getElementById('history-loading').textContent = '';
@@ -1625,6 +1637,30 @@ function showHistoryTab(tab, btn) {
 // ── Tasks ──────────────────────────────────────────────────────────────────
 let allTasks = [];
 let taskTab = 'open';
+let selectedAgent = '';
+
+function renderAgentTabs() {
+  const container = document.getElementById('agent-tabs');
+  if (!container) return;
+  const agents = [...new Set(allTasks.map(function(t){ return t.agent_name||'Unassigned'; }).filter(Boolean))].sort();
+  const allDue = allTasks.filter(function(t){ return t.status==='open'||t.status==='in_progress'; }).length;
+  
+  
+  agents.forEach(function(agent) {
+    const agentDue = allTasks.filter(function(t){ return (t.agent_name||'Unassigned')===agent && (t.status==='open'||t.status==='in_progress'); }).length;
+    const agentPaused = allTasks.filter(function(t){ return (t.agent_name||'Unassigned')===agent && t.status==='paused'; }).length;
+    const isSelected = selectedAgent === agent;
+    const hasBadge = agentDue > 0 || agentPaused > 0;
+    const badgeColor = agentDue > 0 ? 'var(--red)' : agentPaused > 0 ? 'var(--blue)' : 'var(--green)';
+
+  });
+}
+
+function selectAgent(agent) {
+  selectedAgent = agent;
+  renderAgentTabs();
+  renderTasks(taskTab);
+}
 
 async function loadTasks() {
   try {
@@ -1656,6 +1692,7 @@ async function loadTasks() {
     if (urgent > 0) { badge.textContent = urgent; badge.style.display = ''; }
     else badge.style.display = 'none';
 
+    renderAgentTabs();
     renderTasks(taskTab);
   } catch(e) {
     document.getElementById('tasks-container').innerHTML = '<div class="empty">Error loading tasks: ' + e.message + '</div>';
