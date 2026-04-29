@@ -153,7 +153,7 @@ function renderDashboard() {
 
 function renderAlerts() {
   const container = document.getElementById('alert-container');
-  const alerts = (appData.alerts || []).filter(a => a.type === 'out_of_budget').slice(-3);
+  const alerts = (appData.alerts || []).filter(a => a.type === 'out_of_budget');
   if (!alerts.length) { container.innerHTML = ''; return; }
   container.innerHTML = alerts.map(a => `
     <div class="alert-banner" id="alert-${a.campaignId}">
