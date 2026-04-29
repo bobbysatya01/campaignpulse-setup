@@ -1,5 +1,5 @@
 
-let appData = { metrics:{}, campaigns:[], alerts:[], exhaustionLog:[], lastSync:null };
+window.appData = { metrics:{}, campaigns:[], alerts:[], exhaustionLog:[], lastSync:null };
 
 // Global agent name extractor - works on both campaign names and stored agent names
 function getTaskAgent(t) {
@@ -9,10 +9,10 @@ function getTaskAgent(t) {
   return (name.length > 0 && name.length < 30) ? name : (t.agent_name || 'Unassigned');
 }
 function getTaskAgentName(t) { return getTaskAgent(t); }
-let allCampaigns = [];
-let currentFilter = 'action';
-let sortState = { col: null, dir: 1 };
-let reportSortState = { col: 'date', dir: -1 };
+window.allCampaigns = [];
+window.currentFilter = 'action';
+window.sortState = { col: null, dir: 1 };
+window.reportSortState = { col: 'date', dir: -1 };
 
 function sortReport(col) {
   if (reportSortState.col === col) { reportSortState.dir *= -1; }
