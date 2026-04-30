@@ -254,11 +254,11 @@ async function loadHistoryDate() {
       document.getElementById('history-empty').style.display = '';
       document.getElementById('history-metrics').style.display = '';
     document.getElementById('history-loading').textContent = '';
+    filterHistoryByAgent();
       return;
     }
     const data = await res.json();
     window.historyData = data;
-    filterHistoryByAgent();
     const m = data.metrics || {};
     document.getElementById('h-revenue').textContent = '£' + (m.totalRevenue||'0');
     document.getElementById('h-spend').textContent = '£' + (m.totalSpend||'0');
@@ -300,10 +300,12 @@ async function loadHistoryDate() {
     document.getElementById('history-metrics').style.display = '';
     document.getElementById('history-metrics').style.display = '';
     document.getElementById('history-loading').textContent = '';
+    filterHistoryByAgent();
   } catch(e) {
     document.getElementById('history-empty').style.display = '';
     document.getElementById('history-metrics').style.display = '';
     document.getElementById('history-loading').textContent = '';
+    filterHistoryByAgent();
   }
 }
 
