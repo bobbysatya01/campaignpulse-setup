@@ -828,6 +828,19 @@ function getAuthHeaders() {
   return token ? { 'x-auth-token': token, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
 }
 
+// Override fetch to automatically add auth token to all /api calls
+const _originalFetch = window.fetch;
+window.fetch = function(url, options) {
+  if (typeof url === 'string' && url.startsWith('/api/')) {
+    const token = localStorage.getItem('cp_token');
+    if (token) {
+      options = options || {};
+      options.headers = Object.assign({}, options.headers || {}, { 'x-auth-token': token });
+    }
+  }
+  return _originalFetch.apply(this, [url, options]);
+};
+
 async function doLogout() {
   const token = localStorage.getItem('cp_token');
   if (token) {
