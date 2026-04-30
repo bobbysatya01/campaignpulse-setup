@@ -311,6 +311,10 @@ tbody tr:hover { background: var(--surface2); }
       Activity log
     </button>
     <div class="nav-section">Admin</div>
+    <button class="nav-item" id="nav-users" onclick="showPage('users',this)" style="display:none">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M11 12c0-2.21-1.343-4-3-4S5 9.79 5 12"/><circle cx="8" cy="5" r="2.5"/><path d="M13.5 12c0-1.657-1.007-3-2.25-3M2.5 12c0-1.657 1.007-3 2.25-3"/><circle cx="12" cy="4.5" r="1.75"/><circle cx="4" cy="4.5" r="1.75"/></svg>
+      User Management
+    </button>
     <button class="nav-item" onclick="showPage('settings',this)">
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="2.5"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.05 3.05l1.41 1.41M11.54 11.54l1.41 1.41M3.05 12.95l1.41-1.41M11.54 4.46l1.41-1.41"/></svg>
       Settings
@@ -717,6 +721,45 @@ tbody tr:hover { background: var(--surface2); }
   </div>
 
   <!-- SETTINGS -->
+  <!-- USER MANAGEMENT PAGE -->
+  <div class="page" id="page-users">
+    <div class="settings-grid">
+      <div class="settings-card" style="max-width:800px">
+        <div class="settings-title">👥 Team Members</div>
+        <div id="users-list" style="margin-bottom:20px"></div>
+        <div style="border-top:1px solid var(--border);padding-top:20px">
+          <div style="font-size:15px;font-weight:600;margin-bottom:14px">Add New User</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+            <div>
+              <label style="font-size:12px;font-weight:600;color:#555;display:block;margin-bottom:4px">Full Name</label>
+              <input id="new-name" class="input-sm" placeholder="e.g. Aryan Singh" style="width:100%;padding:9px 12px;font-size:14px">
+            </div>
+            <div>
+              <label style="font-size:12px;font-weight:600;color:#555;display:block;margin-bottom:4px">Email Address</label>
+              <input id="new-email" class="input-sm" placeholder="e.g. aryan@fksports.co.uk" type="email" style="width:100%;padding:9px 12px;font-size:14px">
+            </div>
+            <div>
+              <label style="font-size:12px;font-weight:600;color:#555;display:block;margin-bottom:4px">Password</label>
+              <input id="new-password" class="input-sm" placeholder="Set a password" type="password" style="width:100%;padding:9px 12px;font-size:14px">
+            </div>
+            <div>
+              <label style="font-size:12px;font-weight:600;color:#555;display:block;margin-bottom:4px">Department</label>
+              <select id="new-department" class="filter-select" style="width:100%;font-size:14px;padding:9px 12px">
+                <option value="amazon">Amazon Advertising</option>
+                <option value="google">Google Advertising</option>
+                <option value="supply_chain">Supply Chain & Procurement</option>
+                <option value="logistics">Logistics & Fulfilment</option>
+                <option value="manager">Manager</option>
+              </select>
+            </div>
+          </div>
+          <div id="new-user-error" style="color:#e53e3e;font-size:13px;margin-bottom:10px;display:none"></div>
+          <button class="btn btn-primary" style="font-size:14px;padding:10px 24px" onclick="createUser()">Add User</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="page" id="page-settings">
     <div class="settings-grid">
       <div class="settings-card">
@@ -753,32 +796,7 @@ tbody tr:hover { background: var(--surface2); }
     </div>
   </div>
 
-  <!-- User Management — manager only -->
-  <div id="user-management-section" style="display:none;margin-top:24px">
-    <div class="settings-card">
-      <div class="settings-title">👥 User Management</div>
-      <div style="margin-bottom:16px">
-        <div id="users-list"></div>
-      </div>
-      <div style="border-top:1px solid var(--border);padding-top:16px;margin-top:8px">
-        <div style="font-size:14px;font-weight:600;margin-bottom:12px">Add new user</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
-          <input id="new-name" class="input-sm" placeholder="Full name" style="padding:8px 10px;font-size:13px">
-          <input id="new-email" class="input-sm" placeholder="Email" type="email" style="padding:8px 10px;font-size:13px">
-          <input id="new-password" class="input-sm" placeholder="Password" type="password" style="padding:8px 10px;font-size:13px">
-          <select id="new-department" class="filter-select" style="font-size:13px">
-            <option value="amazon">Amazon Advertising</option>
-            <option value="google">Google Advertising</option>
-            <option value="supply_chain">Supply Chain & Procurement</option>
-            <option value="logistics">Logistics & Fulfilment</option>
-            <option value="manager">Manager</option>
-          </select>
-        </div>
-        <div id="new-user-error" style="color:#e53e3e;font-size:12px;margin-bottom:8px;display:none"></div>
-        <button class="btn btn-primary" style="font-size:13px" onclick="createUser()">Add User</button>
-      </div>
-    </div>
-  </div>
+
 
 </div>
 </div>
@@ -865,7 +883,7 @@ function sortReport(col) {
   if (ind) ind.textContent = reportSortState.dir === -1 ? ' ↓' : ' ↑';
   renderReport();
 }
-const pageTitles = { dashboard:'Dashboard', campaigns:'All campaigns', ai:'AI analysis', keywords:'Keyword Intelligence', report:'Budget exhaustion report', activity:'Activity log', settings:'Settings', tasks:'Campaign Tasks', 'agent-performance':'Agent Performance', stuck:'Underperforming', history:'Daily History' };
+const pageTitles = { dashboard:'Dashboard', campaigns:'All campaigns', ai:'AI analysis', keywords:'Keyword Intelligence', report:'Budget exhaustion report', activity:'Activity log', settings:'Settings', tasks:'Campaign Tasks', 'agent-performance':'Agent Performance', stuck:'Underperforming', history:'Daily History', users:'User Management' };
 
 // ── Navigation ─────────────────────────────────────────────────────────────
 function showPage(name, btn) {
@@ -880,6 +898,7 @@ function showPage(name, btn) {
   if (name === 'stuck') loadStuckCampaigns();
   if (name === 'tasks') loadTasks();
   if (name === 'settings') loadSettings();
+  if (name === 'users') loadUsers();
   if (name === 'activity') renderActivity();
   if (name === 'ai') {
     // Don't auto-run AI — show button only to save API credits
@@ -2555,10 +2574,10 @@ async function createUser() {
 async function init() {
   const authed = await checkAuth();
   if (!authed) return;
-  // Show user management only for managers
+  // Show User Management nav only for managers
   if (currentUser && currentUser.role === 'manager') {
-    const umSection = document.getElementById('user-management-section');
-    if (umSection) { umSection.style.display = 'block'; loadUsers(); }
+    const navUsers = document.getElementById('nav-users');
+    if (navUsers) navUsers.style.display = 'flex';
   }
   try { await fetchData(); } catch(e) { console.error('Init error:', e); setTimeout(init, 3000); }
   loadSettings();
