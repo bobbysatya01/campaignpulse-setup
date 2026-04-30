@@ -1603,6 +1603,8 @@ async function loadHistoryDate() {
     document.getElementById('history-metrics').style.display = '';
     document.getElementById('history-placeholder').style.display = 'none';
     filterHistoryByAgent();
+    const exT = document.getElementById("history-exhaustion-table");
+    if(exT){ const exL=data.exhaustionLog||[]; exT.innerHTML=exL.length?exL.map(function(e){return "<tr><td>"+(e.time||"")+"</td><td>"+(e.campaign||"")+"</td><td>"+(e.budget||"")+"</td><td>"+(e.acos||"")+"</td><td>"+(e.missed||"")+"</td><td>"+(e.gap||"")+"</td><td>"+(e.resolvedAt||"")+"</td><td>"+(e.action||"Pending")+"</td></tr>";}).join(""): "<tr><td colspan=8>No events</td></tr>"; }
     const camps = data.campaigns || [];
     // Campaigns table
     const tbody = document.getElementById('history-table');
