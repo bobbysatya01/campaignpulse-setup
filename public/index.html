@@ -1762,7 +1762,7 @@ function renderAgentTabs() {
   };
 
   const allActive = dailyTasks.filter(function(t){ return ['open','in_progress','escalated','scaling'].indexOf(t.status) >= 0; }).length;
-  let html = '<button style="' + btnStyle(selectedAgent==='') + '" onclick="selectAgent(this,'')">All Agents<br><span style="font-size:11px;font-weight:400;opacity:0.8">' + allActive + ' active</span></button>';
+  let html = '<button style="' + btnStyle(selectedAgent==='') + '" onclick="selectAgent(this,&quot;&quot;)">All Agents<br><span style="font-size:11px;font-weight:400;opacity:0.8">' + allActive + ' active</span></button>';
 
   agents.forEach(function(agent) {
     const active = dailyTasks.filter(function(t){ return t.agent_name===agent && ['open','in_progress','escalated','scaling'].indexOf(t.status) >= 0; }).length;
