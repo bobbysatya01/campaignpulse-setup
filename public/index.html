@@ -1367,7 +1367,7 @@ async function loadKeywords() {
         <div class="table-card">
           <div style="overflow-x:auto"><table>
             <thead><tr><th>Search term</th><th>Campaign</th><th>Spend wasted</th><th>Reason</th><th>Action</th></tr></thead>
-            <tbody>${(a.wasteReduction?.topWasters||[]).filter(w=>!kwDismissals.some(d=>d.search_term===w.searchTerm&&d.campaign===w.campaign)).map(w=>`<tr><td class="mono" style="font-weight:600">${escHtml(w.searchTerm)}</td><td style="font-size:12px;color:var(--text2)">${escHtml(w.campaign)}</td><td class="mono" style="color:var(--red);font-weight:600">${escHtml(w.spend)}</td><td style="font-size:12px;color:var(--text3)">${escHtml(w.reason)}</td><td style="display:flex;gap:6px"><button class="btn btn-red" style="font-size:12px">Add negative</button><button class="btn btn-ghost" style="font-size:12px" onclick="showKwDismissModal(${JSON.stringify(w.searchTerm)},${JSON.stringify(w.campaign)})">Dismiss</button></td></tr>`).join('')||'<tr><td colspan="5"><div class="empty">No wasting terms found</div></td></tr>'}</tbody>
+            <tbody>${(a.wasteReduction?.topWasters||[]).filter(w=>!kwDismissals.some(d=>d.search_term===w.searchTerm&&d.campaign===w.campaign)).map(w=>`<tr><td class="mono" style="font-weight:600">${escHtml(w.searchTerm)}</td><td style="font-size:12px;color:var(--text2)">${escHtml(w.campaign)}</td><td class="mono" style="color:var(--red);font-weight:600">${escHtml(w.spend)}</td><td style="font-size:12px;color:var(--text3)">${escHtml(w.reason)}</td><td style="display:flex;gap:6px"><button class="btn btn-red" style="font-size:12px" onclick="actionKeyword(${JSON.stringify(w.searchTerm)},${JSON.stringify(w.campaign)},&quot;negative&quot;)">Add negative</button><button class="btn btn-ghost" style="font-size:12px" onclick="showKwDismissModal(${JSON.stringify(w.searchTerm)},${JSON.stringify(w.campaign)})">Dismiss</button></td></tr>`).join('')||'<tr><td colspan="5"><div class="empty">No wasting terms found</div></td></tr>'}</tbody>
           </table></div>
         </div>
       </div>
@@ -1408,6 +1408,50 @@ function showKwTab(tab, btn) {
   ['waste','keywords','bids','insights'].forEach(t => { const el = document.getElementById('kwt-'+t); if(el) el.style.display = t===tab?'':'none'; });
   document.querySelectorAll('#kw-tabs .tab-btn').forEach(b => b.classList.remove('active'));
   if (btn) btn.classList.add('active');
+}
+
+// ── No-Revenue Campaign AI Analysis ──────────────────────────────────────
+async function loadCampaignAnalysis(campaignId, containerId, btn) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  if (container.style.display !== 'none') {
+    container.style.display = 'none';
+    if (btn) btn.textContent = '🤖 AI Analysis';
+    return;
+  }
+  container.style.display = 'block';
+  container.innerHTML = '<div style="display:flex;align-items:center;gap:8px"><div class="spinner" style="width:14px;height:14px;border-width:2px"></div> Claude is analyzing this campaign...</div>';
+  if (btn) btn.textContent = '🤖 Hide analysis';
+  try {
+    const res = await fetch('/api/campaign-analysis/' + encodeURIComponent(campaignId));
+    const data = await res.json();
+    if (data.analysis) {
+      container.innerHTML = '<div style="font-weight:600;margin-bottom:6px;font-size:13px">🤖 Claude Analysis</div>' +
+        '<div style="white-space:pre-wrap;font-size:13px;line-height:1.6">' + escHtml(data.analysis) + '</div>';
+    } else {
+      container.innerHTML = '<div style="color:#e53e3e">Analysis failed: ' + escHtml(data.error||'Unknown error') + '</div>';
+    }
+  } catch(e) {
+    container.innerHTML = '<div style="color:#e53e3e">Error: ' + e.message + '</div>';
+  }
+}
+
+// ── Action Keyword (Add Negative / Add Exact) ─────────────────────────────
+async function actionKeyword(searchTerm, campaign, action) {
+  try {
+    await fetch('/api/keywords/dismiss', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        searchTerm: searchTerm,
+        campaign: campaign,
+        reason: action === 'negative' ? 'Added as negative keyword — agent actioned' : 'Added as exact match keyword — agent actioned',
+        dismissedBy: 'agent'
+      })
+    });
+    // Reload keywords to remove from list
+    await loadKeywords();
+  } catch(e) { alert('Error: ' + e.message); }
 }
 
 function showKwDismissModal(searchTerm, campaign) {
@@ -1576,8 +1620,12 @@ async function loadStuckCampaigns() {
     // No revenue table
     const nrTbody = document.getElementById('stuck-nr-table');
     nrTbody.innerHTML = noRevenue.length ? noRevenue.map(function(c) {
+      const aiId = 'nr-ai-' + c.campaignId;
       return '<tr>' +
-        '<td><div class="camp-name">' + escHtml(c.name) + '</div></td>' +
+        '<td><div class="camp-name">' + escHtml(c.name) + '</div>' +
+          '<button class="btn btn-ghost" style="font-size:11px;margin-top:4px" onclick="loadCampaignAnalysis(' + JSON.stringify(c.campaignId) + ',&quot;' + aiId + '&quot;,this)">🤖 AI Analysis</button>' +
+          '<div id="' + aiId + '" style="display:none;margin-top:8px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:12px;font-size:13px;line-height:1.6;color:#0369a1;max-width:400px"></div>' +
+        '</td>' +
         '<td style="font-size:12px">' + escHtml(c.portfolio||'—') + '</td>' +
         '<td>' + (c.targetingType==='auto'?'<span class="badge badge-blue" style="font-size:10px">Auto</span>':'<span class="badge" style="background:var(--surface3);color:var(--text3);font-size:10px">Manual</span>') + '</td>' +
         '<td class="mono" style="color:var(--red);font-weight:600">' + c.daysNoRevenue + ' days</td>' +
@@ -1819,6 +1867,7 @@ function selectAgent(btnEl, agent) {
   selectedAgent = agent;
   document.querySelectorAll('#agent-tabs button').forEach(function(b){ b.style.background='white'; b.style.color='#333'; b.style.borderColor='#ddd'; });
   if (btnEl) { btnEl.style.background='#e8391d'; btnEl.style.color='white'; btnEl.style.borderColor='#e8391d'; }
+  updateTaskTabCounts();
   renderTasks(taskTab);
 }
 
@@ -1859,11 +1908,30 @@ async function loadTasks() {
     if (badge) { if (urgent > 0) { badge.textContent = urgent; badge.style.display = ''; } else badge.style.display = 'none'; }
 
     renderAgentTabs();
+    updateTaskTabCounts();
     renderTasks(taskTab);
   } catch(e) {
     const c = document.getElementById('tasks-container');
     if (c) c.innerHTML = '<div class="empty">Error loading tasks: ' + e.message + '</div>';
   }
+}
+
+function updateTaskTabCounts() {
+  const daily = allTasks.filter(function(t){ return (t.task_source||'daily') !== 'alert'; });
+  const agentFiltered = selectedAgent ? daily.filter(function(t){ return t.agent_name === selectedAgent; }) : daily;
+  const counts = {
+    due: agentFiltered.filter(function(t){ return t.status === 'open' && (t.days_persisted||1) < 3; }).length,
+    inprogress: agentFiltered.filter(function(t){ return t.status === 'in_progress'; }).length,
+    escalated: agentFiltered.filter(function(t){ return t.status === 'open' && (t.days_persisted||1) >= 3; }).length,
+    scaling: agentFiltered.filter(function(t){ return t.status === 'scaling'; }).length,
+    repeat: agentFiltered.filter(function(t){ return t.is_repeat_offender; }).length,
+    complete: agentFiltered.filter(function(t){ return (t.status==='complete'||t.status==='dismissed'||t.status==='paused') && !t.archived_at; }).length,
+    archived: agentFiltered.filter(function(t){ return t.status==='archived' || t.archived_at; }).length
+  };
+  Object.keys(counts).forEach(function(tab) {
+    const el = document.getElementById('tab-' + tab + '-count');
+    if (el) { el.textContent = counts[tab]; el.style.display = counts[tab] > 0 ? '' : 'none'; }
+  });
 }
 
 function showTaskTab(tab, btn) {

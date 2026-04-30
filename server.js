@@ -657,6 +657,8 @@ async function runDailyTaskScheduler() {
       camps.forEach(function(c) {
         if (!c.campaignId) return;
         const agent = extractAgentFromCampaign(c.name) || 'Unassigned';
+        // Only process campaigns belonging to known agents
+        if (!['Aryan','Satyam','Kunal'].includes(agent)) return;
         if (!campHistory[c.campaignId]) {
           campHistory[c.campaignId] = {
             campaignId: c.campaignId,
@@ -1091,6 +1093,16 @@ async function analyseKeywords() {
     const totalWastedSpend = wasters.reduce(function(s,r){ return s+parseFloat(r.cost||0); }, 0);
     const totalConvValue = converters.reduce(function(s,r){ return s+parseFloat(r.sales14d||0); }, 0);
 
+    // Load dismissed keywords so Claude learns from them
+    let dismissedLines = '';
+    try {
+      const dismissed = await db.query('SELECT search_term, campaign, reason FROM keyword_dismissals ORDER BY dismissed_at DESC LIMIT 100');
+      if (dismissed.rows.length > 0) {
+        dismissedLines = 'PREVIOUSLY DISMISSED KEYWORDS (do NOT recommend these again):\n' +
+          dismissed.rows.map(function(d){ return d.search_term + ' | Campaign: ' + d.campaign + ' | Reason: ' + d.reason; }).join(NL) + NL;
+      }
+    } catch(e) { console.error('Dismissed keywords fetch error: ' + e.message); }
+
     const NL = '\n';
     const wasteAutoLines = autoWasters.slice(0,25).map(function(r){ return r.searchTerm + ' | £' + parseFloat(r.cost||0).toFixed(2) + ' | ' + (r.clicks||0) + ' clicks | ' + r.campaignName; }).join(NL);
     const wasteManualLines = manualWasters.slice(0,25).map(function(r){ return r.searchTerm + ' | £' + parseFloat(r.cost||0).toFixed(2) + ' | ' + (r.clicks||0) + ' clicks | ' + r.campaignName; }).join(NL);
@@ -1107,6 +1119,7 @@ async function analyseKeywords() {
       'CONVERTING NOT EXACT - AUTO (' + autoConverters.length + '):', convAutoLines,
       'CONVERTING NOT EXACT - MANUAL (' + manualConverters.length + '):', convManualLines,
       '',
+      dismissedLines,
       'Q1: Which terms need NEGATIVE KEYWORDS? Auto=negatives only. Manual=negate irrelevant high-spend.',
       'Q2: Which converting terms become EXACT MATCH? Auto=create new manual campaign. Manual=add directly.',
       'Q3: Patterns in wasting terms? Irrelevant categories, competitor names, wrong intent?',
@@ -1306,6 +1319,30 @@ Be direct and honest. This is for a manager review. Keep each agent analysis to 
   }
 });
 
+// ── One-time: Fix tasks with no agent name using known agents ────────────
+app.post('/api/admin/fix-agent-names', async function(req, res) {
+  if (!db) return res.status(500).json({ error: 'No DB' });
+  const knownAgents = ['Aryan', 'Satyam', 'Kunal'];
+  try {
+    // Get all tasks with no agent name
+    const tasks = await db.query("SELECT id, campaign_name FROM campaign_tasks WHERE (agent_name IS NULL OR agent_name NOT IN ('Aryan','Satyam','Kunal'))");
+    let fixed = 0, deleted = 0;
+    for (const row of tasks.rows) {
+      const parts = (row.campaign_name || '').split(/[|@]/);
+      const extracted = parts[0].trim().substring(0, 30);
+      if (knownAgents.includes(extracted)) {
+        await db.query('UPDATE campaign_tasks SET agent_name=$1 WHERE id=$2', [extracted, row.id]);
+        fixed++;
+      } else {
+        // Delete tasks for campaigns without a valid agent prefix
+        await db.query('DELETE FROM campaign_tasks WHERE id=$1', [row.id]);
+        deleted++;
+      }
+    }
+    res.json({ success: true, fixed, deleted });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── Escalation AI Suggestion (Claude) ────────────────────────────────────
 app.post('/api/tasks/:id/escalation-analysis', async function(req, res) {
   if (!db) return res.status(500).json({ error: 'No DB' });
@@ -1378,6 +1415,64 @@ app.get('/api/snapshots', async function(req, res) {
     const d = typeof r.snapshot_date === 'string' ? r.snapshot_date : new Date(r.snapshot_date).toISOString().split('T')[0];
     return { date: d, metrics: r.metrics };
   })});
+});
+
+// ── No-Revenue Campaign AI Analysis ─────────────────────────────────────
+app.get('/api/campaign-analysis/:campaignId', async function(req, res) {
+  if (!db) return res.status(500).json({ error: 'No DB' });
+  if (!process.env.ANTHROPIC_API_KEY) return res.status(500).json({ error: 'No API key' });
+  try {
+    const campaignId = req.params.campaignId;
+    // Get last 14 days of data for this campaign from snapshots
+    const snapshots = await db.query(
+      "SELECT snapshot_date, campaigns FROM daily_snapshots WHERE snapshot_date > NOW() - INTERVAL '14 days' ORDER BY snapshot_date DESC LIMIT 14"
+    );
+    let history = [];
+    snapshots.rows.forEach(function(snap) {
+      const c = (snap.campaigns||[]).find(function(x){ return String(x.campaignId) === String(campaignId); });
+      if (c) history.push({ date: snap.snapshot_date, spend: c.spend||0, sales: c.sales||0, acos: c.acos||0, impressions: c.impressions||0, clicks: c.clicks||0 });
+    });
+    if (!history.length) return res.json({ analysis: 'No historical data found for this campaign.' });
+
+    const totalSpend = history.reduce(function(s,d){ return s+parseFloat(d.spend||0); }, 0);
+    const totalSales = history.reduce(function(s,d){ return s+parseFloat(d.sales||0); }, 0);
+    const daysNoRevenue = history.filter(function(d){ return parseFloat(d.sales||0) === 0 && parseFloat(d.spend||0) > 0; }).length;
+    const daysNoActivity = history.filter(function(d){ return parseInt(d.impressions||0) === 0; }).length;
+
+    // Get keyword dismissals for this campaign
+    const dismissed = await db.query('SELECT search_term, reason FROM keyword_dismissals WHERE campaign ILIKE $1', ['%' + campaignId + '%']);
+
+    const dismissedSection = dismissed.rows.length > 0
+      ? '\nDISMISSED KEYWORDS FOR THIS CAMPAIGN:\n' + dismissed.rows.map(function(d){ return d.search_term + ': ' + d.reason; }).join('\n')
+      : '';
+    const prompt = 'You are an Amazon PPC expert analyzing a campaign for FK Sports UK (fitness equipment).\n\n' +
+      'CAMPAIGN ID: ' + campaignId + '\n' +
+      'LAST 14 DAYS PERFORMANCE:\n' + JSON.stringify(history, null, 2) + '\n\n' +
+      'SUMMARY:\n' +
+      '- Total spend: £' + totalSpend.toFixed(2) + '\n' +
+      '- Total revenue: £' + totalSales.toFixed(2) + '\n' +
+      '- Days with spend but zero revenue: ' + daysNoRevenue + '\n' +
+      '- Days with zero impressions: ' + daysNoActivity +
+      dismissedSection + '\n\n' +
+      'Provide a concise analysis (3-5 sentences max):\n' +
+      '1. What is the likely root cause of poor performance?\n' +
+      '2. One specific recommended action (bid change, keyword restructure, budget, targeting type)\n' +
+      '3. Is this worth continuing or should it be paused?\n\n' +
+      'Be direct and specific. No generic advice.';
+
+    const response = await axios.post('https://api.anthropic.com/v1/messages', {
+      model: 'claude-opus-4-5',
+      max_tokens: 400,
+      messages: [{ role: 'user', content: prompt }]
+    }, {
+      headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' }
+    });
+
+    res.json({ analysis: response.data.content[0].text, totalSpend, totalSales, daysNoRevenue, daysNoActivity });
+  } catch(e) {
+    console.error('Campaign analysis error: ' + e.message);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 app.get('/api/stuck-campaigns', async function(req, res) {
