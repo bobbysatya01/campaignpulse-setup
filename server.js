@@ -214,6 +214,9 @@ async function analyseCampaigns(campaigns) {
     const outOfBudget = remaining <= 0.01 && budget > 0;
     const budgetLow = remainingPct <= budgetLowPct && !outOfBudget;
     const acosHigh = acos > acosCritical && spend > 5;
+    // Suppress alerts 10pm-8am UK time
+    const ukHour = parseInt(new Date().toLocaleString('en-GB', {timeZone:'Europe/London', hour:'numeric', hour12:false}));
+    if (ukHour >= 22 || ukHour < 8) continue;
     const alertType = outOfBudget ? 'out_of_budget' : acosHigh ? 'acos_high' : budgetLow ? 'budget_low' : null;
     if (!alertType) continue;
 
