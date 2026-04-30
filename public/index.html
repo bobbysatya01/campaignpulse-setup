@@ -938,10 +938,11 @@ function dismissAlert(campaignId) {
           body: JSON.stringify({ status: 'dismissed', dismissedReason: reason, notes: reason })
         });
       }
-    } catch(e) {}
-    // Remove banner
-    const banner = document.getElementById('alert-' + campaignId);
-    if (banner) banner.remove();
+      const banner = document.getElementById('alert-' + campaignId);
+      if (banner) banner.remove();
+    } catch(e) {
+      alert('Error dismissing alert: ' + e.message);
+    }
   };
   overlay.appendChild(popup);
   overlay.onclick = function(e){ if(e.target===overlay) overlay.remove(); };
