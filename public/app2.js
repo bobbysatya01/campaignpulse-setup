@@ -156,7 +156,7 @@ function sortHistoryCol(col) {
 function filterHistoryByAgent() {
   if (!window.historyData) return;
   const agentFilter = document.getElementById('history-agent-filter')?.value || '';
-  let camps = window.historyData.campaigns || [];
+  let camps = (window.historyData && window.historyData.campaigns) || [];
 
   // Populate agent filter options if empty
   const sel = document.getElementById('history-agent-filter');
@@ -187,6 +187,7 @@ function filterHistoryByAgent() {
 }
 
 function renderHistoryCampaignsTable(camps) {
+  if (!camps || !camps.length) { document.getElementById('history-table').innerHTML = '<tr><td colspan="12"><div class="empty">No campaign data</div></td></tr>'; return; }
   const tbody = document.getElementById('history-table');
   const col = historySortState.col;
   const dir = historySortState.dir;
@@ -236,6 +237,7 @@ async function loadHistoryDate() {
     }
     const data = await res.json();
     window.historyData = data;
+    filterHistoryByAgent();
     const m = data.metrics || {};
     document.getElementById('h-revenue').textContent = '£' + (m.totalRevenue||'0');
     document.getElementById('h-spend').textContent = '£' + (m.totalSpend||'0');
