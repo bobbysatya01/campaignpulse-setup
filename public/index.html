@@ -818,9 +818,35 @@ function showPage(name, btn) {
   if (name === 'tasks') loadTasks();
   if (name === 'settings') loadSettings();
   if (name === 'activity') renderActivity();
-  if (name === 'ai') runAI();
-  if (name === 'keywords') loadKeywords();
-  if (name === 'agent-performance') loadAgentPerformance(false);
+  if (name === 'ai') {
+    // Don't auto-run AI — show button only to save API credits
+    const container = document.getElementById('ai-container');
+    if (container && !aiCache.result) {
+      container.innerHTML = '<div style="text-align:center;padding:60px 20px">' +
+        '<div style="font-size:40px;margin-bottom:16px">🤖</div>' +
+        '<div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:8px">AI Campaign Analysis</div>' +
+        '<div style="font-size:13px;color:var(--text3);margin-bottom:24px">Click below to run a fresh analysis of all campaigns.<br>Uses Claude AI — run on demand to save credits.</div>' +
+        '<button class="btn btn-primary" onclick="runAI()">Run AI Analysis</button>' +
+      '</div>';
+    } else if (aiCache.result) {
+      renderAIResult(container, aiCache.result);
+    }
+  }
+  if (name === 'keywords') {
+    // Always load status/existing data but don't auto-trigger new analysis
+    loadKeywords(false);
+  }
+  if (name === 'agent-performance') {
+    const container = document.getElementById('perf-container');
+    if (container && !container.getAttribute('data-loaded')) {
+      container.innerHTML = '<div style="text-align:center;padding:60px 20px">' +
+        '<div style="font-size:40px;margin-bottom:16px">📊</div>' +
+        '<div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:8px">Agent Performance Analysis</div>' +
+        '<div style="font-size:13px;color:var(--text3);margin-bottom:24px">Click below to run a fresh performance analysis.<br>Uses Claude AI — run on demand to save credits.</div>' +
+        '<button class="btn btn-primary" onclick="loadAgentPerformance(true)">Analyse Agent Performance</button>' +
+      '</div>';
+    }
+  }
 }
 
 // ── Fetch data ─────────────────────────────────────────────────────────────
@@ -939,16 +965,35 @@ function renderDashboard() {
 
 function renderAlerts() {
   const container = document.getElementById('alert-container');
-  const alerts = (appData.alerts || []).filter(a => a.type === 'out_of_budget' && !suppressedAlertIds.has(String(a.campaignId)));
+  const alerts = (appData.alerts || []).filter(function(a) {
+    return ['out_of_budget','budget_low','acos_high'].indexOf(a.type) >= 0 && !suppressedAlertIds.has(String(a.campaignId));
+  });
+  // Sort: out_of_budget first, then budget_low, then acos_high
+  alerts.sort(function(a,b) {
+    const order = { out_of_budget: 0, budget_low: 1, acos_high: 2 };
+    return (order[a.type]||9) - (order[b.type]||9);
+  });
   if (!alerts.length) { container.innerHTML = ''; return; }
-  container.innerHTML = alerts.map(a => `
-    <div class="alert-banner" id="alert-${a.campaignId}">
-      <span style="font-size:16px">⚠</span>
-      <div class="alert-banner-text"><strong>${escHtml(a.name)}</strong> ran out of budget at ${a.time}. ACOS: ${a.acos}%.</div>
-      <button class="btn btn-green" onclick="approveBudget('${a.campaignId}','')">Add budget</button>
-      <button class="btn btn-ghost" onclick="dismissAlert('${a.campaignId}')">Dismiss</button>
-    </div>
-  `).join('');
+  container.innerHTML = alerts.map(function(a) {
+    const isOOB = a.type === 'out_of_budget';
+    const isLow = a.type === 'budget_low';
+    const isAcos = a.type === 'acos_high';
+    const icon = isOOB ? '⚠️' : isLow ? '⚡' : '📈';
+    const msg = isOOB
+      ? '<strong>' + escHtml(a.name) + '</strong> ran out of budget at ' + a.time + '. ACOS: ' + a.acos + '%.'
+      : isLow
+      ? '<strong>' + escHtml(a.name) + '</strong> budget running low at ' + a.time + '. ACOS: ' + a.acos + '%.'
+      : '<strong>' + escHtml(a.name) + '</strong> high ACOS: ' + a.acos + '% at ' + a.time + '.';
+    const addBudgetBtn = (isOOB || isLow)
+      ? '<button class="btn btn-green" style="font-size:12px" data-cid="' + a.campaignId + '" onclick="approveBudget(this.getAttribute(&quot;data-cid&quot;),&quot;&quot;)">Add budget</button>'
+      : '';
+    return '<div class="alert-banner" id="alert-' + a.campaignId + '">' +
+      '<span style="font-size:16px">' + icon + '</span>' +
+      '<div class="alert-banner-text">' + msg + '</div>' +
+      addBudgetBtn +
+      '<button class="btn btn-ghost" style="font-size:12px" data-cid="' + a.campaignId + '" onclick="dismissAlert(this.getAttribute(&quot;data-cid&quot;))">Dismiss</button>' +
+    '</div>';
+  }).join('');
 }
 
 // ── Dismiss alert with reason ─────────────────────────────────────────────
@@ -1139,7 +1184,7 @@ function approveBudget(campaignId, suggested) {
       '<div id="budget-error" style="color:#e53e3e;font-size:12px;margin-bottom:10px;display:none">Please enter a valid amount.</div>' +
       '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px">' +
         '<button class="btn btn-ghost" style="font-size:13px" onclick="document.getElementById(&quot;budget-modal&quot;).remove()">Cancel</button>' +
-        '<button class="btn btn-green" style="font-size:13px" id="budget-confirm-btn" onclick="submitBudget(' + JSON.stringify(campaignId) + ')">Add Budget</button>' +
+        '<button class="btn btn-green" style="font-size:13px" id="budget-confirm-btn" data-cid="' + String(campaignId) + '" onclick="submitBudget(this.getAttribute(&quot;data-cid&quot;))">Add Budget</button>' +
       '</div>' +
     '</div>';
   document.body.appendChild(overlay);
@@ -1148,7 +1193,7 @@ function approveBudget(campaignId, suggested) {
   // Allow Enter key to submit
   setTimeout(function(){
     const inp = document.getElementById('budget-amount');
-    if (inp) inp.addEventListener('keydown', function(e){ if(e.key==='Enter') submitBudget(campaignId); });
+    if (inp) inp.addEventListener('keydown', function(e){ if(e.key==='Enter') { const btn = document.getElementById('budget-confirm-btn'); if(btn) submitBudget(btn.getAttribute('data-cid')); } });
   }, 60);
 }
 

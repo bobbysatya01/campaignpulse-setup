@@ -327,9 +327,8 @@ async function syncCampaigns() {
 
     state.campaigns = campaigns;
     await analyseCampaigns(campaigns);
-    // Check search term report in background
-    checkSearchTermReport().catch(function(e){ console.error('KW check error: ' + e.message); });
-    requestSearchTermReport().catch(function(e){ console.error('KW request error: ' + e.message); });
+    // Note: Search term report is fetched 3x daily (8am/1pm/6pm) not on every sync
+    // This preserves existing keyword data between scheduled fetches
     state.lastSync = new Date().toLocaleTimeString('en-GB', {timeZone:'Europe/London', hour:'2-digit', minute:'2-digit', second:'2-digit'});
     state.error = null;
     console.log('Sync done. ' + campaigns.length + ' campaigns.');
@@ -1277,26 +1276,30 @@ app.get('/api/agent-performance', async function(req, res) {
     const summary = await db.query(
       "SELECT agent_name, status, COUNT(*) as count FROM campaign_tasks WHERE created_date > NOW() - INTERVAL '30 days' GROUP BY agent_name, status ORDER BY agent_name, status"
     );
+    // Get alert response tracking per agent (budget added vs dismissed)
+    const alertResponses = await db.query(
+      "SELECT agent_name, action, COUNT(*) as count FROM activity_log WHERE action IN ('budget_added','alert_dismissed','alert_ignored') AND logged_at > NOW() - INTERVAL '30 days' GROUP BY agent_name, action ORDER BY agent_name"
+    );
+    // Get keyword actions per agent
+    const kwActions = await db.query(
+      "SELECT dismissed_by as agent_name, reason, COUNT(*) as count FROM keyword_dismissals WHERE dismissed_at > NOW() - INTERVAL '30 days' GROUP BY dismissed_by, reason ORDER BY dismissed_by"
+    );
 
-    const prompt = `You are analyzing Amazon PPC campaign management performance for FK Sports.
-
-AGENT ACTIVITY LOG (last 30 days):
-${JSON.stringify(logs.rows, null, 2)}
-
-REPEAT OFFENDERS (campaigns failing multiple times):
-${JSON.stringify(repeats.rows, null, 2)}
-
-TASK SUMMARY PER AGENT:
-${JSON.stringify(summary.rows, null, 2)}
-
-Analyze each agent's performance. For each agent provide:
-1. Overall performance rating (Strong/Average/Needs Improvement)
-2. Tasks completed vs abandoned vs dismissed
-3. Patterns in their notes (are they vague? specific? consistent?)
-4. Repeat offender campaigns they own - are they actually fixing issues?
-5. Specific recommendation for each agent to improve
-
-Be direct and honest. This is for a manager review. Keep each agent analysis to 3-4 sentences.`;
+    const prompt = 'You are analyzing Amazon PPC campaign management performance for FK Sports.\n\n' +
+      'AGENT ACTIVITY LOG (last 30 days):\n' + JSON.stringify(logs.rows, null, 2) + '\n\n' +
+      'REPEAT OFFENDERS (campaigns failing multiple times):\n' + JSON.stringify(repeats.rows, null, 2) + '\n\n' +
+      'TASK SUMMARY PER AGENT:\n' + JSON.stringify(summary.rows, null, 2) + '\n\n' +
+      'ALERT RESPONSE TRACKING (budget added vs dismissed):\n' + JSON.stringify(alertResponses.rows, null, 2) + '\n\n' +
+      'KEYWORD ACTIONS PER AGENT:\n' + JSON.stringify(kwActions.rows, null, 2) + '\n\n' +
+      'Analyze each agent (Aryan, Satyam, Kunal) performance. For each agent provide:\n' +
+      '1. Overall performance rating (Strong/Average/Needs Improvement)\n' +
+      '2. Tasks completed vs abandoned vs dismissed\n' +
+      '3. Alert response rate - how quickly do they add budget vs ignore/dismiss?\n' +
+      '4. Patterns in their notes (are they vague? specific? consistent?)\n' +
+      '5. Repeat offender campaigns they own - are they actually fixing root causes?\n' +
+      '6. Keyword intelligence actions - are they using the data or ignoring it?\n' +
+      '7. One specific actionable recommendation for each agent\n\n' +
+      'Be direct and honest. This is for a manager review. Keep each agent analysis to 4-5 sentences.';
 
     const response = await axios.post('https://api.anthropic.com/v1/messages', {
       model: 'claude-opus-4-5',
@@ -1737,7 +1740,7 @@ app.post('/api/campaigns/:id/budget', async function(req, res) {
     const approvalAgent = extractAgentFromCampaign(campaign.name) || '';
     const approvalMsg = ['✅ Budget added', campaign.name, '+£' + amount + ' added. New budget: £' + newBudget.toFixed(2)].join('\n');
     if (approvalAgent) { await sendToAgent(approvalAgent, approvalMsg); }
-    await sendGoogleChat(approvalMsg);
+    // Note: no main group notification for budget adds — agent space only
     syncCampaigns();
     res.json({ success: true, newBudget: newBudget });
   } catch(e) {
@@ -1751,7 +1754,15 @@ app.post('/api/alerts/:campaignId/dismiss', function(req, res) {
   res.json({ success: true });
 });
 
-// Daily task scheduler at 9am UK time
+// Search term report: fetch 3x daily at 8am, 1pm, 6pm UK time
+// Existing keyword data is preserved between fetches — only replaced when new data arrives
+cron.schedule('0 8,13,18 * * *', function() {
+  console.log('Scheduled keyword report fetch...');
+  requestSearchTermReport().catch(function(e){ console.error('Scheduled KW request error: ' + e.message); });
+  checkSearchTermReport().catch(function(e){ console.error('Scheduled KW check error: ' + e.message); });
+}, { timezone: 'Europe/London' });
+
+// Daily task scheduler at 8am UK time
 cron.schedule('0 8 * * *', function() {
   console.log('Running scheduled daily tasks at 8am UK time');
   runDailyTaskScheduler().catch(function(e){ console.error('Scheduled task error: ' + e.message); });
