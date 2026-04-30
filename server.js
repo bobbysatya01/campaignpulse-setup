@@ -1493,12 +1493,23 @@ app.get('/api/tasks', async function(req, res) {
   if (!db) return res.json({ tasks: [] });
   try {
     const result = await db.query(
-      'SELECT * FROM campaign_tasks ORDER BY score DESC, created_date DESC LIMIT 200'
+      "SELECT * FROM campaign_tasks WHERE agent_name IN ('Aryan','Satyam','Kunal') ORDER BY score DESC, created_date DESC LIMIT 500"
     );
     res.json({ tasks: result.rows });
   } catch(e) {
     res.json({ tasks: [], error: e.message });
   }
+});
+
+// One-time cleanup endpoint — delete tasks with no valid agent name
+app.post('/api/admin/cleanup-tasks', async function(req, res) {
+  if (!db) return res.status(500).json({ error: 'No DB' });
+  try {
+    const deleted = await db.query(
+      "DELETE FROM campaign_tasks WHERE agent_name IS NULL OR agent_name NOT IN ('Aryan','Satyam','Kunal') RETURNING id"
+    );
+    res.json({ success: true, deleted: deleted.rowCount });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 app.post('/api/tasks/:id/status', async function(req, res) {
