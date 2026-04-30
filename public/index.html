@@ -1736,9 +1736,12 @@ function showTaskTab(tab, btn) {
 }
 
 function renderTasks(tab) {
-  let filtered = allTasks;
-  if (tab === 'open') filtered = allTasks.filter(function(t){ return t.status === 'open' || t.status === 'in_progress'; });
-  else if (tab === 'complete') filtered = allTasks.filter(function(t){ return t.status === 'complete'; });
+  const agentTasks = selectedAgent ? allTasks.filter(function(t){ return getTaskAgent(t) === selectedAgent; }) : allTasks;
+  const dailyOnly = agentTasks.filter(function(t){ return (t.task_source||"daily") !== "alert"; });
+  let filtered = dailyOnly;
+  if (tab === "open") filtered = dailyOnly.filter(function(t){ return t.status === "open" || t.status === "in_progress"; });
+  else if (tab === "paused") filtered = dailyOnly.filter(function(t){ return t.status === "paused"; });
+  else if (tab === "complete") filtered = dailyOnly.filter(function(t){ return t.status === "complete" || t.status === "dismissed"; });
 
   const container = document.getElementById('tasks-container');
   if (!filtered.length) {

@@ -1299,6 +1299,23 @@ app.post('/api/tasks/run-now', async function(req, res) {
   res.json({ success: true, message: 'Task scheduler triggered' });
 });
 
+// ── Admin: manual snapshot insert ────────────────────────────────────────
+app.post('/api/admin/snapshot', async function(req, res) {
+  if (!db) return res.status(500).json({ error: 'No DB' });
+  try {
+    const { date, metrics, campaigns } = req.body;
+    if (!date || !campaigns) return res.status(400).json({ error: 'date and campaigns required' });
+    await db.query(
+      'INSERT INTO daily_snapshots (snapshot_date, metrics, campaigns, exhaustion_log, alerts) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (snapshot_date) DO UPDATE SET metrics=$2, campaigns=$3, exhaustion_log=$4, alerts=$5, created_at=NOW()',
+      [date, JSON.stringify(metrics||{}), JSON.stringify(campaigns), JSON.stringify([]), JSON.stringify([])]
+    );
+    console.log('Manual snapshot inserted for ' + date + ' (' + campaigns.length + ' campaigns)');
+    res.json({ success: true, date: date, campaigns: campaigns.length });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get('/api/health', function(req, res) {
   res.json({ status: 'ok', lastSync: state.lastSync, campaigns: state.campaigns.length, error: state.error });
 });
