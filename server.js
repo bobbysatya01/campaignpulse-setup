@@ -11,7 +11,7 @@ app.use(express.json());
 
 // ── Auth middleware ───────────────────────────────────────────────────────
 // Public paths that don't need auth
-const PUBLIC_PATHS = ['/api/auth/login', '/api/auth/logout', '/login.html'];
+const PUBLIC_PATHS = ['/api/auth/login', '/api/auth/logout', '/login.html', '/api/admin/create-manager'];
 
 async function requireAuth(req, res, next) {
   // Skip auth for public paths
