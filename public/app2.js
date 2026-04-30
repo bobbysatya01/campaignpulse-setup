@@ -150,13 +150,13 @@ function sortHistoryCol(col) {
   document.querySelectorAll('[id^="hs-"]').forEach(function(el){ el.textContent=''; });
   const ind = document.getElementById('hs-' + col);
   if (ind) ind.textContent = historySortState.dir === -1 ? ' ↓' : ' ↑';
-  if (historyData) filterHistoryByAgent();
+  if (window.historyData) filterHistoryByAgent();
 }
 
 function filterHistoryByAgent() {
   if (!historyData) return;
   const agentFilter = document.getElementById('history-agent-filter')?.value || '';
-  let camps = historyData.campaigns || [];
+  let camps = window.historyData.campaigns || [];
 
   // Populate agent filter options if empty
   const sel = document.getElementById('history-agent-filter');
