@@ -156,7 +156,7 @@ function sortHistoryCol(col) {
 function filterHistoryByAgent() {
   if (!window.historyData) return;
   const agentFilter = document.getElementById('history-agent-filter')?.value || '';
-  let camps = (window.historyData && window.historyData.campaigns) || [];
+  let camps = (window.historyData.campaigns) || [];
 
   // Populate agent filter options if empty
   const sel = document.getElementById('history-agent-filter');
@@ -184,6 +184,14 @@ function filterHistoryByAgent() {
   renderHistoryCampaignsTable(camps);
   renderHistorySNRTable(camps);
   renderHistoryNoActivityTable(camps);
+  // Render exhaustion log
+  const exLog = window.historyData.exhaustionLog || window.historyData.exhaustion_log || [];
+  const exTbody = document.getElementById('history-exhaustion-table');
+  if (exTbody) {
+    exTbody.innerHTML = exLog.length ? exLog.map(function(e) {
+      return '<tr><td>' + (e.time||'') + '</td><td><div class="camp-name">' + (e.campaign||'') + '</div></td><td>' + (e.portfolio||'—') + '</td><td>' + (e.agent||'—') + '</td><td class="mono">£' + (e.budget||'0') + '</td><td class="mono">' + (e.acos||'0') + '</td><td class="mono">£' + (e.missed||'0') + '</td><td>' + (e.resolvedAt||'—') + '</td><td>' + (e.gap||'—') + '</td><td>' + (e.action||'Pending') + '</td></tr>';
+    }).join('') : '<tr><td colspan="10"><div class="empty">No exhaustion events on this day</div></td></tr>';
+  }
 }
 
 function renderHistoryCampaignsTable(camps) {
@@ -204,7 +212,11 @@ function renderHistoryCampaignsTable(camps) {
 
 function renderHistorySNRTable(camps) {
   const snr = camps.filter(function(c){ return c.spend > 0 && (c.sales === 0 || c.sales === null); });
-  document.getElementById('history-snr-insight').textContent = snr.length + ' campaigns spent £' + snr.reduce(function(s,c){ return s+(c.spend||0); }, 0).toFixed(2) + ' with zero attributed revenue on this day.';
+  const snrSpend = snr.reduce(function(s,c){ return s+(c.spend||0); }, 0).toFixed(2);
+  const ins = document.getElementById('history-snr-insight');
+  if (ins) ins.textContent = snr.length + ' campaigns spent £' + snrSpend + ' with zero attributed revenue on this day.';
+  const badge = document.getElementById('h-snr-badge');
+  if (badge) badge.textContent = snr.length;
   const snrTbody = document.getElementById('history-snr-table');
   snrTbody.innerHTML = snr.sort(function(a,b){ return (b.spend||0)-(a.spend||0); }).map(function(c) {
     return '<tr><td><div class="camp-name">' + escHtml(c.name) + '</div></td><td style="font-size:12px">' + escHtml(c.portfolio||'—') + '</td><td>' + (c.targetingType==='auto'?'<span class="badge badge-blue" style="font-size:10px">Auto</span>':'<span class="badge" style="background:var(--surface3);color:var(--text3);font-size:10px">Manual</span>') + '</td><td class="mono" style="color:var(--red);font-weight:600">£' + (c.spend||0) + '</td><td class="mono">' + (c.impressions||0).toLocaleString() + '</td><td class="mono">' + (c.clicks||0) + '</td><td class="mono">' + (c.ctr||'0') + '%</td><td class="mono">' + (c.conversions||0) + '</td><td><span class="badge badge-red">Wasted spend</span></td></tr>';
