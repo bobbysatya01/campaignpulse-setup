@@ -142,12 +142,6 @@ async function loadHistoryDates() {
 }
 
 window.historyData = null;
-window.exhaustionSortState = {col:"time",dir:1};
-function sortExhaustion(col){
-  if(window.exhaustionSortState.col===col) window.exhaustionSortState.dir*=-1;
-  else{window.exhaustionSortState.col=col;window.exhaustionSortState.dir=1;}
-  if(window.historyData) filterHistoryByAgent();
-}
 window.historySortState = { col: 'spend', dir: -1 };
 
 function sortHistoryCol(col) {
@@ -209,8 +203,6 @@ function renderHistoryCampaignsTable(camps) {
 
 function renderHistorySNRTable(camps) {
   const snr = camps.filter(function(c){ return c.spend > 0 && (c.sales === 0 || c.sales === null); });
-  const snrBadge = document.getElementById("history-snr-badge"); if(snrBadge) snrBadge.textContent = snr.length;
-  const snrBadge2 = document.getElementById("h-snr-badge"); if(snrBadge2) snrBadge2.textContent = snr.length;
   document.getElementById('history-snr-insight').textContent = snr.length + ' campaigns spent £' + snr.reduce(function(s,c){ return s+(c.spend||0); }, 0).toFixed(2) + ' with zero attributed revenue on this day.';
   const snrTbody = document.getElementById('history-snr-table');
   snrTbody.innerHTML = snr.sort(function(a,b){ return (b.spend||0)-(a.spend||0); }).map(function(c) {
@@ -220,8 +212,6 @@ function renderHistorySNRTable(camps) {
 
 function renderHistoryNoActivityTable(camps) {
   const noAct = camps.filter(function(c){ return c.impressions === 0 && (c.spend === 0 || c.spend === null); });
-  const naBadge = document.getElementById("h-na-badge"); if(naBadge) naBadge.textContent = noAct.length;
-  const naBadge2 = document.getElementById("history-na-badge"); if(naBadge2) naBadge2.textContent = noAct.length;
   const noActTbody = document.getElementById('history-no-activity-table');
   noActTbody.innerHTML = noAct.length ? noAct.map(function(c) {
     return '<tr><td><div class="camp-name">' + escHtml(c.name) + '</div></td><td style="font-size:12px">' + escHtml(c.portfolio||'—') + '</td><td>' + (c.targetingType==='auto'?'<span class="badge badge-blue" style="font-size:10px">Auto</span>':'<span class="badge" style="background:var(--surface3);color:var(--text3);font-size:10px">Manual</span>') + '</td><td class="mono">£' + (c.dailyBudget||0) + '</td><td class="mono" style="color:var(--text3)">0</td><td class="mono" style="color:var(--text3)">0</td><td class="mono">£' + (c.spend||0) + '</td><td><span class="badge badge-amber">No activity</span></td></tr>';
@@ -266,8 +256,6 @@ async function loadHistoryDate() {
     }).join('') || '<tr><td colspan="12"><div class="empty">No campaign data</div></td></tr>';
     // Spend no revenue table
     const snr = camps.filter(function(c){ return c.spend > 0 && (c.sales === 0 || c.sales === null); });
-  const snrBadge = document.getElementById("history-snr-badge"); if(snrBadge) snrBadge.textContent = snr.length;
-  const snrBadge2 = document.getElementById("h-snr-badge"); if(snrBadge2) snrBadge2.textContent = snr.length;
     document.getElementById('history-snr-insight').textContent = snr.length + ' campaigns spent £' + snr.reduce(function(s,c){ return s+(c.spend||0); }, 0).toFixed(2) + ' with zero attributed revenue on this day.';
     document.getElementById('h-snr-badge').textContent = snr.length;
     const snrTbody = document.getElementById('history-snr-table');
@@ -276,8 +264,6 @@ async function loadHistoryDate() {
     }).join('') || '<tr><td colspan="9"><div class="empty">No wasted spend on this day</div></td></tr>';
     // No activity table
     const noAct = camps.filter(function(c){ return c.impressions === 0 && (c.spend === 0 || c.spend === null); });
-  const naBadge = document.getElementById("h-na-badge"); if(naBadge) naBadge.textContent = noAct.length;
-  const naBadge2 = document.getElementById("history-na-badge"); if(naBadge2) naBadge2.textContent = noAct.length;
     document.getElementById('history-na-insight').textContent = noAct.length + ' campaign' + (noAct.length !== 1 ? 's' : '') + ' had zero impressions and zero spend on this day. Review bids, targeting, or consider pausing.';
     document.getElementById('h-na-badge').textContent = noAct.length;
     const noActTbody = document.getElementById('history-no-activity-table');
@@ -287,72 +273,8 @@ async function loadHistoryDate() {
 
     // Exhaustion log table
     const exTbody = document.getElementById('history-exhaustion-table');
-    if (exTbody) {
-      const exLog = data.exhaustionLog || [];
-      exTbody.innerHTML = exLog.length ? exLog.map(function(e) {
-        return '<tr><td>' + (e.time||'—') + '</td><td><div class="camp-name">' + (e.campaign||'—') + '</div></td><td class="mono">£' + (e.budget||'0') + '</td><td class="mono">' + (e.acos||'0') + '</td><td class="mono">£' + (e.missed||'0') + '</td><td class="mono">' + (e.gap||'—') + '</td><td>' + (e.resolvedAt||'—') + '</td><td>' + (e.action||'Pending') + '</td></tr>';
-      }).join('') : '<tr><td colspan="8"><div class="empty">No exhaustion events on this day</div></td></tr>';
-    }
-    document.getElementById('history-metrics').style.display = 'none';
-  document.getElementById('history-empty').style.display = 'none';
-  document.getElementById('history-placeholder').style.display = 'none';
-  try {
-    const dateClean = String(date).split('T')[0].split(' ')[0];
-    const res = await fetch('/api/snapshots/' + dateClean);
-    if (!res.ok) {
-      document.getElementById('history-empty').style.display = '';
-      document.getElementById('history-loading').textContent = '';
-      return;
-    }
-    const data = await res.json();
-    window.historyData = data;
-    const m = data.metrics || {};
-    document.getElementById('h-revenue').textContent = '£' + (m.totalRevenue||'0');
-    document.getElementById('h-spend').textContent = '£' + (m.totalSpend||'0');
-    document.getElementById('h-acos').textContent = (m.blendedAcos||'0') + '%';
-    document.getElementById('h-wasted').textContent = '£' + (m.totalWastedSpend||'0');
-    document.getElementById('h-wasted-d').textContent = (m.spendNoRevenue||'0') + ' campaigns with spend, no revenue';
-    document.getElementById('h-active').textContent = m.activeCampaigns||'0';
-    document.getElementById('h-oob').textContent = (data.exhaustionLog||[]).length;
-    document.getElementById('h-snr').textContent = m.spendNoRevenue||'0';
-    document.getElementById('history-metrics').style.display = '';
-    document.getElementById('history-placeholder').style.display = 'none';
-    filterHistoryByAgent();
-    const camps = data.campaigns || [];
-    // Campaigns table
-    const tbody = document.getElementById('history-table');
-    tbody.innerHTML = sorted.map(function(c) {
-      const acosClass = c.acos > 35 ? 'acos-high' : c.acos > 25 ? 'acos-warn' : c.acos > 0 ? 'acos-ok' : '';
-      return '<tr><td><div class="camp-name">' + escHtml(c.name) + '</div></td><td style="font-size:12px">' + escHtml(c.portfolio||'—') + '</td><td>' + (c.targetingType==='auto'?'<span class="badge badge-blue" style="font-size:10px">Auto</span>':'<span class="badge" style="background:var(--surface3);color:var(--text3);font-size:10px">Manual</span>') + '</td><td class="mono">£' + (c.dailyBudget||0) + '</td><td class="mono">' + (c.impressions||0).toLocaleString() + '</td><td class="mono">' + (c.clicks||0) + '</td><td class="mono">' + (c.ctr||'0') + '%</td><td class="mono">' + (c.conversions||0) + '</td><td class="mono" style="color:var(--green)">£' + (c.sales||0) + '</td><td class="mono">£' + (c.spend||0) + '</td><td class="mono ' + acosClass + '">' + (c.acos>0?c.acos+'%':'—') + '</td><td>' + (c.budgetRemaining<=0.01&&c.dailyBudget>0?'<span class="badge badge-red">Out of budget</span>':c.acos>35&&c.spend>5?'<span class="badge badge-red">ACOS high</span>':'<span class="badge badge-green">Healthy</span>') + '</td></tr>';
-    }).join('') || '<tr><td colspan="12"><div class="empty">No campaign data</div></td></tr>';
-    // Spend no revenue table
-    const snr = camps.filter(function(c){ return c.spend > 0 && (c.sales === 0 || c.sales === null); });
-  const snrBadge = document.getElementById("history-snr-badge"); if(snrBadge) snrBadge.textContent = snr.length;
-  const snrBadge2 = document.getElementById("h-snr-badge"); if(snrBadge2) snrBadge2.textContent = snr.length;
-    document.getElementById('history-snr-insight').textContent = snr.length + ' campaigns spent £' + snr.reduce(function(s,c){ return s+(c.spend||0); }, 0).toFixed(2) + ' with zero attributed revenue on this day.';
-    document.getElementById('h-snr-badge').textContent = snr.length;
-    const snrTbody = document.getElementById('history-snr-table');
-    snrTbody.innerHTML = snr.sort(function(a,b){ return (b.spend||0)-(a.spend||0); }).map(function(c) {
-      return '<tr><td><div class="camp-name">' + escHtml(c.name) + '</div></td><td style="font-size:12px">' + escHtml(c.portfolio||'—') + '</td><td>' + (c.targetingType==='auto'?'<span class="badge badge-blue" style="font-size:10px">Auto</span>':'<span class="badge" style="background:var(--surface3);color:var(--text3);font-size:10px">Manual</span>') + '</td><td class="mono" style="color:var(--red);font-weight:600">£' + (c.spend||0) + '</td><td class="mono">' + (c.impressions||0).toLocaleString() + '</td><td class="mono">' + (c.clicks||0) + '</td><td class="mono">' + (c.ctr||'0') + '%</td><td class="mono">' + (c.conversions||0) + '</td><td><span class="badge badge-red">Wasted spend</span></td></tr>';
-    }).join('') || '<tr><td colspan="9"><div class="empty">No wasted spend on this day</div></td></tr>';
-    // No activity table
-    const noAct = camps.filter(function(c){ return c.impressions === 0 && (c.spend === 0 || c.spend === null); });
-  const naBadge = document.getElementById("h-na-badge"); if(naBadge) naBadge.textContent = noAct.length;
-  const naBadge2 = document.getElementById("history-na-badge"); if(naBadge2) naBadge2.textContent = noAct.length;
-    document.getElementById('history-na-insight').textContent = noAct.length + ' campaign' + (noAct.length !== 1 ? 's' : '') + ' had zero impressions and zero spend on this day. Review bids, targeting, or consider pausing.';
-    document.getElementById('h-na-badge').textContent = noAct.length;
-    const noActTbody = document.getElementById('history-no-activity-table');
-    noActTbody.innerHTML = noAct.length ? noAct.map(function(c) {
-      return '<tr><td><div class="camp-name">' + escHtml(c.name) + '</div></td><td style="font-size:12px">' + escHtml(c.portfolio||'—') + '</td><td>' + (c.targetingType==='auto'?'<span class="badge badge-blue" style="font-size:10px">Auto</span>':'<span class="badge" style="background:var(--surface3);color:var(--text3);font-size:10px">Manual</span>') + '</td><td class="mono">£' + (c.dailyBudget||0) + '</td><td class="mono" style="color:var(--text3)">0</td><td class="mono" style="color:var(--text3)">0</td><td class="mono">£' + (c.spend||0) + '</td><td><span class="badge badge-amber">No activity</span></td></tr>';
-    }).join('') : '<tr><td colspan="8"><div class="empty">No inactive campaigns on this day</div></td></tr>';
-
-    // Exhaustion log table
-    const exTbody = document.getElementById('history-exhaustion-table');
-    const exLog = data.exhaustionLog||[];
-    const col=window.exhaustionSortState.col,dir=window.exhaustionSortState.dir;
-    const sortedEx=exLog.slice().sort(function(a,b){const va=col==="budget"?parseFloat((a.budget||"0").replace(/[^0-9.]/g,"")):col==="missed"?parseFloat((a.missed||"0").replace(/[^0-9.]/g,"")):col==="acos"?parseFloat(a.acos||0):col==="gap"?parseInt(a.gap||0):(a[col]||"");const vb=col==="budget"?parseFloat((b.budget||"0").replace(/[^0-9.]/g,"")):col==="missed"?parseFloat((b.missed||"0").replace(/[^0-9.]/g,"")):col==="acos"?parseFloat(b.acos||0):col==="gap"?parseInt(b.gap||0):(b[col]||"");return va<vb?dir:va>vb?-dir:0;});
-    exTbody.innerHTML = sortedEx.map(function(e) {
-      return '<tr><td>' + (e.time||'—') + '</td><td><div class="camp-name">' + (e.campaign||'—') + '</div></td><td class="mono">£' + (e.budget||'0') + '</td><td class="mono">' + (e.acos||'0') + '</td><td class="mono">£' + (e.missed||'0') + '</td><td>' + (e.gap||'—') + '</td><td>' + (e.resolvedAt||'—') + '</td><td>' + (e.action||'Pending') + '</td></trd><td><div class="camp-name">' + escHtml(e.campaign||'—') + '</div></td><td style="font-size:12px">' + escHtml(e.portfolio||'—') + '</td><td style="font-size:12px">' + escHtml(e.agent||'—') + '</td><td class="mono">' + (e.budget||'—') + '</td><td class="mono">' + (e.acos||'—') + '</td><td class="mono" style="color:var(--red)">' + (e.missed||'—') + '</td><td class="mono" style="color:var(--green)">' + (e.resolvedAt||'—') + '</td><td class="mono" style="color:var(--amber);font-weight:600">' + (e.gap||'—') + '</td><td><span class="badge ' + (e.action==='Budget added'?'badge-green':e.action==='Dismissed'?'badge-red':'badge-amber') + '">' + (e.action||'—') + '</span></td></tr>';
+    exTbody.innerHTML = (data.exhaustionLog||[]).map(function(e) {
+      return '<tr><td class="mono" style="color:var(--red);font-weight:600">' + (e.time||'—') + '</td><td><div class="camp-name">' + escHtml(e.campaign||'—') + '</div></td><td style="font-size:12px">' + escHtml(e.portfolio||'—') + '</td><td style="font-size:12px">' + escHtml(e.agent||'—') + '</td><td class="mono">' + (e.budget||'—') + '</td><td class="mono">' + (e.acos||'—') + '</td><td class="mono" style="color:var(--red)">' + (e.missed||'—') + '</td><td class="mono" style="color:var(--green)">' + (e.resolvedAt||'—') + '</td><td class="mono" style="color:var(--amber);font-weight:600">' + (e.gap||'—') + '</td><td><span class="badge ' + (e.action==='Budget added'?'badge-green':e.action==='Dismissed'?'badge-red':'badge-amber') + '">' + (e.action||'—') + '</span></td></tr>';
     }).join('') || '<tr><td colspan="10"><div class="empty">No exhaustion events on this day</div></td></tr>';
     document.getElementById('history-metrics').style.display = '';
     document.getElementById('history-loading').textContent = '';
