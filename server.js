@@ -51,8 +51,10 @@ async function requireAuth(req, res, next) {
   }
 }
 
-app.use(requireAuth);
+// Serve static files FIRST (login.html, CSS, JS, images — no auth needed)
 app.use(express.static(path.join(__dirname, 'public')));
+// Then apply auth middleware only to API routes
+app.use('/api', requireAuth);
 
 let state = {
   accessToken: null,

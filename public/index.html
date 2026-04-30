@@ -790,11 +790,11 @@ let currentUser = null;
 
 async function checkAuth() {
   const token = localStorage.getItem('cp_token');
-  if (!token) { window.location.href = '/login.html'; return false; }
+  if (!token) { window.location.replace('/login.html'); return false; }
   try {
     const res = await fetch('/api/auth/me', { headers: { 'x-auth-token': token } });
     const data = await res.json();
-    if (!data.name) { window.location.href = '/login.html'; return false; }
+    if (!data.name) { localStorage.removeItem('cp_token'); window.location.replace('/login.html'); return false; }
     currentUser = data;
     const userEl = document.getElementById('user-info');
     if (userEl) userEl.innerHTML =
