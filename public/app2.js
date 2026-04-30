@@ -188,9 +188,16 @@ function filterHistoryByAgent() {
   const exLog = window.historyData.exhaustionLog || window.historyData.exhaustion_log || [];
   const exTbody = document.getElementById('history-exhaustion-table');
   if (exTbody) {
-    exTbody.innerHTML = exLog.length ? exLog.map(function(e) {
-      return '<tr><td>' + (e.time||'') + '</td><td><div class="camp-name">' + (e.campaign||'') + '</div></td><td>' + (e.portfolio||'—') + '</td><td>' + (e.agent||'—') + '</td><td class="mono">£' + (e.budget||'0') + '</td><td class="mono">' + (e.acos||'0') + '</td><td class="mono">£' + (e.missed||'0') + '</td><td>' + (e.resolvedAt||'—') + '</td><td>' + (e.gap||'—') + '</td><td>' + (e.action||'Pending') + '</td></tr>';
-    }).join('') : '<tr><td colspan="10"><div class="empty">No exhaustion events on this day</div></td></tr>';
+    const col = exhaustionSortState.col;
+    const dir = exhaustionSortState.dir;
+    const sortedEx = exLog.slice().sort(function(a,b){
+      const va = col==='budget'?parseFloat((a.budget||'0').replace(/[^0-9.]/g,'')):col==='missed'?parseFloat((a.missed||'0').replace(/[^0-9.]/g,'')):col==='acos'?parseFloat(a.acos||0):col==='gap'?parseInt(a.gap||0):(a[col]||'');
+      const vb = col==='budget'?parseFloat((b.budget||'0').replace(/[^0-9.]/g,'')):col==='missed'?parseFloat((b.missed||'0').replace(/[^0-9.]/g,'')):col==='acos'?parseFloat(b.acos||0):col==='gap'?parseInt(b.gap||0):(b[col]||'');
+      return va < vb ? dir : va > vb ? -dir : 0;
+    });
+    exTbody.innerHTML = sortedEx.length ? sortedEx.map(function(e) {
+      return '<tr><td>' + (e.time||'') + '</td><td><div class="camp-name">' + (e.campaign||'') + '</div></td><td class="mono">£' + (e.budget||'0') + '</td><td class="mono">' + (e.acos||'0') + '</td><td class="mono">£' + (e.missed||'0') + '</td><td class="mono">' + (e.gap||'—') + '</td><td>' + (e.resolvedAt||'—') + '</td><td>' + (e.action||'Pending') + '</td></tr>';
+    }).join('') : '<tr><td colspan="8"><div class="empty">No exhaustion events on this day</div></td></tr>';
   }
 }
 
@@ -225,6 +232,8 @@ function renderHistorySNRTable(camps) {
 
 function renderHistoryNoActivityTable(camps) {
   const noAct = camps.filter(function(c){ return c.impressions === 0 && (c.spend === 0 || c.spend === null); });
+  const noActBadge = document.getElementById('h-no-activity-badge');
+  if (noActBadge) noActBadge.textContent = noAct.length;
   const noActTbody = document.getElementById('history-no-activity-table');
   noActTbody.innerHTML = noAct.length ? noAct.map(function(c) {
     return '<tr><td><div class="camp-name">' + escHtml(c.name) + '</div></td><td style="font-size:12px">' + escHtml(c.portfolio||'—') + '</td><td>' + (c.targetingType==='auto'?'<span class="badge badge-blue" style="font-size:10px">Auto</span>':'<span class="badge" style="background:var(--surface3);color:var(--text3);font-size:10px">Manual</span>') + '</td><td class="mono">£' + (c.dailyBudget||0) + '</td><td class="mono" style="color:var(--text3)">0</td><td class="mono" style="color:var(--text3)">0</td><td class="mono">£' + (c.spend||0) + '</td><td><span class="badge badge-amber">No activity</span></td></tr>';

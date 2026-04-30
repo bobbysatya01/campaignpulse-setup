@@ -1359,8 +1359,8 @@ app.post('/api/alerts/:campaignId/dismiss', function(req, res) {
 });
 
 // Daily task scheduler at 9am UK time
-cron.schedule('0 9 * * *', function() {
-  console.log('Running scheduled daily tasks at 9am UK time');
+cron.schedule('0 8 * * *', function() {
+  console.log('Running scheduled daily tasks at 8am UK time');
   runDailyTaskScheduler().catch(function(e){ console.error('Scheduled task error: ' + e.message); });
 }, { timezone: 'Europe/London' });
 
