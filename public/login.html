@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>CampaignPulse — Login</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  .login-card {
+    background: white;
+    border-radius: 20px;
+    padding: 40px 36px;
+    width: 100%;
+    max-width: 400px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+  }
+  .logo {
+    text-align: center;
+    margin-bottom: 32px;
+  }
+  .logo-icon {
+    width: 60px;
+    height: 60px;
+    background: linear-gradient(135deg, #e8391d, #ff6b4a);
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 28px;
+    margin: 0 auto 12px;
+  }
+  .logo-title {
+    font-size: 22px;
+    font-weight: 800;
+    color: #1a1a2e;
+    letter-spacing: -0.5px;
+  }
+  .logo-sub {
+    font-size: 13px;
+    color: #888;
+    margin-top: 4px;
+  }
+  .form-group {
+    margin-bottom: 18px;
+  }
+  label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: #444;
+    margin-bottom: 6px;
+  }
+  input {
+    width: 100%;
+    padding: 14px 16px;
+    border: 1.5px solid #e0e0e0;
+    border-radius: 10px;
+    font-size: 16px;
+    font-family: inherit;
+    transition: border-color 0.2s;
+    outline: none;
+    -webkit-appearance: none;
+  }
+  input:focus {
+    border-color: #e8391d;
+  }
+  .error {
+    background: #fff5f5;
+    border: 1px solid #feb2b2;
+    color: #c53030;
+    padding: 12px 14px;
+    border-radius: 8px;
+    font-size: 13px;
+    margin-bottom: 16px;
+    display: none;
+  }
+  .btn-login {
+    width: 100%;
+    padding: 15px;
+    background: linear-gradient(135deg, #e8391d, #ff6b4a);
+    color: white;
+    border: none;
+    border-radius: 10px;
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+    font-family: inherit;
+    transition: opacity 0.2s, transform 0.1s;
+    margin-top: 4px;
+  }
+  .btn-login:active {
+    transform: scale(0.98);
+    opacity: 0.9;
+  }
+  .btn-login:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+  .footer {
+    text-align: center;
+    margin-top: 24px;
+    font-size: 12px;
+    color: #aaa;
+  }
+  .dept-badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+    margin-top: 8px;
+  }
+</style>
+</head>
+<body>
+<div class="login-card">
+  <div class="logo">
+    <div class="logo-icon">⚡</div>
+    <div class="logo-title">CampaignPulse</div>
+    <div class="logo-sub">FK Sports — Operations Dashboard</div>
+  </div>
+
+  <div class="error" id="error-msg"></div>
+
+  <div class="form-group">
+    <label>Email address</label>
+    <input type="email" id="email" placeholder="you@fksports.co.uk" autocomplete="email" autocapitalize="none">
+  </div>
+  <div class="form-group">
+    <label>Password</label>
+    <input type="password" id="password" placeholder="Enter your password" autocomplete="current-password">
+  </div>
+
+  <button class="btn-login" id="login-btn" onclick="doLogin()">Sign in</button>
+
+  <div class="footer">FK Sports · Secure access · Session expires after 24hrs inactivity</div>
+</div>
+
+<script>
+  // If already logged in, redirect to dashboard
+  const savedToken = localStorage.getItem('cp_token');
+  if (savedToken) {
+    fetch('/api/auth/me', { headers: { 'x-auth-token': savedToken } })
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if (d.name) window.location.href = '/';
+      }).catch(function(){});
+  }
+
+  // Allow Enter key to submit
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') doLogin();
+  });
+
+  async function doLogin() {
+    const email = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
+    const btn = document.getElementById('login-btn');
+    const errEl = document.getElementById('error-msg');
+
+    errEl.style.display = 'none';
+    if (!email || !password) {
+      errEl.textContent = 'Please enter your email and password.';
+      errEl.style.display = 'block';
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Signing in...';
+
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      const data = await res.json();
+      if (data.success && data.token) {
+        localStorage.setItem('cp_token', data.token);
+        localStorage.setItem('cp_user', JSON.stringify({ name: data.name, department: data.department, role: data.role, email: data.email }));
+        window.location.href = '/';
+      } else {
+        errEl.textContent = data.error || 'Login failed. Please try again.';
+        errEl.style.display = 'block';
+        btn.disabled = false;
+        btn.textContent = 'Sign in';
+      }
+    } catch(e) {
+      errEl.textContent = 'Connection error. Please try again.';
+      errEl.style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = 'Sign in';
+    }
+  }
+</script>
+</body>
+</html>

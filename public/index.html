@@ -329,6 +329,7 @@ tbody tr:hover { background: var(--surface2); }
   <div class="topbar">
     <div class="page-title" id="page-title">Dashboard</div>
     <div class="topbar-right">
+      <div id="user-info" style="display:flex;align-items:center"></div>
       <div class="sync-info"><div class="sync-dot" id="sync-dot"></div><span id="sync-time">Loading...</span></div>
       <button class="btn btn-ghost" onclick="exportCSV()">Export CSV</button>
       <button class="btn btn-primary" onclick="refreshData()">↻ Refresh</button>
@@ -752,10 +753,72 @@ tbody tr:hover { background: var(--surface2); }
     </div>
   </div>
 
+  <!-- User Management — manager only -->
+  <div id="user-management-section" style="display:none;margin-top:24px">
+    <div class="settings-card">
+      <div class="settings-title">👥 User Management</div>
+      <div style="margin-bottom:16px">
+        <div id="users-list"></div>
+      </div>
+      <div style="border-top:1px solid var(--border);padding-top:16px;margin-top:8px">
+        <div style="font-size:14px;font-weight:600;margin-bottom:12px">Add new user</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+          <input id="new-name" class="input-sm" placeholder="Full name" style="padding:8px 10px;font-size:13px">
+          <input id="new-email" class="input-sm" placeholder="Email" type="email" style="padding:8px 10px;font-size:13px">
+          <input id="new-password" class="input-sm" placeholder="Password" type="password" style="padding:8px 10px;font-size:13px">
+          <select id="new-department" class="filter-select" style="font-size:13px">
+            <option value="amazon">Amazon Advertising</option>
+            <option value="google">Google Advertising</option>
+            <option value="supply_chain">Supply Chain & Procurement</option>
+            <option value="logistics">Logistics & Fulfilment</option>
+            <option value="manager">Manager</option>
+          </select>
+        </div>
+        <div id="new-user-error" style="color:#e53e3e;font-size:12px;margin-bottom:8px;display:none"></div>
+        <button class="btn btn-primary" style="font-size:13px" onclick="createUser()">Add User</button>
+      </div>
+    </div>
+  </div>
+
 </div>
 </div>
 
 <script>
+
+// ── Auth ─────────────────────────────────────────────────────────────────
+let currentUser = null;
+
+async function checkAuth() {
+  const token = localStorage.getItem('cp_token');
+  if (!token) { window.location.href = '/login.html'; return false; }
+  try {
+    const res = await fetch('/api/auth/me', { headers: { 'x-auth-token': token } });
+    const data = await res.json();
+    if (!data.name) { window.location.href = '/login.html'; return false; }
+    currentUser = data;
+    const userEl = document.getElementById('user-info');
+    if (userEl) userEl.innerHTML =
+      '<span style="font-size:13px;color:var(--text3)">' + escHtml(data.name) + '</span>' +
+      '<span style="font-size:11px;padding:2px 8px;border-radius:10px;background:var(--surface2);color:var(--text3);margin-left:6px">' + escHtml(data.department) + '</span>' +
+      '<button onclick="doLogout()" style="background:none;border:none;cursor:pointer;font-size:12px;color:var(--text3);margin-left:10px;font-family:inherit">Sign out</button>';
+    return true;
+  } catch(e) { window.location.href = '/login.html'; return false; }
+}
+
+function getAuthHeaders() {
+  const token = localStorage.getItem('cp_token');
+  return token ? { 'x-auth-token': token, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
+}
+
+async function doLogout() {
+  const token = localStorage.getItem('cp_token');
+  if (token) {
+    try { await fetch('/api/auth/logout', { method: 'POST', headers: { 'x-auth-token': token } }); } catch(e) {}
+  }
+  localStorage.removeItem('cp_token');
+  localStorage.removeItem('cp_user');
+  window.location.href = '/login.html';
+}
 
 let appData = { metrics:{}, campaigns:[], alerts:[], exhaustionLog:[], lastSync:null };
 // Persist suppressed alert IDs across page refresh using localStorage
@@ -2435,7 +2498,68 @@ function resetSettings() {
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────
+// ── User Management ──────────────────────────────────────────────────────
+async function loadUsers() {
+  try {
+    const res = await fetch('/api/auth/users', { headers: getAuthHeaders() });
+    const data = await res.json();
+    const container = document.getElementById('users-list');
+    if (!container) return;
+    const deptLabels = { amazon: 'Amazon Advertising', google: 'Google Advertising', supply_chain: 'Supply Chain', logistics: 'Logistics', manager: 'Manager' };
+    container.innerHTML = (data.users||[]).map(function(u) {
+      return '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);font-size:13px">' +
+        '<div style="flex:1"><strong>' + escHtml(u.name) + '</strong> <span style="color:#888">' + escHtml(u.email) + '</span></div>' +
+        '<div style="font-size:11px;padding:2px 8px;border-radius:10px;background:var(--surface2);color:var(--text3)">' + escHtml(deptLabels[u.department]||u.department) + '</div>' +
+        '<div style="font-size:11px;color:' + (u.is_active ? 'var(--green)' : 'var(--red)') + '">' + (u.is_active ? 'Active' : 'Inactive') + '</div>' +
+        '<div style="font-size:11px;color:#aaa">' + (u.last_login ? new Date(u.last_login).toLocaleDateString('en-GB') : 'Never') + '</div>' +
+      '</div>';
+    }).join('') || '<div style="color:#aaa;font-size:13px">No users yet</div>';
+  } catch(e) { console.error('Load users error:', e); }
+}
+
+async function createUser() {
+  const name = document.getElementById('new-name').value.trim();
+  const email = document.getElementById('new-email').value.trim();
+  const password = document.getElementById('new-password').value;
+  const department = document.getElementById('new-department').value;
+  const errEl = document.getElementById('new-user-error');
+  errEl.style.display = 'none';
+
+  if (!name || !email || !password) {
+    errEl.textContent = 'Please fill in all fields.';
+    errEl.style.display = 'block';
+    return;
+  }
+  try {
+    const res = await fetch('/api/auth/users', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ name, email, password, department, role: department === 'manager' ? 'manager' : 'agent' })
+    });
+    const data = await res.json();
+    if (data.success) {
+      document.getElementById('new-name').value = '';
+      document.getElementById('new-email').value = '';
+      document.getElementById('new-password').value = '';
+      await loadUsers();
+    } else {
+      errEl.textContent = data.error || 'Failed to create user.';
+      errEl.style.display = 'block';
+    }
+  } catch(e) {
+    errEl.textContent = 'Error: ' + e.message;
+    errEl.style.display = 'block';
+  }
+}
+
 async function init() {
+  const authed = await checkAuth();
+  if (!authed) return;
+  // Show user management only for managers
+  if (currentUser && currentUser.role === 'manager') {
+    const umSection = document.getElementById('user-management-section');
+    if (umSection) { umSection.style.display = 'block'; loadUsers(); }
+  }
   try { await fetchData(); } catch(e) { console.error('Init error:', e); setTimeout(init, 3000); }
   loadSettings();
 }

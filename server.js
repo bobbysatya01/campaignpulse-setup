@@ -2,10 +2,56 @@ const express = require('express');
 const axios = require('axios');
 const cron = require('node-cron');
 const path = require('path');
+const bcrypt = require('bcryptjs');
+const { v4: uuidv4 } = require('uuid');
 require('dotenv').config();
 
 const app = express();
 app.use(express.json());
+
+// ── Auth middleware ───────────────────────────────────────────────────────
+// Public paths that don't need auth
+const PUBLIC_PATHS = ['/api/auth/login', '/api/auth/logout', '/login.html'];
+
+async function requireAuth(req, res, next) {
+  // Skip auth for public paths
+  if (PUBLIC_PATHS.some(function(p){ return req.path.startsWith(p); })) return next();
+  // Skip auth for static assets
+  if (req.path.match(/\.(css|js|png|jpg|ico|svg|woff|woff2)$/)) return next();
+
+  const token = req.headers['x-auth-token'] || (req.headers['authorization'] || '').replace('Bearer ', '');
+  if (!token) {
+    // For HTML page requests, redirect to login
+    if (req.path === '/' || req.path === '/index.html') {
+      return res.redirect('/login.html');
+    }
+    return res.status(401).json({ error: 'Not authenticated' });
+  }
+
+  try {
+    if (!db) return next(); // No DB = allow through (startup)
+    const result = await db.query(
+      'SELECT * FROM user_sessions WHERE token=$1 AND expires_at > NOW()',
+      [token]
+    );
+    if (!result.rows.length) {
+      if (req.path === '/' || req.path === '/index.html') return res.redirect('/login.html');
+      return res.status(401).json({ error: 'Session expired' });
+    }
+    // Refresh session expiry on activity (24hr rolling)
+    await db.query(
+      "UPDATE user_sessions SET expires_at=NOW() + INTERVAL '24 hours', last_active=NOW() WHERE token=$1",
+      [token]
+    );
+    req.user = result.rows[0];
+    next();
+  } catch(e) {
+    console.error('Auth middleware error: ' + e.message);
+    next(); // Allow through on DB error to prevent lockout
+  }
+}
+
+app.use(requireAuth);
 app.use(express.static(path.join(__dirname, 'public')));
 
 let state = {
@@ -527,6 +573,58 @@ async function initTasksTable() {
       CREATE INDEX IF NOT EXISTS idx_activity_logged ON activity_log(logged_at DESC);
     `);
     console.log('Activity log table ready');
+
+    // Users table
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL,
+        email TEXT UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        department TEXT NOT NULL DEFAULT 'amazon',
+        role TEXT NOT NULL DEFAULT 'agent',
+        is_active BOOLEAN DEFAULT TRUE,
+        created_at TIMESTAMP DEFAULT NOW(),
+        last_login TIMESTAMP
+      )
+    `);
+
+    // User sessions table
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS user_sessions (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id),
+        token TEXT UNIQUE NOT NULL,
+        department TEXT NOT NULL,
+        role TEXT NOT NULL,
+        name TEXT NOT NULL,
+        email TEXT NOT NULL,
+        expires_at TIMESTAMP NOT NULL,
+        last_active TIMESTAMP DEFAULT NOW(),
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    await db.query('CREATE INDEX IF NOT EXISTS idx_sessions_token ON user_sessions(token)');
+    await db.query('CREATE INDEX IF NOT EXISTS idx_sessions_expires ON user_sessions(expires_at)');
+
+    // Add department column to existing tables if not exists
+    await db.query("ALTER TABLE campaign_tasks ADD COLUMN IF NOT EXISTS department TEXT DEFAULT 'amazon'");
+    await db.query("ALTER TABLE activity_log ADD COLUMN IF NOT EXISTS department TEXT DEFAULT 'amazon'");
+
+    // Create default manager account if no users exist
+    try {
+      const userCount = await db.query('SELECT COUNT(*) as cnt FROM users');
+      if (parseInt(userCount.rows[0].cnt) === 0) {
+        const hash = await bcrypt.hash('FKSports2024!', 10);
+        await db.query(
+          'INSERT INTO users (name, email, password_hash, department, role) VALUES ($1,$2,$3,$4,$5)',
+          ['Bobby', 'bobby@fksports.co.uk', hash, 'manager', 'manager']
+        );
+        console.log('Default manager account created: bobby@fksports.co.uk / FKSports2024!');
+      }
+    } catch(e) { console.error('User init error: ' + e.message); }
+    console.log('Auth tables ready');
+
     // Keyword dismissals table
     await db.query(`
       CREATE TABLE IF NOT EXISTS keyword_dismissals (
@@ -1321,6 +1419,102 @@ app.get('/api/agent-performance', async function(req, res) {
     res.status(500).json({ error: e.message });
   }
 });
+
+// ── Auth endpoints ───────────────────────────────────────────────────────
+
+// Login
+app.post('/api/auth/login', async function(req, res) {
+  const { email, password } = req.body;
+  if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
+  try {
+    const result = await db.query('SELECT * FROM users WHERE email=$1 AND is_active=TRUE', [email.toLowerCase().trim()]);
+    if (!result.rows.length) return res.status(401).json({ error: 'Invalid email or password' });
+    const user = result.rows[0];
+    const valid = await bcrypt.compare(password, user.password_hash);
+    if (!valid) return res.status(401).json({ error: 'Invalid email or password' });
+    // Create session token
+    const token = uuidv4() + uuidv4(); // Long random token
+    await db.query(
+      "INSERT INTO user_sessions (user_id, token, department, role, name, email, expires_at) VALUES ($1,$2,$3,$4,$5,$6,NOW() + INTERVAL '24 hours')",
+      [user.id, token, user.department, user.role, user.name, user.email]
+    );
+    await db.query('UPDATE users SET last_login=NOW() WHERE id=$1', [user.id]);
+    res.json({ success: true, token, name: user.name, department: user.department, role: user.role, email: user.email });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Logout
+app.post('/api/auth/logout', async function(req, res) {
+  const token = req.headers['x-auth-token'] || '';
+  if (token && db) {
+    try { await db.query('DELETE FROM user_sessions WHERE token=$1', [token]); } catch(e) {}
+  }
+  res.json({ success: true });
+});
+
+// Get current user
+app.get('/api/auth/me', async function(req, res) {
+  const token = req.headers['x-auth-token'] || '';
+  if (!token || !db) return res.status(401).json({ error: 'Not authenticated' });
+  try {
+    const result = await db.query('SELECT * FROM user_sessions WHERE token=$1 AND expires_at > NOW()', [token]);
+    if (!result.rows.length) return res.status(401).json({ error: 'Session expired' });
+    const s = result.rows[0];
+    res.json({ name: s.name, department: s.department, role: s.role, email: s.email });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Admin: Create user
+app.post('/api/auth/users', async function(req, res) {
+  if (!db) return res.status(500).json({ error: 'No DB' });
+  const { name, email, password, department, role } = req.body;
+  if (!name || !email || !password || !department) return res.status(400).json({ error: 'All fields required' });
+  try {
+    const hash = await bcrypt.hash(password, 10);
+    await db.query(
+      'INSERT INTO users (name, email, password_hash, department, role) VALUES ($1,$2,$3,$4,$5)',
+      [name, email.toLowerCase().trim(), hash, department, role||'agent']
+    );
+    res.json({ success: true });
+  } catch(e) {
+    if (e.code === '23505') return res.status(400).json({ error: 'Email already exists' });
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Admin: List users
+app.get('/api/auth/users', async function(req, res) {
+  if (!db) return res.status(500).json({ error: 'No DB' });
+  try {
+    const result = await db.query('SELECT id, name, email, department, role, is_active, created_at, last_login FROM users ORDER BY department, name');
+    res.json({ users: result.rows });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Admin: Update user
+app.put('/api/auth/users/:id', async function(req, res) {
+  if (!db) return res.status(500).json({ error: 'No DB' });
+  const { name, department, role, is_active, password } = req.body;
+  try {
+    if (password) {
+      const hash = await bcrypt.hash(password, 10);
+      await db.query('UPDATE users SET name=$1, department=$2, role=$3, is_active=$4, password_hash=$5 WHERE id=$6',
+        [name, department, role, is_active, hash, req.params.id]);
+    } else {
+      await db.query('UPDATE users SET name=$1, department=$2, role=$3, is_active=$4 WHERE id=$5',
+        [name, department, role, is_active, req.params.id]);
+    }
+    res.json({ success: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Clean expired sessions (run daily)
+cron.schedule('0 3 * * *', async function() {
+  if (db) {
+    try { await db.query('DELETE FROM user_sessions WHERE expires_at < NOW()'); }
+    catch(e) { console.error('Session cleanup error: ' + e.message); }
+  }
+}, { timezone: 'Europe/London' });
 
 // ── One-time: Fix tasks with no agent name using known agents ────────────
 app.post('/api/admin/fix-agent-names', async function(req, res) {
