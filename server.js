@@ -1646,11 +1646,14 @@ app.post('/api/tasks/:id/status', async function(req, res) {
     }
     await db.query(query, params);
 
-    // Log to activity_log
+    // Log to activity_log — use extractAgentFromCampaign as fallback if agent_name missing
     try {
+      const logAgent = (task.agent_name && ['Aryan','Satyam','Kunal'].includes(task.agent_name))
+        ? task.agent_name
+        : extractAgentFromCampaign(task.campaign_name||'') || 'Unknown';
       await db.query(
         'INSERT INTO activity_log (campaign_id, campaign_name, agent_name, action, notes, status_before, status_after, task_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
-        [task.campaign_id||'', task.campaign_name||'', task.agent_name||'', status, notes||'', statusBefore, status, parseInt(req.params.id)]
+        [task.campaign_id||'', task.campaign_name||'', logAgent, status, notes||'', statusBefore, status, parseInt(req.params.id)]
       );
     } catch(logErr) { console.error('Activity log error: ' + logErr.message); }
 
@@ -1741,6 +1744,23 @@ app.post('/api/campaigns/:id/budget', async function(req, res) {
     const approvalMsg = ['✅ Budget added', campaign.name, '+£' + amount + ' added. New budget: £' + newBudget.toFixed(2)].join('\n');
     if (approvalAgent) { await sendToAgent(approvalAgent, approvalMsg); }
     // Note: no main group notification for budget adds — agent space only
+
+    // Log budget add to activity_log
+    if (db) {
+      try {
+        await db.query(
+          'INSERT INTO activity_log (campaign_id, campaign_name, agent_name, action, notes) VALUES ($1,$2,$3,$4,$5)',
+          [
+            String(id),
+            campaign.name,
+            approvalAgent || 'Unknown',
+            'budget_added',
+            '+£' + amount.toFixed(2) + ' added. Was £' + campaign.dailyBudget.toFixed(2) + ' → Now £' + newBudget.toFixed(2)
+          ]
+        );
+      } catch(logErr) { console.error('Budget activity log error: ' + logErr.message); }
+    }
+
     syncCampaigns();
     res.json({ success: true, newBudget: newBudget });
   } catch(e) {
@@ -1748,9 +1768,29 @@ app.post('/api/campaigns/:id/budget', async function(req, res) {
   }
 });
 
-app.post('/api/alerts/:campaignId/dismiss', function(req, res) {
+app.post('/api/alerts/:campaignId/dismiss', async function(req, res) {
   const id = req.params.campaignId;
+  const reason = req.body.reason || 'No reason given';
+  const alert = state.alerts.find(function(a) { return String(a.campaignId) === String(id); });
   state.alerts = state.alerts.filter(function(a) { return String(a.campaignId) !== String(id); });
+
+  // Log alert dismissal to activity_log
+  if (db && alert) {
+    try {
+      const agentName = extractAgentFromCampaign(alert.name||'') || 'Unknown';
+      await db.query(
+        'INSERT INTO activity_log (campaign_id, campaign_name, agent_name, action, notes) VALUES ($1,$2,$3,$4,$5)',
+        [
+          String(id),
+          alert.name || 'Unknown campaign',
+          agentName,
+          'alert_dismissed',
+          'Alert dismissed. Reason: ' + reason + '. ACOS at time: ' + (alert.acos||'—') + '%. Alert type: ' + (alert.type||'—')
+        ]
+      );
+    } catch(logErr) { console.error('Alert dismiss log error: ' + logErr.message); }
+  }
+
   res.json({ success: true });
 });
 

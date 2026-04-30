@@ -1021,7 +1021,7 @@ function dismissAlert(campaignId) {
       : popup.querySelector('#da-reason').value;
     overlay.remove();
     // Remove from server state immediately so it doesn't come back on next fetch
-    try { await fetch('/api/alerts/' + campaignId + '/dismiss', { method: 'POST' }); } catch(e) {}
+    try { await fetch('/api/alerts/' + campaignId + '/dismiss', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ reason: reason }) }); } catch(e) {}
     // Remove from local memory immediately so banner disappears at once
     addSuppressedAlert(campaignId);
     if (appData.alerts) appData.alerts = appData.alerts.filter(function(a){ return String(a.campaignId) !== String(campaignId); });
