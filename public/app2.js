@@ -203,6 +203,8 @@ function renderHistoryCampaignsTable(camps) {
 
 function renderHistorySNRTable(camps) {
   const snr = camps.filter(function(c){ return c.spend > 0 && (c.sales === 0 || c.sales === null); });
+  const snrBadge = document.getElementById("history-snr-badge"); if(snrBadge) snrBadge.textContent = snr.length;
+  const snrBadge2 = document.getElementById("h-snr-badge"); if(snrBadge2) snrBadge2.textContent = snr.length;
   document.getElementById('history-snr-insight').textContent = snr.length + ' campaigns spent £' + snr.reduce(function(s,c){ return s+(c.spend||0); }, 0).toFixed(2) + ' with zero attributed revenue on this day.';
   const snrTbody = document.getElementById('history-snr-table');
   snrTbody.innerHTML = snr.sort(function(a,b){ return (b.spend||0)-(a.spend||0); }).map(function(c) {
@@ -212,6 +214,8 @@ function renderHistorySNRTable(camps) {
 
 function renderHistoryNoActivityTable(camps) {
   const noAct = camps.filter(function(c){ return c.impressions === 0 && (c.spend === 0 || c.spend === null); });
+  const naBadge = document.getElementById("h-na-badge"); if(naBadge) naBadge.textContent = noAct.length;
+  const naBadge2 = document.getElementById("history-na-badge"); if(naBadge2) naBadge2.textContent = noAct.length;
   const noActTbody = document.getElementById('history-no-activity-table');
   noActTbody.innerHTML = noAct.length ? noAct.map(function(c) {
     return '<tr><td><div class="camp-name">' + escHtml(c.name) + '</div></td><td style="font-size:12px">' + escHtml(c.portfolio||'—') + '</td><td>' + (c.targetingType==='auto'?'<span class="badge badge-blue" style="font-size:10px">Auto</span>':'<span class="badge" style="background:var(--surface3);color:var(--text3);font-size:10px">Manual</span>') + '</td><td class="mono">£' + (c.dailyBudget||0) + '</td><td class="mono" style="color:var(--text3)">0</td><td class="mono" style="color:var(--text3)">0</td><td class="mono">£' + (c.spend||0) + '</td><td><span class="badge badge-amber">No activity</span></td></tr>';
@@ -256,6 +260,8 @@ async function loadHistoryDate() {
     }).join('') || '<tr><td colspan="12"><div class="empty">No campaign data</div></td></tr>';
     // Spend no revenue table
     const snr = camps.filter(function(c){ return c.spend > 0 && (c.sales === 0 || c.sales === null); });
+  const snrBadge = document.getElementById("history-snr-badge"); if(snrBadge) snrBadge.textContent = snr.length;
+  const snrBadge2 = document.getElementById("h-snr-badge"); if(snrBadge2) snrBadge2.textContent = snr.length;
     document.getElementById('history-snr-insight').textContent = snr.length + ' campaigns spent £' + snr.reduce(function(s,c){ return s+(c.spend||0); }, 0).toFixed(2) + ' with zero attributed revenue on this day.';
     document.getElementById('h-snr-badge').textContent = snr.length;
     const snrTbody = document.getElementById('history-snr-table');
@@ -264,6 +270,8 @@ async function loadHistoryDate() {
     }).join('') || '<tr><td colspan="9"><div class="empty">No wasted spend on this day</div></td></tr>';
     // No activity table
     const noAct = camps.filter(function(c){ return c.impressions === 0 && (c.spend === 0 || c.spend === null); });
+  const naBadge = document.getElementById("h-na-badge"); if(naBadge) naBadge.textContent = noAct.length;
+  const naBadge2 = document.getElementById("history-na-badge"); if(naBadge2) naBadge2.textContent = noAct.length;
     document.getElementById('history-na-insight').textContent = noAct.length + ' campaign' + (noAct.length !== 1 ? 's' : '') + ' had zero impressions and zero spend on this day. Review bids, targeting, or consider pausing.';
     document.getElementById('h-na-badge').textContent = noAct.length;
     const noActTbody = document.getElementById('history-no-activity-table');
