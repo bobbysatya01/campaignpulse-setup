@@ -1677,10 +1677,7 @@ async function autoArchiveTasks() {
       // Notify agent
       if (row.agent_name) {
         const dashUrl = process.env.RAILWAY_PUBLIC_DOMAIN ? 'https://' + process.env.RAILWAY_PUBLIC_DOMAIN : 'https://campaignpulse-setup-production.up.railway.app';
-        await sendToAgent(row.agent_name, '🚨 SCALING WINDOW EXPIRED
-Campaign: ' + row.campaign_name + '
-7-day scaling period has ended. Immediate decision required: resolve or pause.
-' + dashUrl + '/tasks');
+        await sendToAgent(row.agent_name, '🚨 SCALING WINDOW EXPIRED\nCampaign: ' + row.campaign_name + '\n7-day scaling period has ended. Immediate decision required: resolve or pause.\n' + dashUrl + '/tasks');
       }
     }
 
