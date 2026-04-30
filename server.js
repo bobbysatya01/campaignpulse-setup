@@ -1518,6 +1518,19 @@ cron.schedule('0 3 * * *', async function() {
   }
 }, { timezone: 'Europe/London' });
 
+// ── One-time: Create/reset manager account ───────────────────────────────
+app.get('/api/admin/create-manager', async function(req, res) {
+  if (!db) return res.status(500).json({ error: 'No DB' });
+  try {
+    const hash = await bcrypt.hash('FKSports2024!', 10);
+    await db.query(
+      'INSERT INTO users (name, email, password_hash, department, role) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (email) DO UPDATE SET password_hash=$3, is_active=TRUE',
+      ['Bobby', 'bobby@fksports.co.uk', hash, 'manager', 'manager']
+    );
+    res.json({ success: true, message: 'Manager account created/reset. Email: bobby@fksports.co.uk / Password: FKSports2024!' });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── One-time: Fix tasks with no agent name using known agents ────────────
 app.post('/api/admin/fix-agent-names', async function(req, res) {
   if (!db) return res.status(500).json({ error: 'No DB' });
