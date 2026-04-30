@@ -527,7 +527,7 @@ tbody tr:hover { background: var(--surface2); }
       <div id="history-exhaustion-tab" style="display:none">
         <div class="table-card">
           <div style="overflow-x:auto"><table>
-            <thead><tr><th>Time</th><th>Campaign</th><th>Portfolio</th><th>Agent</th><th>Budget</th><th>ACOS</th><th>Est. missed</th><th>Resolved at</th><th>Gap</th><th>Action</th></tr></thead>
+            <thead><tr><th onclick="sortExhaustion("time")" style="cursor:pointer">Time ↕</th><th onclick="sortExhaustion("campaign")" style="cursor:pointer">Campaign ↕</th><th onclick="sortExhaustion("budget")" style="cursor:pointer">Budget ↕</th><th onclick="sortExhaustion("acos")" style="cursor:pointer">ACOS ↕</th><th onclick="sortExhaustion("missed")" style="cursor:pointer">Est. missed ↕</th><th onclick="sortExhaustion("gap")" style="cursor:pointer">Gap ↕</th><th>Resolved at</th><th>Action</th></tr></thead>
             <tbody id="history-exhaustion-table"></tbody>
           </table></div>
         </div>
