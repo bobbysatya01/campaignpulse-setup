@@ -881,7 +881,8 @@ function setDashTab(tab, btn) {
 function renderDashboardTable() {
   const camps = allCampaigns;
   const spendNoRev = camps.filter(c => c.spend > 0 && (c.sales === 0 || c.sales === null));
-  const noActivity = camps.filter(c => (c.spend === 0 || c.spend === null) && (c.impressions === 0));
+  // Only count as no-activity if stats have actually loaded (spend !== null means stats returned)
+  const noActivity = camps.filter(c => c.spend !== null && c.impressions !== null && (c.spend === 0) && (c.impressions === 0));
   document.getElementById('cnt-spend-no-rev').textContent = spendNoRev.length;
   document.getElementById('cnt-no-activity').textContent = noActivity.length;
 
@@ -1117,30 +1118,74 @@ function sortCamps(col) {
 }
 
 // ── Budget approval ────────────────────────────────────────────────────────
-async function approveBudget(campaignId, suggested) {
-  const camp = allCampaigns.find(c => String(c.campaignId) === String(campaignId));
+function approveBudget(campaignId, suggested) {
+  const camp = allCampaigns.find(function(c){ return String(c.campaignId) === String(campaignId); });
   const name = camp ? camp.name : campaignId;
   const current = camp ? camp.dailyBudget : 0;
-  const input = prompt('Campaign: ' + name + '\nCurrent daily budget: £' + current + '\n\nHow much would you like to add? (£)', suggested || '');
-  if (input === null) return;
-  const amount = parseFloat(input);
-  if (isNaN(amount) || amount <= 0) { alert('Please enter a valid amount'); return; }
+
+  // Remove any existing modal
+  const existing = document.getElementById('budget-modal');
+  if (existing) existing.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'budget-modal';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9998;display:flex;align-items:center;justify-content:center';
+  overlay.innerHTML =
+    '<div style="background:white;padding:28px;border-radius:14px;box-shadow:0 8px 40px rgba(0,0,0,0.25);width:400px;max-width:95vw">' +
+      '<div style="font-size:16px;font-weight:700;margin-bottom:4px">💰 Add Budget</div>' +
+      '<div style="font-size:13px;color:#555;margin-bottom:4px">' + escHtml(name) + '</div>' +
+      '<div style="font-size:13px;color:#888;margin-bottom:16px">Current daily budget: <strong>£' + current + '</strong></div>' +
+      '<input id="budget-amount" type="number" min="0.01" step="0.01" placeholder="Amount to add (£)" style="width:100%;padding:10px;border:1.5px solid #ddd;border-radius:8px;font-size:15px;box-sizing:border-box;margin-bottom:6px" value="' + (suggested||'') + '">' +
+      '<div id="budget-error" style="color:#e53e3e;font-size:12px;margin-bottom:10px;display:none">Please enter a valid amount.</div>' +
+      '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px">' +
+        '<button class="btn btn-ghost" style="font-size:13px" onclick="document.getElementById(&quot;budget-modal&quot;).remove()">Cancel</button>' +
+        '<button class="btn btn-green" style="font-size:13px" id="budget-confirm-btn" onclick="submitBudget(' + JSON.stringify(campaignId) + ')">Add Budget</button>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(overlay);
+  setTimeout(function(){ const inp = document.getElementById('budget-amount'); if(inp){ inp.focus(); inp.select(); } }, 50);
+  overlay.addEventListener('click', function(e){ if(e.target===overlay) overlay.remove(); });
+  // Allow Enter key to submit
+  setTimeout(function(){
+    const inp = document.getElementById('budget-amount');
+    if (inp) inp.addEventListener('keydown', function(e){ if(e.key==='Enter') submitBudget(campaignId); });
+  }, 60);
+}
+
+async function submitBudget(campaignId) {
+  const inp = document.getElementById('budget-amount');
+  const errEl = document.getElementById('budget-error');
+  const btn = document.getElementById('budget-confirm-btn');
+  if (!inp) return;
+  const amount = parseFloat(inp.value);
+  if (isNaN(amount) || amount <= 0) {
+    errEl.style.display = '';
+    inp.style.border = '1.5px solid #e53e3e';
+    return;
+  }
+  // Disable button to prevent double submit
+  btn.disabled = true;
+  btn.textContent = 'Adding...';
   try {
     const res = await fetch('/api/campaigns/' + campaignId + '/budget', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ amount })
     });
     const data = await res.json();
+    document.getElementById('budget-modal').remove();
     if (data.success) {
-      alert('Done! +£' + amount + ' added. New budget: £' + data.newBudget.toFixed(2));
-      // Remove from server state and banner immediately
       try { await fetch('/api/alerts/' + campaignId + '/dismiss', { method: 'POST' }); } catch(e) {}
       addSuppressedAlert(campaignId);
       if (appData.alerts) appData.alerts = appData.alerts.filter(function(a){ return String(a.campaignId) !== String(campaignId); });
       renderAlerts();
       fetchData();
+    } else {
+      alert('Error: ' + (data.error || 'Unknown'));
     }
-    else alert('Error: ' + (data.error || 'Unknown'));
-  } catch(e) { alert('Error: ' + e.message); }
+  } catch(e) {
+    const modal = document.getElementById('budget-modal');
+    if (modal) modal.remove();
+    alert('Error: ' + e.message);
+  }
 }
 
 // ── Report ─────────────────────────────────────────────────────────────────
@@ -1423,7 +1468,7 @@ async function loadKeywords() {
         <div class="table-card">
           <div style="overflow-x:auto"><table>
             <thead><tr><th>Search term</th><th>Campaign</th><th>Type</th><th>Purchases</th><th>Sales</th><th>Recommendation</th><th>Action</th></tr></thead>
-            <tbody>${(a.newKeywords?.topOpportunities||[]).map(k=>`<tr><td class="mono" style="font-weight:600">${escHtml(k.searchTerm)}</td><td style="font-size:12px;color:var(--text2)">${escHtml(k.campaign)}</td><td>${k.isAuto?'<span class="badge badge-blue" style="font-size:10px">Auto → Manual</span>':'<span class="badge" style="background:var(--surface3);color:var(--text3);font-size:10px">Manual</span>'}</td><td class="mono" style="color:var(--green);font-weight:600">${escHtml(String(k.purchases))}</td><td class="mono" style="color:var(--green)">${escHtml(k.sales)}</td><td style="font-size:12px">${escHtml(k.recommendation)}</td><td><button class="btn btn-green" style="font-size:12px">Add keyword</button></td></tr>`).join('')||'<tr><td colspan="7"><div class="empty">No opportunities found</div></td></tr>'}</tbody>
+            <tbody>${(a.newKeywords?.topOpportunities||[]).filter(k=>!kwDismissals.some(d=>d.search_term===k.searchTerm&&d.campaign===k.campaign)).map(k=>`<tr><td class="mono" style="font-weight:600">${escHtml(k.searchTerm)}</td><td style="font-size:12px;color:var(--text2)">${escHtml(k.campaign)}</td><td>${k.isAuto?'<span class="badge badge-blue" style="font-size:10px">Auto → Manual</span>':'<span class="badge" style="background:var(--surface3);color:var(--text3);font-size:10px">Manual</span>'}</td><td class="mono" style="color:var(--green);font-weight:600">${escHtml(String(k.purchases))}</td><td class="mono" style="color:var(--green)">${escHtml(k.sales)}</td><td style="font-size:12px">${escHtml(k.recommendation)}</td><td style="display:flex;gap:6px"><button class="btn btn-green" style="font-size:12px" data-term="${escHtml(k.searchTerm)}" data-camp="${escHtml(k.campaign)}" onclick="kwAction(this,'add_keyword')">Add keyword</button><button class="btn btn-ghost" style="font-size:12px" data-term="${escHtml(k.searchTerm)}" data-camp="${escHtml(k.campaign)}" onclick="kwAction(this,'dismiss')">Dismiss</button></td></tr>`).join('')||'<tr><td colspan="7"><div class="empty">No opportunities found</div></td></tr>'}</tbody>
           </table></div>
         </div>
       </div>
@@ -1432,7 +1477,7 @@ async function loadKeywords() {
         <div class="table-card">
           <div style="overflow-x:auto"><table>
             <thead><tr><th>Keyword</th><th>Campaign</th><th>Issue</th><th>Recommendation</th><th>Expected outcome</th><th>Action</th></tr></thead>
-            <tbody>${(a.bidChanges||[]).map(b=>`<tr><td class="mono">${escHtml(b.keyword)}</td><td style="font-size:12px">${escHtml(b.campaign)}</td><td style="font-size:12px;color:var(--red)">${escHtml(b.currentIssue)}</td><td style="font-size:12px">${escHtml(b.recommendation)}</td><td style="font-size:12px;color:var(--green)">${escHtml(b.expectedOutcome)}</td><td><button class="btn btn-amber" style="font-size:12px">Apply</button></td></tr>`).join('')||'<tr><td colspan="6"><div class="empty">No bid changes recommended</div></td></tr>'}</tbody>
+            <tbody>${(a.bidChanges||[]).filter(b=>!kwDismissals.some(d=>d.search_term===b.keyword&&d.campaign===b.campaign)).map(b=>`<tr><td class="mono">${escHtml(b.keyword)}</td><td style="font-size:12px">${escHtml(b.campaign)}</td><td style="font-size:12px;color:var(--red)">${escHtml(b.currentIssue)}</td><td style="font-size:12px">${escHtml(b.recommendation)}</td><td style="font-size:12px;color:var(--green)">${escHtml(b.expectedOutcome)}</td><td style="display:flex;gap:6px"><button class="btn btn-amber" style="font-size:12px" data-term="${escHtml(b.keyword)}" data-camp="${escHtml(b.campaign)}" onclick="kwAction(this,'apply_bid')">Apply</button><button class="btn btn-ghost" style="font-size:12px" data-term="${escHtml(b.keyword)}" data-camp="${escHtml(b.campaign)}" onclick="kwAction(this,'dismiss')">Dismiss</button></td></tr>`).join('')||'<tr><td colspan="6"><div class="empty">No bid changes recommended</div></td></tr>'}</tbody>
           </table></div>
         </div>
       </div>
@@ -1459,10 +1504,10 @@ function kwAction(btn, action) {
   const term = btn.getAttribute('data-term');
   const camp = btn.getAttribute('data-camp');
   if (!term || !camp) return;
-  if (action === 'negative') {
-    actionKeyword(term, camp, 'negative');
-  } else {
+  if (action === 'dismiss') {
     showKwDismissModal(term, camp);
+  } else {
+    actionKeyword(term, camp, action);
   }
 }
 
@@ -1492,8 +1537,13 @@ async function loadCampaignAnalysis(campaignId, containerId, btn) {
   }
 }
 
-// ── Action Keyword (Add Negative / Add Exact) ─────────────────────────────
+// ── Action Keyword (Add Negative / Add Keyword / Apply Bid) ──────────────
 async function actionKeyword(searchTerm, campaign, action) {
+  const reasons = {
+    negative: 'Added as negative keyword — agent actioned',
+    add_keyword: 'Added as exact match keyword — agent actioned',
+    apply_bid: 'Bid change applied — agent actioned'
+  };
   try {
     await fetch('/api/keywords/dismiss', {
       method: 'POST',
@@ -1501,11 +1551,10 @@ async function actionKeyword(searchTerm, campaign, action) {
       body: JSON.stringify({
         searchTerm: searchTerm,
         campaign: campaign,
-        reason: action === 'negative' ? 'Added as negative keyword — agent actioned' : 'Added as exact match keyword — agent actioned',
+        reason: reasons[action] || 'Agent actioned',
         dismissedBy: 'agent'
       })
     });
-    // Reload keywords to remove from list
     await loadKeywords();
   } catch(e) { alert('Error: ' + e.message); }
 }
