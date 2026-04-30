@@ -1860,13 +1860,13 @@ function renderTasks(tab) {
         '</div>' +
       '</div>' +
       '<div id="' + detailId + '" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid var(--border2)">' +
-        '<div style="font-size:12px;color:var(--text3);margin-bottom:8px"><strong>Problem:</strong> ' + escHtml(t.problem_detail||'—') + '</div>' +
-        '<div style="font-size:12px;color:var(--text3);margin-bottom:8px"><strong>Score:</strong> ' + (t.score||0) + ' pts · <strong>Days open:</strong> ' + (t.days_persisted||1) + '</div>' +
-        (t.first_action_at ? '<div style="font-size:12px;color:var(--text3);margin-bottom:8px"><strong>First action:</strong> ' + new Date(t.first_action_at).toLocaleString('en-GB') + '</div>' : '') +
-        (t.resolved_at ? '<div style="font-size:12px;color:var(--green);margin-bottom:8px"><strong>Resolved:</strong> ' + new Date(t.resolved_at).toLocaleString('en-GB') + '</div>' : '') +
-        (t.agent_notes ? '<div style="background:var(--blue-light);border:1px solid rgba(26,111,189,0.15);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--blue);margin-bottom:8px"><strong>Agent notes:</strong><br><span style="white-space:pre-wrap">' + escHtml(t.agent_notes) + '</span></div>' : '<div style="font-size:12px;color:#bbb;margin-bottom:8px;font-style:italic">No notes yet.</div>') +
-        (t.dismissed_reason ? '<div style="font-size:12px;color:var(--text3);margin-bottom:8px"><strong>Dismiss reason:</strong> ' + escHtml(t.dismissed_reason) + '</div>' : '') +
-        (t.paused_reason ? '<div style="font-size:12px;color:var(--text3);margin-bottom:8px"><strong>Pause reason:</strong> ' + escHtml(t.paused_reason) + '</div>' : '') +
+        '<div style="font-size:14px;color:var(--text2);margin-bottom:10px"><strong>Problem:</strong> ' + escHtml(t.problem_detail||'—') + '</div>' +
+        '<div style="font-size:14px;color:var(--text2);margin-bottom:10px"><strong>Score:</strong> ' + (t.score||0) + ' pts · <strong>Days open:</strong> ' + (t.days_persisted||1) + '</div>' +
+        (t.first_action_at ? '<div style="font-size:14px;color:var(--text2);margin-bottom:10px"><strong>First action:</strong> ' + new Date(t.first_action_at).toLocaleString('en-GB') + '</div>' : '') +
+        (t.resolved_at ? '<div style="font-size:14px;color:var(--green);margin-bottom:10px"><strong>Resolved:</strong> ' + new Date(t.resolved_at).toLocaleString('en-GB') + '</div>' : '') +
+        (t.agent_notes ? '<div style="background:var(--blue-light);border:1px solid rgba(26,111,189,0.15);border-radius:8px;padding:12px 16px;font-size:14px;color:var(--blue);margin-bottom:10px"><strong>Agent notes:</strong><br><span style="white-space:pre-wrap">' + escHtml(t.agent_notes) + '</span></div>' : '<div style="font-size:14px;color:#bbb;margin-bottom:10px;font-style:italic">No notes yet.</div>') +
+        (t.dismissed_reason ? '<div style="font-size:14px;color:var(--text2);margin-bottom:10px"><strong>Dismiss reason:</strong> ' + escHtml(t.dismissed_reason) + '</div>' : '') +
+        (t.paused_reason ? '<div style="font-size:14px;color:var(--text2);margin-bottom:10px"><strong>Pause reason:</strong> ' + escHtml(t.paused_reason) + '</div>' : '') +
       '</div>' +
 
       (function() {
@@ -1874,10 +1874,10 @@ function renderTasks(tab) {
           const rt = t.resolved_at ? new Date(t.resolved_at).toLocaleTimeString('en-GB', {hour:'2-digit',minute:'2-digit'}) : '';
           return '<div style="font-size:12px;color:var(--green)">Resolved' + (rt ? ' at ' + rt : '') + '</div>';
         }
-        const wip = '<button class="btn btn-amber" style="font-size:12px" onclick="showTaskModal('+t.id+',\"in_progress\")">Working on it</button>';
-        const done = '<button class="btn btn-green" style="font-size:12px" onclick="showTaskModal('+t.id+',\"complete\")">Mark complete</button>';
-        const paused = '<button class="btn btn-red" style="font-size:12px" onclick="showTaskModal('+t.id+',\"paused\")">Paused campaign</button>';
-        const dismiss = '<button class="btn btn-ghost" style="font-size:12px" onclick="showTaskModal('+t.id+',\"dismissed\")">Dismiss</button>';
+        const wip = '<button class="btn btn-amber" style="font-size:12px" onclick="showTaskModal(' + t.id + ',&quot;in_progress&quot;)">Working on it</button>';
+        const done = '<button class="btn btn-green" style="font-size:12px" onclick="showTaskModal(' + t.id + ',&quot;complete&quot;)">Mark complete</button>';
+        const paused = '<button class="btn btn-red" style="font-size:12px" onclick="showTaskModal(' + t.id + ',&quot;paused&quot;)">Paused campaign</button>';
+        const dismiss = '<button class="btn btn-ghost" style="font-size:12px" onclick="showTaskModal(' + t.id + ',&quot;dismissed&quot;)">Dismiss</button>';
         return '<div class="ag">' + wip + done + paused + dismiss + '</div>';
       }()) +
     '</div>';
