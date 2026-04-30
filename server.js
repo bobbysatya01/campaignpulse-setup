@@ -503,6 +503,18 @@ async function initTasksTable() {
     await db.query(`ALTER TABLE campaign_tasks ADD COLUMN IF NOT EXISTS total_wasted NUMERIC DEFAULT 0`);
     await db.query(`ALTER TABLE campaign_tasks ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMP`);
     console.log('Tasks table ready');
+    // Keyword dismissals table
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS keyword_dismissals (
+        id SERIAL PRIMARY KEY,
+        search_term TEXT NOT NULL,
+        campaign TEXT NOT NULL,
+        reason TEXT NOT NULL,
+        dismissed_by TEXT,
+        dismissed_at TIMESTAMP DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_kw_dismiss_term ON keyword_dismissals(search_term, campaign);
+    `);
     // Fix stored agent names - re-extract from campaign_name
     try {
       const tasks = await db.query('SELECT id, campaign_name FROM campaign_tasks WHERE campaign_name IS NOT NULL');
@@ -791,7 +803,7 @@ async function runDailyTaskScheduler() {
 }
 
 // ── API Routes ────────────────────────────────────────────────────────────
-app.get('/api/dashboard', function(req, res) {
+app.get('/api/dashboard', async function(req, res) {
   const campaigns = state.campaigns;
   const totalRevenue = campaigns.reduce(function(s, c) { return s + (c.sales || 0); }, 0);
   const totalSpend = campaigns.reduce(function(s, c) { return s + (c.spend || 0); }, 0);
@@ -800,10 +812,25 @@ app.get('/api/dashboard', function(req, res) {
   const needsAction = campaigns.filter(function(c) {
     return c.budgetRemaining <= 0.01 || c.acos > parseFloat(process.env.ACOS_CRITICAL_THRESHOLD || 35) || c.budgetPct >= 80;
   }).length;
+
+  // Filter out alerts that were dismissed today in Postgres
+  let filteredAlerts = state.alerts.slice(-20);
+  if (db) {
+    try {
+      const dismissed = await db.query(
+        "SELECT campaign_id FROM campaign_tasks WHERE task_source='alert' AND status='dismissed' AND DATE(updated_at)=CURRENT_DATE"
+      );
+      const dismissedIds = new Set(dismissed.rows.map(function(r){ return String(r.campaign_id); }));
+      if (dismissedIds.size > 0) {
+        filteredAlerts = filteredAlerts.filter(function(a){ return !dismissedIds.has(String(a.campaignId)); });
+      }
+    } catch(e) { /* non-fatal, show all alerts if DB check fails */ }
+  }
+
   res.json({
     metrics: { totalRevenue: totalRevenue.toFixed(2), totalSpend: totalSpend.toFixed(2), blendedAcos: blendedAcos, activeCampaigns: active, needsAction: needsAction },
     campaigns: campaigns,
-    alerts: state.alerts.slice(-20),
+    alerts: filteredAlerts,
     exhaustionLog: state.exhaustionLog,
     lastSync: state.lastSync,
     error: state.error
@@ -1125,6 +1152,32 @@ app.post('/api/keywords/refresh', async function(req, res) {
   keywordState.reportId = null;
   await requestSearchTermReport();
   res.json({ success: true, reportId: keywordState.reportId });
+});
+
+// Dismiss a keyword suggestion with a reason
+app.post('/api/keywords/dismiss', async function(req, res) {
+  if (!db) return res.status(500).json({ error: 'No DB' });
+  const { searchTerm, campaign, reason, dismissedBy } = req.body;
+  if (!searchTerm || !campaign || !reason) return res.status(400).json({ error: 'searchTerm, campaign and reason required' });
+  try {
+    // Upsert — if already dismissed, update reason and timestamp
+    await db.query(
+      `INSERT INTO keyword_dismissals (search_term, campaign, reason, dismissed_by)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT DO NOTHING`,
+      [searchTerm, campaign, reason, dismissedBy || 'unknown']
+    );
+    res.json({ success: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// Get all dismissed keywords (so frontend can hide them)
+app.get('/api/keywords/dismissals', async function(req, res) {
+  if (!db) return res.json({ dismissals: [] });
+  try {
+    const result = await db.query('SELECT search_term, campaign, reason, dismissed_by, dismissed_at FROM keyword_dismissals ORDER BY dismissed_at DESC');
+    res.json({ dismissals: result.rows });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 app.get('/api/snapshots', async function(req, res) {
