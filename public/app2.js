@@ -244,6 +244,8 @@ async function loadHistoryDate() {
     document.getElementById('h-active').textContent = m.activeCampaigns||'0';
     document.getElementById('h-oob').textContent = (data.exhaustionLog||[]).length;
     document.getElementById('h-snr').textContent = m.spendNoRevenue||'0';
+    document.getElementById('history-metrics').style.display = '';
+    document.getElementById('history-placeholder').style.display = 'none';
     const camps = data.campaigns || [];
     // Campaigns table
     const tbody = document.getElementById('history-table');
