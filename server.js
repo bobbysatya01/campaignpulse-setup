@@ -502,7 +502,32 @@ async function initTasksTable() {
     await db.query(`ALTER TABLE campaign_tasks ADD COLUMN IF NOT EXISTS days_persisted INTEGER DEFAULT 1`);
     await db.query(`ALTER TABLE campaign_tasks ADD COLUMN IF NOT EXISTS total_wasted NUMERIC DEFAULT 0`);
     await db.query(`ALTER TABLE campaign_tasks ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMP`);
+    // New columns for scaling/escalation/repeat offender
+    await db.query(`ALTER TABLE campaign_tasks ADD COLUMN IF NOT EXISTS escalation_reason TEXT`);
+    await db.query(`ALTER TABLE campaign_tasks ADD COLUMN IF NOT EXISTS scaling_deadline TIMESTAMP`);
+    await db.query(`ALTER TABLE campaign_tasks ADD COLUMN IF NOT EXISTS failure_count INTEGER DEFAULT 1`);
+    await db.query(`ALTER TABLE campaign_tasks ADD COLUMN IF NOT EXISTS last_resolved_date TIMESTAMP`);
+    await db.query(`ALTER TABLE campaign_tasks ADD COLUMN IF NOT EXISTS is_repeat_offender BOOLEAN DEFAULT FALSE`);
     console.log('Tasks table ready');
+    // Activity log table - permanent record of all agent actions
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS activity_log (
+        id SERIAL PRIMARY KEY,
+        campaign_id TEXT,
+        campaign_name TEXT,
+        agent_name TEXT,
+        action TEXT NOT NULL,
+        notes TEXT,
+        status_before TEXT,
+        status_after TEXT,
+        task_id INTEGER,
+        logged_at TIMESTAMP DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_activity_agent ON activity_log(agent_name);
+      CREATE INDEX IF NOT EXISTS idx_activity_campaign ON activity_log(campaign_id);
+      CREATE INDEX IF NOT EXISTS idx_activity_logged ON activity_log(logged_at DESC);
+    `);
+    console.log('Activity log table ready');
     // Keyword dismissals table
     await db.query(`
       CREATE TABLE IF NOT EXISTS keyword_dismissals (
@@ -765,11 +790,34 @@ async function runDailyTaskScheduler() {
           // Still create new daily record for today's log
         }
 
+        // Check for repeat offender (same campaign resolved within last 14 days)
+        let isRepeatOffender = false;
+        let failureCount = 1;
+        try {
+          const repeatCheck = await db.query(
+            "SELECT id, failure_count FROM campaign_tasks WHERE campaign_id=$1 AND status='complete' AND last_resolved_date > NOW() - INTERVAL '14 days' ORDER BY last_resolved_date DESC LIMIT 1",
+            [String(c.campaignId)]
+          );
+          if (repeatCheck.rows.length > 0) {
+            isRepeatOffender = true;
+            failureCount = (repeatCheck.rows[0].failure_count || 1) + 1;
+            console.log('REPEAT OFFENDER detected: ' + c.name + ' (failure #' + failureCount + ')');
+          }
+        } catch(e) { console.error('Repeat check error: ' + e.message); }
+
         // Insert new task record for today
         await db.query(
-          'INSERT INTO campaign_tasks (campaign_id, campaign_name, agent_name, portfolio, problem_type, problem_detail, days_persisted, total_wasted, score, task_source) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',
-          [String(c.campaignId), c.name, agentName, c.portfolio||'', item.problemType, item.problemDetail, daysPersisted, parseFloat(item.scoring.totalSpend), item.score, 'daily']
+          'INSERT INTO campaign_tasks (campaign_id, campaign_name, agent_name, portfolio, problem_type, problem_detail, days_persisted, total_wasted, score, task_source, is_repeat_offender, failure_count) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)',
+          [String(c.campaignId), c.name, agentName, c.portfolio||'', item.problemType, item.problemDetail, daysPersisted, parseFloat(item.scoring.totalSpend), item.score, 'daily', isRepeatOffender, failureCount]
         );
+
+        // Log task creation to activity log
+        try {
+          await db.query(
+            'INSERT INTO activity_log (campaign_id, campaign_name, agent_name, action, notes, status_before, status_after) VALUES ($1,$2,$3,$4,$5,$6,$7)',
+            [String(c.campaignId), c.name, agentName, 'task_created', item.problemDetail + (isRepeatOffender ? ' [REPEAT OFFENDER #' + failureCount + ']' : ''), 'none', 'open']
+          );
+        } catch(e) { console.error('Activity log create error: ' + e.message); }
 
         // Build task message for agent
         const urgencyLabel = isSuperUrgent ? '🚨 SUPER URGENT - Day ' + daysPersisted : (daysPersisted > 1 ? '⚠ Day ' + daysPersisted + ' - Unresolved' : '📋 New Task');
@@ -1180,6 +1228,150 @@ app.get('/api/keywords/dismissals', async function(req, res) {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── Activity Log API ──────────────────────────────────────────────────────
+app.get('/api/activity', async function(req, res) {
+  if (!db) return res.json({ logs: [] });
+  try {
+    const agent = req.query.agent || '';
+    const limit = parseInt(req.query.limit) || 100;
+    let query = 'SELECT * FROM activity_log';
+    let params = [];
+    if (agent) { query += ' WHERE agent_name=$1'; params.push(agent); }
+    query += ' ORDER BY logged_at DESC LIMIT ' + limit;
+    const result = await db.query(query, params);
+    res.json({ logs: result.rows });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Agent Performance Analysis (Claude) ──────────────────────────────────
+let agentPerfCache = { data: null, generated: 0 };
+app.get('/api/agent-performance', async function(req, res) {
+  if (!db) return res.json({ analysis: 'No database available.' });
+  // 1 hour cache
+  if (agentPerfCache.data && Date.now() - agentPerfCache.generated < 60 * 60 * 1000) {
+    return res.json({ analysis: agentPerfCache.data, cached: true });
+  }
+  try {
+    // Get last 30 days of activity
+    const logs = await db.query(
+      "SELECT agent_name, action, notes, status_before, status_after, campaign_name, logged_at FROM activity_log WHERE logged_at > NOW() - INTERVAL '30 days' ORDER BY logged_at DESC LIMIT 500"
+    );
+    // Get repeat offenders
+    const repeats = await db.query(
+      "SELECT campaign_name, agent_name, failure_count FROM campaign_tasks WHERE is_repeat_offender=TRUE ORDER BY failure_count DESC LIMIT 20"
+    );
+    // Get tasks summary per agent
+    const summary = await db.query(
+      "SELECT agent_name, status, COUNT(*) as count FROM campaign_tasks WHERE created_date > NOW() - INTERVAL '30 days' GROUP BY agent_name, status ORDER BY agent_name, status"
+    );
+
+    const prompt = `You are analyzing Amazon PPC campaign management performance for FK Sports.
+
+AGENT ACTIVITY LOG (last 30 days):
+${JSON.stringify(logs.rows, null, 2)}
+
+REPEAT OFFENDERS (campaigns failing multiple times):
+${JSON.stringify(repeats.rows, null, 2)}
+
+TASK SUMMARY PER AGENT:
+${JSON.stringify(summary.rows, null, 2)}
+
+Analyze each agent's performance. For each agent provide:
+1. Overall performance rating (Strong/Average/Needs Improvement)
+2. Tasks completed vs abandoned vs dismissed
+3. Patterns in their notes (are they vague? specific? consistent?)
+4. Repeat offender campaigns they own - are they actually fixing issues?
+5. Specific recommendation for each agent to improve
+
+Be direct and honest. This is for a manager review. Keep each agent analysis to 3-4 sentences.`;
+
+    const response = await axios.post('https://api.anthropic.com/v1/messages', {
+      model: 'claude-opus-4-5',
+      max_tokens: 1500,
+      messages: [{ role: 'user', content: prompt }]
+    }, {
+      headers: {
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'Content-Type': 'application/json'
+      }
+    });
+
+    const analysis = response.data.content[0].text;
+    agentPerfCache = { data: analysis, generated: Date.now() };
+    res.json({ analysis });
+  } catch(e) {
+    console.error('Agent perf error: ' + e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── Escalation AI Suggestion (Claude) ────────────────────────────────────
+app.post('/api/tasks/:id/escalation-analysis', async function(req, res) {
+  if (!db) return res.status(500).json({ error: 'No DB' });
+  try {
+    const taskRes = await db.query('SELECT * FROM campaign_tasks WHERE id=$1', [req.params.id]);
+    const task = taskRes.rows[0];
+    if (!task) return res.status(404).json({ error: 'Task not found' });
+
+    // Get activity history for this task
+    const history = await db.query(
+      'SELECT action, notes, logged_at FROM activity_log WHERE task_id=$1 ORDER BY logged_at ASC',
+      [task.id]
+    );
+
+    // Get last 7 days snapshot data for this campaign
+    const snapshots = await db.query(
+      "SELECT snapshot_date, campaigns FROM daily_snapshots WHERE snapshot_date > NOW() - INTERVAL '7 days' ORDER BY snapshot_date DESC LIMIT 7"
+    );
+    let campHistory = [];
+    snapshots.rows.forEach(function(snap) {
+      const camps = snap.campaigns || [];
+      const c = camps.find(function(x){ return String(x.campaignId) === String(task.campaign_id); });
+      if (c) campHistory.push({ date: snap.snapshot_date, spend: c.spend, sales: c.sales, acos: c.acos, impressions: c.impressions });
+    });
+
+    const prompt = `You are analyzing an Amazon PPC campaign task that has been escalated after ${task.days_persisted} days without resolution.
+
+CAMPAIGN: ${task.campaign_name}
+AGENT: ${task.agent_name}
+PROBLEM: ${task.problem_detail}
+DAYS OPEN: ${task.days_persisted}
+SCORE: ${task.score} pts
+REPEAT OFFENDER: ${task.is_repeat_offender ? 'YES - has failed ' + task.failure_count + ' times' : 'No'}
+
+AGENT NOTES HISTORY:
+${JSON.stringify(history.rows, null, 2)}
+
+CAMPAIGN PERFORMANCE (last 7 days):
+${JSON.stringify(campHistory, null, 2)}
+
+Provide:
+1. Root cause analysis - what is really wrong with this campaign?
+2. Is the agent's approach working or not? Be specific about their notes.
+3. Specific recommended fix (bid changes, keyword negatives, budget, targeting, etc.)
+4. If agent requests 7-day scaling window - is it justified? Yes/No with reason.
+
+Be direct, specific, actionable. 3-4 sentences max per point.`;
+
+    const response = await axios.post('https://api.anthropic.com/v1/messages', {
+      model: 'claude-opus-4-5',
+      max_tokens: 800,
+      messages: [{ role: 'user', content: prompt }]
+    }, {
+      headers: {
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'Content-Type': 'application/json'
+      }
+    });
+
+    res.json({ analysis: response.data.content[0].text });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get('/api/snapshots', async function(req, res) {
   const dates = await getSnapshotDates();
   res.json({ dates: dates.map(function(r) {
@@ -1311,26 +1503,48 @@ app.get('/api/tasks', async function(req, res) {
 
 app.post('/api/tasks/:id/status', async function(req, res) {
   if (!db) return res.status(500).json({ error: 'No DB' });
-  const { status, notes, dismissedReason, pausedReason } = req.body;
+  const { status, notes, dismissedReason, pausedReason, escalationReason } = req.body;
   try {
+    // Get current task for logging
+    const taskRes = await db.query('SELECT * FROM campaign_tasks WHERE id=$1', [req.params.id]);
+    const task = taskRes.rows[0] || {};
+    const statusBefore = task.status || 'unknown';
+
     let query, params;
     if (status === 'dismissed') {
       const endOfDay = new Date();
       endOfDay.setHours(23, 59, 59, 999);
       query = 'UPDATE campaign_tasks SET status=$1, agent_notes=$2, dismissed_reason=$3, updated_at=NOW(), resolved_at=NOW(), suppressed_until=$4 WHERE id=$5';
-      params = [status, notes||'', dismissedReason||'', endOfDay.toISOString(), req.params.id];
+      params = [status, notes||'', dismissedReason||notes||'', endOfDay.toISOString(), req.params.id];
     } else if (status === 'paused') {
       query = 'UPDATE campaign_tasks SET status=$1, agent_notes=$2, paused_reason=$3, updated_at=NOW(), resolved_at=NOW() WHERE id=$4';
-      params = [status, notes||pausedReason||'', pausedReason||'', req.params.id];
+      params = [status, notes||pausedReason||'', pausedReason||notes||'', req.params.id];
     } else if (status === 'in_progress') {
-      // Record first action timestamp
       query = 'UPDATE campaign_tasks SET status=$1, agent_notes=$2, updated_at=NOW(), first_action_at=COALESCE(first_action_at, NOW()) WHERE id=$3';
       params = [status, notes||'', req.params.id];
+    } else if (status === 'scaling') {
+      // 7-day scaling window
+      const deadline = new Date();
+      deadline.setDate(deadline.getDate() + 7);
+      query = 'UPDATE campaign_tasks SET status=$1, agent_notes=$2, escalation_reason=$3, scaling_deadline=$4, updated_at=NOW(), first_action_at=COALESCE(first_action_at, NOW()) WHERE id=$5';
+      params = [status, notes||'', escalationReason||notes||'', deadline.toISOString(), req.params.id];
+    } else if (status === 'complete') {
+      query = 'UPDATE campaign_tasks SET status=$1, agent_notes=$2, updated_at=NOW(), resolved_at=NOW(), last_resolved_date=NOW() WHERE id=$3';
+      params = [status, notes||'', req.params.id];
     } else {
-      query = 'UPDATE campaign_tasks SET status=$1, agent_notes=$2, updated_at=NOW(), resolved_at=' + (status === 'complete' ? 'NOW()' : 'NULL') + ' WHERE id=$3';
+      query = 'UPDATE campaign_tasks SET status=$1, agent_notes=$2, updated_at=NOW() WHERE id=$3';
       params = [status, notes||'', req.params.id];
     }
     await db.query(query, params);
+
+    // Log to activity_log
+    try {
+      await db.query(
+        'INSERT INTO activity_log (campaign_id, campaign_name, agent_name, action, notes, status_before, status_after, task_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
+        [task.campaign_id||'', task.campaign_name||'', task.agent_name||'', status, notes||'', statusBefore, status, parseInt(req.params.id)]
+      );
+    } catch(logErr) { console.error('Activity log error: ' + logErr.message); }
+
     res.json({ success: true });
   } catch(e) {
     res.status(500).json({ error: e.message });
@@ -1445,6 +1659,31 @@ cron.schedule('0 0 * * *', function() {
 async function autoArchiveTasks() {
   if (!db) return;
   try {
+    // Check for expired scaling tasks (7-day window expired)
+    const expiredScaling = await db.query(
+      "SELECT id, campaign_name, agent_name FROM campaign_tasks WHERE status='scaling' AND scaling_deadline IS NOT NULL AND scaling_deadline < NOW()"
+    );
+    for (const row of expiredScaling.rows) {
+      await db.query(
+        "UPDATE campaign_tasks SET status='open', updated_at=NOW() WHERE id=$1",
+        [row.id]
+      );
+      // Log expiry to activity log
+      await db.query(
+        'INSERT INTO activity_log (campaign_id, campaign_name, agent_name, action, notes, status_before, status_after, task_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
+        ['', row.campaign_name, row.agent_name, 'scaling_expired', '7-day scaling window expired. Task returned to open for immediate action.', 'scaling', 'open', row.id]
+      );
+      console.log('Scaling expired for: ' + row.campaign_name);
+      // Notify agent
+      if (row.agent_name) {
+        const dashUrl = process.env.RAILWAY_PUBLIC_DOMAIN ? 'https://' + process.env.RAILWAY_PUBLIC_DOMAIN : 'https://campaignpulse-setup-production.up.railway.app';
+        await sendToAgent(row.agent_name, '🚨 SCALING WINDOW EXPIRED
+Campaign: ' + row.campaign_name + '
+7-day scaling period has ended. Immediate decision required: resolve or pause.
+' + dashUrl + '/tasks');
+      }
+    }
+
     // Get all resolved tasks not yet archived
     const result = await db.query(
       "SELECT id, resolved_at FROM campaign_tasks WHERE status IN ('complete','dismissed','paused') AND archived_at IS NULL AND resolved_at IS NOT NULL"

@@ -600,32 +600,34 @@ tbody tr:hover { background: var(--surface2); }
 
   <!-- TASKS PAGE -->
   <div class="page" id="page-tasks">
-    <div style="margin-bottom:20px">
-      <div class="section-title">Campaign Tasks</div>
-      <div class="section-sub">Daily investigation tasks at 9am · Alert tasks fire immediately · Auto-archived after 3 working days</div>
+    <div style="margin-bottom:20px;display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px">
+      <div>
+        <div class="section-title">Campaign Tasks</div>
+        <div class="section-sub">Daily tasks at 8am · Auto-archived after 3 working days · 7-day scaling window available from Escalation</div>
+      </div>
+      <button class="btn btn-ghost" onclick="showPage('agent-performance')" style="font-size:13px">📊 Agent Performance</button>
     </div>
 
-    <div class="metrics-grid" style="grid-template-columns:repeat(4,minmax(0,1fr));margin-bottom:20px">
-      <div class="metric-card alert"><div class="metric-label">Open tasks</div><div class="metric-value" id="task-open">—</div><div class="metric-delta delta-down">Awaiting action</div></div>
-      <div class="metric-card"><div class="metric-label">In progress</div><div class="metric-value" id="task-inprogress">—</div><div class="metric-delta">Being investigated</div></div>
+    <div class="metrics-grid" style="grid-template-columns:repeat(5,minmax(0,1fr));margin-bottom:20px">
+      <div class="metric-card alert"><div class="metric-label">Due</div><div class="metric-value" id="task-open">—</div><div class="metric-delta delta-down">Awaiting action</div></div>
+      <div class="metric-card"><div class="metric-label">In Progress</div><div class="metric-value" id="task-inprogress">—</div><div class="metric-delta">Being worked on</div></div>
+      <div class="metric-card alert"><div class="metric-label">Escalated</div><div class="metric-value" id="task-escalated">—</div><div class="metric-delta delta-down">Day 3+ urgent</div></div>
+      <div class="metric-card"><div class="metric-label">Scaling</div><div class="metric-value" id="task-scaling">—</div><div class="metric-delta">7-day window</div></div>
       <div class="metric-card success"><div class="metric-label">Completed today</div><div class="metric-value" id="task-complete">—</div><div class="metric-delta delta-up">Resolved</div></div>
-      <div class="metric-card alert"><div class="metric-label">Overdue (2+ days)</div><div class="metric-value" id="task-overdue">—</div><div class="metric-delta delta-down">Needs escalation</div></div>
     </div>
 
-    <!-- Agent profile tabs -->
-    <div id="agent-tabs" style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap"></div>
+    <!-- Agent tabs - click agent THEN tab to filter -->
+    <div id="agent-tabs" style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap"></div>
 
-    <div style="display:flex;gap:10px;margin-bottom:14px;align-items:center;flex-wrap:wrap">
-      <select id="task-source-filter" onchange="renderTasks(taskTab)" style="background:white;border:1px solid var(--border2);color:var(--text);padding:8px 12px;border-radius:8px;font-size:13px;font-family:inherit;cursor:pointer">
-        <option value="">All types</option>
-        <option value="daily">Daily tasks</option>
-        <option value="alert">Alert tasks</option>
-      </select>
-    </div>
+    <!-- Task status tabs -->
     <div class="tabs" style="margin-bottom:16px">
-      <button class="tab-btn active" onclick="showTaskTab('open',this)">Due (<span id="tab-due-count">0</span>)</button>
-      <button class="tab-btn" onclick="showTaskTab('paused',this)">Paused (<span id="tab-paused-count">0</span>)</button>
-      <button class="tab-btn" onclick="showTaskTab('complete',this)">Completed (<span id="tab-complete-count">0</span>)</button>
+      <button class="tab-btn active" id="ttab-due" onclick="showTaskTab('due',this)">Due <span id="tab-due-count" style="background:#e53e3e;color:white;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:4px">0</span></button>
+      <button class="tab-btn" id="ttab-inprogress" onclick="showTaskTab('inprogress',this)">In Progress <span id="tab-inprogress-count" style="background:#d97706;color:white;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:4px">0</span></button>
+      <button class="tab-btn" id="ttab-escalated" onclick="showTaskTab('escalated',this)">🚨 Escalated <span id="tab-escalated-count" style="background:#e53e3e;color:white;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:4px">0</span></button>
+      <button class="tab-btn" id="ttab-scaling" onclick="showTaskTab('scaling',this)">⏱ Scaling <span id="tab-scaling-count" style="background:#7c3aed;color:white;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:4px">0</span></button>
+      <button class="tab-btn" id="ttab-repeat" onclick="showTaskTab('repeat',this)">🔁 Repeat Offenders <span id="tab-repeat-count" style="background:#dc2626;color:white;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:4px">0</span></button>
+      <button class="tab-btn" id="ttab-complete" onclick="showTaskTab('complete',this)">Completed <span id="tab-complete-count" style="background:#059669;color:white;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:4px">0</span></button>
+      <button class="tab-btn" id="ttab-archived" onclick="showTaskTab('archived',this)">Archived</button>
     </div>
 
     <div id="tasks-container">
@@ -1748,24 +1750,25 @@ let allTasks = [];
 let taskTab = 'open';
 let selectedAgent = '';
 
+// ── Agent Tabs ───────────────────────────────────────────────────────────
 function renderAgentTabs() {
   const container = document.getElementById('agent-tabs');
   if (!container) return;
-  const agents = [...new Set(allTasks.map(function(t){ return getTaskAgent(t); }).filter(Boolean))].sort();
-  const allDue = allTasks.filter(function(t){ return t.status==='open'||t.status==='in_progress'; }).length;
+  const dailyTasks = allTasks.filter(function(t){ return (t.task_source||'daily') !== 'alert'; });
+  const agents = [...new Set(dailyTasks.map(function(t){ return t.agent_name||''; }).filter(Boolean))].sort();
 
   const btnStyle = function(selected) {
-    return 'padding:10px 20px;border-radius:10px;border:2px solid ' + (selected?'#e8391d':'#ddd') + ';background:' + (selected?'#e8391d':'white') + ';color:' + (selected?'white':'#333') + ';font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;position:relative;margin:2px';
+    return 'padding:10px 22px;border-radius:10px;border:2px solid ' + (selected?'#e8391d':'#ddd') + ';background:' + (selected?'#e8391d':'white') + ';color:' + (selected?'white':'#333') + ';font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;position:relative;margin:2px;transition:all 0.15s';
   };
 
-  // Build HTML directly - no createElement needed
-  let html = '<button style="' + btnStyle(selectedAgent==='') + '" onclick="selectAgent(this,\'\')">All agents<br><span style="font-size:11px;font-weight:400;opacity:0.8">' + allDue + ' due</span></button>';
+  const allActive = dailyTasks.filter(function(t){ return ['open','in_progress','escalated','scaling'].indexOf(t.status) >= 0; }).length;
+  let html = '<button style="' + btnStyle(selectedAgent==='') + '" onclick="selectAgent(this,'')">All Agents<br><span style="font-size:11px;font-weight:400;opacity:0.8">' + allActive + ' active</span></button>';
 
   agents.forEach(function(agent) {
-    const due = allTasks.filter(function(t){ return getTaskAgent(t)===agent && (t.status==='open'||t.status==='in_progress'); }).length;
-    const paused = allTasks.filter(function(t){ return getTaskAgent(t)===agent && t.status==='paused'; }).length;
-    const badge = due > 0 ? '<span style="position:absolute;top:-5px;right:-5px;background:#c0392b;color:white;font-size:9px;font-weight:700;padding:1px 5px;border-radius:8px">' + due + '</span>' : '';
-    html += '<button style="' + btnStyle(selectedAgent===agent) + '" data-agent="' + agent.replace(/"/g,'') + '" onclick="selectAgent(this,this.getAttribute(\'data-agent\'))">' + agent + badge + '<br><span style="font-size:11px;font-weight:400;opacity:0.8">' + due + ' due</span></button>';
+    const active = dailyTasks.filter(function(t){ return t.agent_name===agent && ['open','in_progress','escalated','scaling'].indexOf(t.status) >= 0; }).length;
+    const repeats = dailyTasks.filter(function(t){ return t.agent_name===agent && t.is_repeat_offender; }).length;
+    const repeatBadge = repeats > 0 ? '<span style="position:absolute;top:-5px;right:-5px;background:#dc2626;color:white;font-size:9px;font-weight:700;padding:1px 5px;border-radius:8px">🔁' + repeats + '</span>' : '';
+    html += '<button style="' + btnStyle(selectedAgent===agent) + '" data-agent="' + escHtml(agent) + '" onclick="selectAgent(this,this.getAttribute('data-agent'))">' + escHtml(agent) + repeatBadge + '<br><span style="font-size:11px;font-weight:400;opacity:0.8">' + active + ' active</span></button>';
   });
 
   container.innerHTML = html;
@@ -1773,46 +1776,52 @@ function renderAgentTabs() {
 
 function selectAgent(btnEl, agent) {
   selectedAgent = agent;
-  // Update button styles
   document.querySelectorAll('#agent-tabs button').forEach(function(b){ b.style.background='white'; b.style.color='#333'; b.style.borderColor='#ddd'; });
   if (btnEl) { btnEl.style.background='#e8391d'; btnEl.style.color='white'; btnEl.style.borderColor='#e8391d'; }
   renderTasks(taskTab);
 }
 
+// ── Load Tasks ────────────────────────────────────────────────────────────
 async function loadTasks() {
   try {
     const res = await fetch('/api/tasks');
     const data = await res.json();
     allTasks = data.tasks || [];
-    // Populate agent filter
-    const agentSel = document.getElementById('task-agent-filter');
-    if (agentSel) {
-      const currentVal = agentSel.value;
-      agentSel.innerHTML = '<option value="">All agents</option>';
-      const agents = [...new Set(allTasks.map(function(t){ return t.agent_name||''; }).filter(Boolean))].sort();
-      agents.forEach(function(a){ const o=document.createElement('option');o.value=a;o.textContent=a;if(a===currentVal)o.selected=true;agentSel.appendChild(o); });
-    }
+    const daily = allTasks.filter(function(t){ return (t.task_source||'daily') !== 'alert'; });
 
-    const today = new Date().toISOString().split('T')[0];
-    const open = allTasks.filter(function(t){ return t.status === 'open'; });
-    const inprog = allTasks.filter(function(t){ return t.status === 'in_progress'; });
-    const complete = allTasks.filter(function(t){ return t.status === 'complete' && (t.resolved_at||'').startsWith(today); });
-    const overdue = allTasks.filter(function(t){ return (t.status === 'open' || t.status === 'in_progress') && t.days_persisted >= 2; });
+    const counts = {
+      due: daily.filter(function(t){ return t.status === 'open'; }).length,
+      inprogress: daily.filter(function(t){ return t.status === 'in_progress'; }).length,
+      escalated: daily.filter(function(t){ return t.status === 'open' && t.days_persisted >= 3; }).length,
+      scaling: daily.filter(function(t){ return t.status === 'scaling'; }).length,
+      repeat: daily.filter(function(t){ return t.is_repeat_offender; }).length,
+      complete: daily.filter(function(t){ return t.status === 'complete' || t.status === 'dismissed'; }).length,
+      archived: daily.filter(function(t){ return t.status === 'archived'; }).length
+    };
 
-    document.getElementById('task-open').textContent = open.length;
-    document.getElementById('task-inprogress').textContent = inprog.length;
-    document.getElementById('task-complete').textContent = complete.length;
-    document.getElementById('task-overdue').textContent = overdue.length;
+    // Update metric cards
+    if (document.getElementById('task-open')) document.getElementById('task-open').textContent = counts.due;
+    if (document.getElementById('task-inprogress')) document.getElementById('task-inprogress').textContent = counts.inprogress;
+    if (document.getElementById('task-escalated')) document.getElementById('task-escalated').textContent = counts.escalated;
+    if (document.getElementById('task-scaling')) document.getElementById('task-scaling').textContent = counts.scaling;
+    if (document.getElementById('task-complete')) document.getElementById('task-complete').textContent = counts.complete;
 
+    // Update tab counts
+    ['due','inprogress','escalated','scaling','repeat','complete'].forEach(function(k){
+      const el = document.getElementById('tab-' + k + '-count');
+      if (el) el.textContent = counts[k] || 0;
+    });
+
+    // Nav badge
     const badge = document.getElementById('tasks-badge');
-    const urgent = open.length + overdue.length;
-    if (urgent > 0) { badge.textContent = urgent; badge.style.display = ''; }
-    else badge.style.display = 'none';
+    const urgent = counts.due + counts.escalated;
+    if (badge) { if (urgent > 0) { badge.textContent = urgent; badge.style.display = ''; } else badge.style.display = 'none'; }
 
     renderAgentTabs();
     renderTasks(taskTab);
   } catch(e) {
-    document.getElementById('tasks-container').innerHTML = '<div class="empty">Error loading tasks: ' + e.message + '</div>';
+    const c = document.getElementById('tasks-container');
+    if (c) c.innerHTML = '<div class="empty">Error loading tasks: ' + e.message + '</div>';
   }
 }
 
@@ -1823,65 +1832,181 @@ function showTaskTab(tab, btn) {
   renderTasks(tab);
 }
 
+// ── Render Tasks ──────────────────────────────────────────────────────────
 function renderTasks(tab) {
-  const agentTasks = selectedAgent ? allTasks.filter(function(t){ return getTaskAgent(t) === selectedAgent; }) : allTasks;
-  const dailyOnly = agentTasks.filter(function(t){ return (t.task_source||"daily") !== "alert"; });
-  let filtered = dailyOnly;
-  if (tab === "open") filtered = dailyOnly.filter(function(t){ return t.status === "open" || t.status === "in_progress"; });
-  else if (tab === "paused") filtered = dailyOnly.filter(function(t){ return t.status === "paused"; });
-  else if (tab === "complete") filtered = dailyOnly.filter(function(t){ return t.status === "complete" || t.status === "dismissed"; });
+  const agentTasks = selectedAgent ? allTasks.filter(function(t){ return t.agent_name === selectedAgent; }) : allTasks;
+  const daily = agentTasks.filter(function(t){ return (t.task_source||'daily') !== 'alert'; });
+
+  let filtered = [];
+  if (tab === 'due') filtered = daily.filter(function(t){ return t.status === 'open' && t.days_persisted < 3; });
+  else if (tab === 'inprogress') filtered = daily.filter(function(t){ return t.status === 'in_progress'; });
+  else if (tab === 'escalated') filtered = daily.filter(function(t){ return t.status === 'open' && t.days_persisted >= 3; });
+  else if (tab === 'scaling') filtered = daily.filter(function(t){ return t.status === 'scaling'; });
+  else if (tab === 'repeat') filtered = daily.filter(function(t){ return t.is_repeat_offender; });
+  else if (tab === 'complete') filtered = daily.filter(function(t){ return (t.status === 'complete' || t.status === 'dismissed' || t.status === 'paused') && !t.archived_at; });
+  else if (tab === 'archived') filtered = daily.filter(function(t){ return t.status === 'archived'; });
+  else filtered = daily.filter(function(t){ return t.status === 'open'; });
+
+  // Sort: repeat offenders first, then by days_persisted desc, then score desc
+  filtered.sort(function(a,b){
+    if (b.is_repeat_offender !== a.is_repeat_offender) return b.is_repeat_offender ? 1 : -1;
+    if (b.days_persisted !== a.days_persisted) return (b.days_persisted||1) - (a.days_persisted||1);
+    return (b.score||0) - (a.score||0);
+  });
 
   const container = document.getElementById('tasks-container');
+  if (!container) return;
   if (!filtered.length) {
-    container.innerHTML = '<div class="empty" style="padding:50px"><div style="font-size:28px;margin-bottom:12px">✅</div><div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:6px">' + (tab === 'open' ? 'No open tasks' : 'No tasks yet') + '</div><div style="font-size:12px;color:var(--text3)">Tasks are created daily at 9am based on campaign performance history.<br>Use "Run now" to test the scheduler.</div></div>';
+    const msgs = { due:'No tasks due', inprogress:'No tasks in progress', escalated:'No escalated tasks — great!', scaling:'No campaigns in scaling window', repeat:'No repeat offenders — well done!', complete:'No completed tasks', archived:'No archived tasks' };
+    container.innerHTML = '<div class="empty" style="padding:50px"><div style="font-size:32px;margin-bottom:12px">' + (tab==='escalated'||tab==='repeat'?'✅':'📋') + '</div><div style="font-size:15px;font-weight:600;color:var(--text);margin-bottom:6px">' + (msgs[tab]||'No tasks') + '</div><div style="font-size:13px;color:var(--text3)">Tasks are created daily at 8am based on campaign performance.</div></div>';
     return;
   }
 
   container.innerHTML = filtered.map(function(t) {
-    const isOverdue = t.days_persisted >= 2 && (t.status === 'open' || t.status === 'in_progress');
-    const statusColors = { open: 'badge-red', in_progress: 'badge-amber', complete: 'badge-green', escalated: 'badge-red' };
-    const statusLabels = { open: 'Open', in_progress: 'In Progress', complete: 'Complete', escalated: 'Escalated' };
+    const isEscalated = t.status === 'open' && t.days_persisted >= 3;
+    const isRepeat = t.is_repeat_offender;
+    const isScaling = t.status === 'scaling';
+
+    // Border colour
+    let borderColor = '';
+    if (isRepeat) borderColor = 'border-left:4px solid #dc2626';
+    else if (isEscalated) borderColor = 'border-left:4px solid var(--red)';
+    else if (isScaling) borderColor = 'border-left:4px solid #7c3aed';
+
+    const statusColors = { open:'badge-red', in_progress:'badge-amber', complete:'badge-green', scaling:'badge-purple', dismissed:'badge-blue', paused:'badge-amber', archived:'badge-blue' };
+    const statusLabels = { open:'Open', in_progress:'In Progress', complete:'Complete', scaling:'Scaling', dismissed:'Dismissed', paused:'Paused', archived:'Archived' };
     const problemIcon = t.problem_type === 'no_activity' ? '😴' : '💸';
-    const dateStr = typeof t.created_date === 'string' ? t.created_date.split('T')[0] : String(t.created_date).split('T')[0];
+    const dateStr = (t.created_date||'').toString().split('T')[0];
+
+    // Scaling countdown
+    let scalingCountdown = '';
+    if (isScaling && t.scaling_deadline) {
+      const daysLeft = Math.ceil((new Date(t.scaling_deadline) - new Date()) / (1000*60*60*24));
+      scalingCountdown = '<div style="background:#f3e8ff;border:1px solid #c4b5fd;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:14px;color:#7c3aed"><strong>⏱ Scaling window:</strong> ' + (daysLeft > 0 ? daysLeft + ' days remaining' : '⚠️ EXPIRED — decision required') + ' · Deadline: ' + new Date(t.scaling_deadline).toLocaleDateString('en-GB') + '</div>';
+    }
+
+    // Repeat offender banner
+    let repeatBanner = '';
+    if (isRepeat) {
+      repeatBanner = '<div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;padding:12px 16px;margin-bottom:12px;font-size:15px;color:#dc2626"><strong>🚨 REPEAT OFFENDER</strong> — This campaign has failed ' + (t.failure_count||2) + ' time(s) in the last 14 days. A different approach is needed, not the same quick fix.</div>';
+    }
+
+    // Action buttons based on status and tab
+    let actionButtons = '';
+    if (t.status === 'complete' || t.status === 'dismissed' || t.status === 'archived') {
+      const rt = t.resolved_at ? new Date(t.resolved_at).toLocaleString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : '';
+      actionButtons = '<div style="font-size:14px;color:var(--green);margin-top:8px">✓ ' + (statusLabels[t.status]||t.status) + (rt ? ' · ' + rt : '') + '</div>';
+      if (!t.archived_at && t.status !== 'archived') {
+        actionButtons += '<button class="btn btn-ghost" style="font-size:12px;margin-top:6px" onclick="archiveTask(' + t.id + ')">Archive now</button>';
+      }
+    } else if (t.status === 'paused') {
+      actionButtons = '<div style="font-size:14px;color:var(--amber);margin-top:8px">⏸ Paused' + (t.paused_reason ? ' — ' + escHtml(t.paused_reason) : '') + '</div>';
+      if (!t.archived_at) actionButtons += '<button class="btn btn-ghost" style="font-size:12px;margin-top:6px" onclick="archiveTask(' + t.id + ')">Archive now</button>';
+    } else if (isScaling) {
+      const daysLeft = t.scaling_deadline ? Math.ceil((new Date(t.scaling_deadline) - new Date()) / (1000*60*60*24)) : 0;
+      actionButtons = '<div class="ag" style="margin-top:8px">' +
+        '<button class="btn btn-green" style="font-size:12px" onclick="showTaskModal(' + t.id + ',&quot;complete&quot;)">✓ Mark resolved</button>' +
+        '<button class="btn btn-red" style="font-size:12px" onclick="showTaskModal(' + t.id + ',&quot;paused&quot;)">Pause campaign</button>' +
+        (daysLeft <= 0 ? '<span style="font-size:12px;color:#dc2626;font-weight:600">⚠️ Window expired!</span>' : '') +
+        '</div>';
+    } else if (isEscalated) {
+      // Escalated tab gets: Working on it, Request 7-day scaling, Mark complete, Pause + AI Analysis button
+      actionButtons = '<div class="ag" style="margin-top:8px">' +
+        '<button class="btn btn-amber" style="font-size:12px" onclick="showTaskModal(' + t.id + ',&quot;in_progress&quot;)">Working on it</button>' +
+        '<button class="btn btn-purple" style="font-size:12px;background:#f3e8ff;color:#7c3aed;border-color:#c4b5fd" onclick="showScalingModal(' + t.id + ')">⏱ Request 7-day scaling</button>' +
+        '<button class="btn btn-green" style="font-size:12px" onclick="showTaskModal(' + t.id + ',&quot;complete&quot;)">Mark complete</button>' +
+        '<button class="btn btn-red" style="font-size:12px" onclick="showTaskModal(' + t.id + ',&quot;paused&quot;)">Pause</button>' +
+        '</div>' +
+        '<button class="btn btn-ghost" style="font-size:12px;margin-top:8px" onclick="loadEscalationAnalysis(' + t.id + ',this)">🤖 Get AI analysis</button>' +
+        '<div id="ai-analysis-' + t.id + '" style="display:none;margin-top:10px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:14px;font-size:14px;line-height:1.6;color:#0369a1"></div>';
+    } else {
+      // Due or In Progress
+      actionButtons = '<div class="ag" style="margin-top:8px">' +
+        '<button class="btn btn-amber" style="font-size:12px" onclick="showTaskModal(' + t.id + ',&quot;in_progress&quot;)">Working on it</button>' +
+        '<button class="btn btn-green" style="font-size:12px" onclick="showTaskModal(' + t.id + ',&quot;complete&quot;)">Mark complete</button>' +
+        '<button class="btn btn-red" style="font-size:12px" onclick="showTaskModal(' + t.id + ',&quot;paused&quot;)">Pause campaign</button>' +
+        '<button class="btn btn-ghost" style="font-size:12px" onclick="showTaskModal(' + t.id + ',&quot;dismissed&quot;)">Dismiss</button>' +
+        '</div>';
+    }
 
     const cardId = 'task-card-' + t.id;
     const detailId = 'task-detail-' + t.id;
-    return '<div class="ai-card" id="' + cardId + '" style="' + (isOverdue ? 'border-left:3px solid var(--red)' : '') + '">' +
+
+    return '<div class="ai-card" id="' + cardId + '" style="' + borderColor + '">' +
+      repeatBanner +
+      scalingCountdown +
       '<div class="ai-header" style="cursor:pointer" onclick="toggleTaskDetail(' + t.id + ')">' +
         '<div class="ai-icon">' + problemIcon + '</div>' +
         '<div style="flex:1">' +
-          '<div class="ai-title">' + escHtml(t.campaign_name) + '</div>' +
-          '<div class="ai-sub">Agent: ' + escHtml(t.agent_name||'Unassigned') + ' · Portfolio: ' + escHtml(t.portfolio||'—') + ' · Created: ' + dateStr + '</div>' +
+          '<div class="ai-title" style="font-size:16px">' + escHtml(t.campaign_name) + '</div>' +
+          '<div class="ai-sub" style="font-size:13px">Agent: <strong>' + escHtml(t.agent_name||'Unassigned') + '</strong> · Portfolio: ' + escHtml(t.portfolio||'—') + ' · Created: ' + dateStr + '</div>' +
         '</div>' +
-        '<div style="display:flex;gap:6px;align-items:center">' +
-          (isOverdue ? '<span class="badge badge-red">Day ' + t.days_persisted + ' — Overdue</span>' : '') +
-          '<span class="badge ' + (statusColors[t.status]||'badge-blue') + '">' + (statusLabels[t.status]||t.status) + '</span>' +
-          '<span style="font-size:11px;color:#aaa;margin-left:4px">▼</span>' +
+        '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end">' +
+          (isRepeat ? '<span class="badge" style="background:#dc2626;color:white;font-size:11px">🔁 Repeat #' + (t.failure_count||2) + '</span>' : '') +
+          (isEscalated ? '<span class="badge badge-red" style="font-size:11px">🚨 Day ' + t.days_persisted + ' Escalated</span>' : (t.days_persisted > 1 ? '<span class="badge badge-amber" style="font-size:11px">Day ' + t.days_persisted + '</span>' : '')) +
+          '<span class="badge ' + (statusColors[t.status]||'badge-blue') + '" style="font-size:11px">' + (statusLabels[t.status]||t.status) + '</span>' +
+          '<span style="font-size:12px;color:#aaa;margin-left:4px" id="arrow-' + t.id + '">▼</span>' +
         '</div>' +
       '</div>' +
-      '<div id="' + detailId + '" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid var(--border2)">' +
-        '<div style="font-size:14px;color:var(--text2);margin-bottom:10px"><strong>Problem:</strong> ' + escHtml(t.problem_detail||'—') + '</div>' +
-        '<div style="font-size:14px;color:var(--text2);margin-bottom:10px"><strong>Score:</strong> ' + (t.score||0) + ' pts · <strong>Days open:</strong> ' + (t.days_persisted||1) + '</div>' +
-        (t.first_action_at ? '<div style="font-size:14px;color:var(--text2);margin-bottom:10px"><strong>First action:</strong> ' + new Date(t.first_action_at).toLocaleString('en-GB') + '</div>' : '') +
-        (t.resolved_at ? '<div style="font-size:14px;color:var(--green);margin-bottom:10px"><strong>Resolved:</strong> ' + new Date(t.resolved_at).toLocaleString('en-GB') + '</div>' : '') +
-        (t.agent_notes ? '<div style="background:var(--blue-light);border:1px solid rgba(26,111,189,0.15);border-radius:8px;padding:12px 16px;font-size:14px;color:var(--blue);margin-bottom:10px"><strong>Agent notes:</strong><br><span style="white-space:pre-wrap">' + escHtml(t.agent_notes) + '</span></div>' : '<div style="font-size:14px;color:#bbb;margin-bottom:10px;font-style:italic">No notes yet.</div>') +
-        (t.dismissed_reason ? '<div style="font-size:14px;color:var(--text2);margin-bottom:10px"><strong>Dismiss reason:</strong> ' + escHtml(t.dismissed_reason) + '</div>' : '') +
-        (t.paused_reason ? '<div style="font-size:14px;color:var(--text2);margin-bottom:10px"><strong>Pause reason:</strong> ' + escHtml(t.paused_reason) + '</div>' : '') +
+      '<div id="' + detailId + '" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid var(--border2)">' +
+        '<div style="font-size:15px;color:var(--text);margin-bottom:12px"><strong>Problem:</strong> ' + escHtml(t.problem_detail||'—') + '</div>' +
+        '<div style="font-size:15px;color:var(--text);margin-bottom:12px"><strong>Score:</strong> ' + (t.score||0) + ' pts · <strong>Days open:</strong> ' + (t.days_persisted||1) + '</div>' +
+        (t.first_action_at ? '<div style="font-size:15px;color:var(--text);margin-bottom:12px"><strong>First action:</strong> ' + new Date(t.first_action_at).toLocaleString('en-GB') + '</div>' : '') +
+        (t.resolved_at ? '<div style="font-size:15px;color:var(--green);margin-bottom:12px"><strong>Resolved:</strong> ' + new Date(t.resolved_at).toLocaleString('en-GB') + '</div>' : '') +
+        (t.agent_notes ? '<div style="background:var(--blue-light);border:1px solid rgba(26,111,189,0.15);border-radius:8px;padding:14px 18px;font-size:15px;color:var(--blue);margin-bottom:12px"><strong>Agent notes:</strong><br><span style="white-space:pre-wrap;line-height:1.7">' + escHtml(t.agent_notes) + '</span></div>' : '<div style="font-size:15px;color:#bbb;margin-bottom:12px;font-style:italic">No notes added yet.</div>') +
+        (t.dismissed_reason ? '<div style="font-size:15px;color:var(--text);margin-bottom:12px"><strong>Dismiss reason:</strong> ' + escHtml(t.dismissed_reason) + '</div>' : '') +
+        (t.paused_reason ? '<div style="font-size:15px;color:var(--text);margin-bottom:12px"><strong>Pause reason:</strong> ' + escHtml(t.paused_reason) + '</div>' : '') +
+        (t.escalation_reason ? '<div style="font-size:15px;color:#7c3aed;margin-bottom:12px"><strong>Scaling reason:</strong> ' + escHtml(t.escalation_reason) + '</div>' : '') +
       '</div>' +
-
-      (function() {
-        if (t.status === 'complete') {
-          const rt = t.resolved_at ? new Date(t.resolved_at).toLocaleTimeString('en-GB', {hour:'2-digit',minute:'2-digit'}) : '';
-          return '<div style="font-size:12px;color:var(--green)">Resolved' + (rt ? ' at ' + rt : '') + '</div>';
-        }
-        const wip = '<button class="btn btn-amber" style="font-size:12px" onclick="showTaskModal(' + t.id + ',&quot;in_progress&quot;)">Working on it</button>';
-        const done = '<button class="btn btn-green" style="font-size:12px" onclick="showTaskModal(' + t.id + ',&quot;complete&quot;)">Mark complete</button>';
-        const paused = '<button class="btn btn-red" style="font-size:12px" onclick="showTaskModal(' + t.id + ',&quot;paused&quot;)">Paused campaign</button>';
-        const dismiss = '<button class="btn btn-ghost" style="font-size:12px" onclick="showTaskModal(' + t.id + ',&quot;dismissed&quot;)">Dismiss</button>';
-        return '<div class="ag">' + wip + done + paused + dismiss + '</div>';
-      }()) +
+      actionButtons +
     '</div>';
   }).join('');
+}
+
+// ── Scaling Modal ────────────────────────────────────────────────────────
+function showScalingModal(taskId) {
+  const existing = document.getElementById('task-action-modal');
+  if (existing) existing.remove();
+  const overlay = document.createElement('div');
+  overlay.id = 'task-action-modal';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9998;display:flex;align-items:center;justify-content:center';
+  overlay.innerHTML =
+    '<div style="background:white;padding:28px;border-radius:14px;box-shadow:0 8px 40px rgba(0,0,0,0.25);width:460px;max-width:95vw">' +
+      '<div style="font-size:16px;font-weight:700;margin-bottom:4px">⏱ Request 7-Day Scaling Window</div>' +
+      '<div style="font-size:13px;color:#888;margin-bottom:16px">This campaign has been escalated. Explain why you need 7 days to fix it and what your plan is. After 7 days you must mark complete or pause — no extensions.</div>' +
+      '<textarea id="tm-notes" placeholder="What specifically are you going to do over the next 7 days? What is the root cause and your plan to fix it?" style="width:100%;padding:10px;border:1.5px solid #ddd;border-radius:8px;font-size:13px;height:100px;resize:vertical;font-family:inherit;box-sizing:border-box"></textarea>' +
+      '<div id="tm-error" style="color:#e53e3e;font-size:12px;margin-top:4px;display:none">Please explain your 7-day plan before requesting the scaling window.</div>' +
+      '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">' +
+        '<button class="btn btn-ghost" style="font-size:13px" onclick="document.getElementById(&quot;task-action-modal&quot;).remove()">Cancel</button>' +
+        '<button style="background:#7c3aed;color:white;border:none;padding:8px 18px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer" onclick="submitTaskModal(' + taskId + ',&quot;scaling&quot;)">Request Scaling Window</button>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(overlay);
+  setTimeout(function(){ const ta = document.getElementById('tm-notes'); if(ta) ta.focus(); }, 50);
+  overlay.addEventListener('click', function(e){ if(e.target===overlay) overlay.remove(); });
+}
+
+// ── AI Escalation Analysis ────────────────────────────────────────────────
+async function loadEscalationAnalysis(taskId, btn) {
+  const container = document.getElementById('ai-analysis-' + taskId);
+  if (!container) return;
+  const isVisible = container.style.display !== 'none';
+  if (isVisible) { container.style.display = 'none'; if(btn) btn.textContent = '🤖 Get AI analysis'; return; }
+  container.style.display = 'block';
+  container.innerHTML = '<div style="display:flex;align-items:center;gap:8px"><div class="spinner" style="width:16px;height:16px;border-width:2px"></div> Claude is analyzing this campaign...</div>';
+  if (btn) btn.textContent = '🤖 Hide analysis';
+  try {
+    const res = await fetch('/api/tasks/' + taskId + '/escalation-analysis', { method: 'POST' });
+    const data = await res.json();
+    if (data.analysis) {
+      container.innerHTML = '<div style="font-weight:600;margin-bottom:8px;font-size:14px">🤖 Claude Analysis</div>' +
+        '<div style="white-space:pre-wrap;font-size:14px;line-height:1.7">' + escHtml(data.analysis) + '</div>';
+    } else {
+      container.innerHTML = '<div style="color:#e53e3e">Analysis failed: ' + escHtml(data.error||'Unknown error') + '</div>';
+    }
+  } catch(e) {
+    container.innerHTML = '<div style="color:#e53e3e">Error: ' + e.message + '</div>';
+  }
 }
 
 // ── Toggle Task Detail Panel ─────────────────────────────────────────────
@@ -1959,6 +2084,9 @@ async function submitTaskModal(taskId, action) {
   }
   if (action === 'paused') {
     body.pausedReason = notes;
+  }
+  if (action === 'scaling') {
+    body.escalationReason = notes;
   }
 
   try {
