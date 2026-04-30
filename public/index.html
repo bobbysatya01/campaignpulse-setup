@@ -738,6 +738,28 @@ tbody tr:hover { background: var(--surface2); }
 <script>
 
 let appData = { metrics:{}, campaigns:[], alerts:[], exhaustionLog:[], lastSync:null };
+// Persist suppressed alert IDs across page refresh using localStorage
+// Auto-clear suppressions older than 24 hours so alerts come back next day
+(function cleanOldSuppressions() {
+  try {
+    const stored = JSON.parse(localStorage.getItem('suppressedAlertsV2') || '{}');
+    const now = Date.now();
+    const cleaned = {};
+    Object.keys(stored).forEach(function(id) {
+      if (now - stored[id] < 24 * 60 * 60 * 1000) cleaned[id] = stored[id];
+    });
+    localStorage.setItem('suppressedAlertsV2', JSON.stringify(cleaned));
+  } catch(e) {}
+})();
+let suppressedAlertIds = new Set(Object.keys(JSON.parse(localStorage.getItem('suppressedAlertsV2') || '{}')));
+function addSuppressedAlert(campaignId) {
+  suppressedAlertIds.add(String(campaignId));
+  try {
+    const stored = JSON.parse(localStorage.getItem('suppressedAlertsV2') || '{}');
+    stored[String(campaignId)] = Date.now();
+    localStorage.setItem('suppressedAlertsV2', JSON.stringify(stored));
+  } catch(e) {}
+}
 
 // Global agent name extractor - works on both campaign names and stored agent names
 function getTaskAgent(t) {
@@ -789,6 +811,10 @@ async function fetchData() {
     clearTimeout(timeout);
     if (!res.ok) throw new Error('API error ' + res.status);
     appData = await res.json();
+    // Keep locally dismissed/budgeted alerts suppressed until next full sync cycle
+    if (suppressedAlertIds.size > 0) {
+      appData.alerts = (appData.alerts || []).filter(function(a){ return !suppressedAlertIds.has(String(a.campaignId)); });
+    }
     allCampaigns = appData.campaigns || [];
     renderDashboard();
     updateSyncTime();
@@ -891,7 +917,7 @@ function renderDashboard() {
 
 function renderAlerts() {
   const container = document.getElementById('alert-container');
-  const alerts = (appData.alerts || []).filter(a => a.type === 'out_of_budget');
+  const alerts = (appData.alerts || []).filter(a => a.type === 'out_of_budget' && !suppressedAlertIds.has(String(a.campaignId)));
   if (!alerts.length) { container.innerHTML = ''; return; }
   container.innerHTML = alerts.map(a => `
     <div class="alert-banner" id="alert-${a.campaignId}">
@@ -927,6 +953,12 @@ function dismissAlert(campaignId) {
       ? (popup.querySelector('#da-other').value || 'Other')
       : popup.querySelector('#da-reason').value;
     overlay.remove();
+    // Remove from server state immediately so it doesn't come back on next fetch
+    try { await fetch('/api/alerts/' + campaignId + '/dismiss', { method: 'POST' }); } catch(e) {}
+    // Remove from local memory immediately so banner disappears at once
+    addSuppressedAlert(campaignId);
+    if (appData.alerts) appData.alerts = appData.alerts.filter(function(a){ return String(a.campaignId) !== String(campaignId); });
+    renderAlerts();
     // Find and dismiss the alert task in DB
     try {
       const tasksRes = await fetch('/api/tasks');
@@ -934,15 +966,13 @@ function dismissAlert(campaignId) {
       const alertTask = (tasksData.tasks||[]).find(function(t){ return String(t.campaign_id)===String(campaignId) && t.task_source==='alert' && (t.status==='open'||t.status==='in_progress'); });
       if (alertTask) {
         await fetch('/api/tasks/' + alertTask.id + '/status', {
-          method: 'POST', headers: {'Content-Type':'application/json'},
+          method: 'POST', headers:{'Content-Type':'application/json'},
           body: JSON.stringify({ status: 'dismissed', dismissedReason: reason, notes: reason })
         });
       }
-      const banner = document.getElementById('alert-' + campaignId);
-      if (banner) banner.remove();
-    } catch(e) {
-      alert('Error dismissing alert: ' + e.message);
-    }
+    } catch(e) {}
+    // Reload dashboard in background to sync fresh data
+    fetchData();
   };
   overlay.appendChild(popup);
   overlay.onclick = function(e){ if(e.target===overlay) overlay.remove(); };
@@ -1079,7 +1109,15 @@ async function approveBudget(campaignId, suggested) {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ amount })
     });
     const data = await res.json();
-    if (data.success) { alert('Done! +£' + amount + ' added. New budget: £' + data.newBudget.toFixed(2)); setTimeout(fetchData, 2000); }
+    if (data.success) {
+      alert('Done! +£' + amount + ' added. New budget: £' + data.newBudget.toFixed(2));
+      // Remove from server state and banner immediately
+      try { await fetch('/api/alerts/' + campaignId + '/dismiss', { method: 'POST' }); } catch(e) {}
+      addSuppressedAlert(campaignId);
+      if (appData.alerts) appData.alerts = appData.alerts.filter(function(a){ return String(a.campaignId) !== String(campaignId); });
+      renderAlerts();
+      fetchData();
+    }
     else alert('Error: ' + (data.error || 'Unknown'));
   } catch(e) { alert('Error: ' + e.message); }
 }
@@ -1257,9 +1295,17 @@ function renderFallbackAI(container, lowAcos, highAcos, outOfBudget) {
 }
 
 // ── Keyword Intelligence ────────────────────────────────────────────────────
+let kwDismissals = [];
+
 async function loadKeywords() {
   const container = document.getElementById('kw-container');
   try {
+    // Load dismissals first so we can filter wasters
+    try {
+      const dRes = await fetch('/api/keywords/dismissals');
+      const dData = await dRes.json();
+      kwDismissals = dData.dismissals || [];
+    } catch(e) { kwDismissals = []; }
     const statusRes = await fetch('/api/keywords/status');
     const status = await statusRes.json();
     if (status.reportId) {
@@ -1304,7 +1350,7 @@ async function loadKeywords() {
         <div class="table-card">
           <div style="overflow-x:auto"><table>
             <thead><tr><th>Search term</th><th>Campaign</th><th>Spend wasted</th><th>Reason</th><th>Action</th></tr></thead>
-            <tbody>${(a.wasteReduction?.topWasters||[]).map(w=>`<tr><td class="mono" style="font-weight:600">${escHtml(w.searchTerm)}</td><td style="font-size:12px;color:var(--text2)">${escHtml(w.campaign)}</td><td class="mono" style="color:var(--red);font-weight:600">${escHtml(w.spend)}</td><td style="font-size:12px;color:var(--text3)">${escHtml(w.reason)}</td><td><button class="btn btn-red" style="font-size:12px">Add negative</button></td></tr>`).join('')||'<tr><td colspan="5"><div class="empty">No wasting terms found</div></td></tr>'}</tbody>
+            <tbody>${(a.wasteReduction?.topWasters||[]).filter(w=>!kwDismissals.some(d=>d.search_term===w.searchTerm&&d.campaign===w.campaign)).map(w=>`<tr><td class="mono" style="font-weight:600">${escHtml(w.searchTerm)}</td><td style="font-size:12px;color:var(--text2)">${escHtml(w.campaign)}</td><td class="mono" style="color:var(--red);font-weight:600">${escHtml(w.spend)}</td><td style="font-size:12px;color:var(--text3)">${escHtml(w.reason)}</td><td style="display:flex;gap:6px"><button class="btn btn-red" style="font-size:12px">Add negative</button><button class="btn btn-ghost" style="font-size:12px" onclick="showKwDismissModal(${JSON.stringify(w.searchTerm)},${JSON.stringify(w.campaign)})">Dismiss</button></td></tr>`).join('')||'<tr><td colspan="5"><div class="empty">No wasting terms found</div></td></tr>'}</tbody>
           </table></div>
         </div>
       </div>
@@ -1345,6 +1391,47 @@ function showKwTab(tab, btn) {
   ['waste','keywords','bids','insights'].forEach(t => { const el = document.getElementById('kwt-'+t); if(el) el.style.display = t===tab?'':'none'; });
   document.querySelectorAll('#kw-tabs .tab-btn').forEach(b => b.classList.remove('active'));
   if (btn) btn.classList.add('active');
+}
+
+function showKwDismissModal(searchTerm, campaign) {
+  const existing = document.getElementById('kw-dismiss-modal');
+  if (existing) existing.remove();
+  const overlay = document.createElement('div');
+  overlay.id = 'kw-dismiss-modal';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9998;display:flex;align-items:center;justify-content:center';
+  overlay.innerHTML =
+    '<div style="background:white;padding:28px;border-radius:14px;box-shadow:0 8px 40px rgba(0,0,0,0.25);width:420px;max-width:95vw">' +
+      '<div style="font-size:16px;font-weight:700;margin-bottom:4px">🚫 Dismiss keyword suggestion</div>' +
+      '<div style="font-size:12px;color:#888;margin-bottom:4px"><strong>' + escHtml(searchTerm) + '</strong> in ' + escHtml(campaign) + '</div>' +
+      '<div style="font-size:12px;color:#888;margin-bottom:16px">Why should this not be a negative keyword? Your reason helps the AI learn.</div>' +
+      '<textarea id="kw-dismiss-reason" placeholder="e.g. This is our main keyword, intentional spend, testing this term..." style="width:100%;padding:10px;border:1.5px solid #ddd;border-radius:8px;font-size:13px;height:80px;resize:vertical;font-family:inherit;box-sizing:border-box"></textarea>' +
+      '<div id="kw-dismiss-error" style="color:#e53e3e;font-size:12px;margin-top:4px;display:none">Please add a reason before dismissing.</div>' +
+      '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">' +
+        '<button class="btn btn-ghost" style="font-size:13px" onclick="document.getElementById(&quot;kw-dismiss-modal&quot;).remove()">Cancel</button>' +
+        '<button class="btn btn-primary" style="font-size:13px" onclick="submitKwDismiss(' + JSON.stringify(searchTerm) + ',' + JSON.stringify(campaign) + ')">Dismiss</button>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(overlay);
+  setTimeout(function(){ const ta = document.getElementById('kw-dismiss-reason'); if(ta) ta.focus(); }, 50);
+  overlay.addEventListener('click', function(e){ if(e.target===overlay) overlay.remove(); });
+}
+
+async function submitKwDismiss(searchTerm, campaign) {
+  const reason = (document.getElementById('kw-dismiss-reason').value || '').trim();
+  if (!reason) {
+    document.getElementById('kw-dismiss-error').style.display = '';
+    document.getElementById('kw-dismiss-reason').style.border = '1.5px solid #e53e3e';
+    return;
+  }
+  document.getElementById('kw-dismiss-modal').remove();
+  try {
+    await fetch('/api/keywords/dismiss', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ searchTerm, campaign, reason, dismissedBy: 'agent' })
+    });
+    await loadKeywords();
+  } catch(e) { alert('Error dismissing: ' + e.message); }
 }
 
 async function refreshKeywords() {
@@ -1757,8 +1844,10 @@ function renderTasks(tab) {
     const problemIcon = t.problem_type === 'no_activity' ? '😴' : '💸';
     const dateStr = typeof t.created_date === 'string' ? t.created_date.split('T')[0] : String(t.created_date).split('T')[0];
 
-    return '<div class="ai-card" style="' + (isOverdue ? 'border-left:3px solid var(--red)' : '') + '">' +
-      '<div class="ai-header">' +
+    const cardId = 'task-card-' + t.id;
+    const detailId = 'task-detail-' + t.id;
+    return '<div class="ai-card" id="' + cardId + '" style="' + (isOverdue ? 'border-left:3px solid var(--red)' : '') + '">' +
+      '<div class="ai-header" style="cursor:pointer" onclick="toggleTaskDetail(' + t.id + ')">' +
         '<div class="ai-icon">' + problemIcon + '</div>' +
         '<div style="flex:1">' +
           '<div class="ai-title">' + escHtml(t.campaign_name) + '</div>' +
@@ -1767,77 +1856,125 @@ function renderTasks(tab) {
         '<div style="display:flex;gap:6px;align-items:center">' +
           (isOverdue ? '<span class="badge badge-red">Day ' + t.days_persisted + ' — Overdue</span>' : '') +
           '<span class="badge ' + (statusColors[t.status]||'badge-blue') + '">' + (statusLabels[t.status]||t.status) + '</span>' +
+          '<span style="font-size:11px;color:#aaa;margin-left:4px">▼</span>' +
         '</div>' +
       '</div>' +
-      '<div class="ai-desc">' + escHtml(t.problem_detail||'') + '</div>' +
-      (t.agent_notes ? '<div style="background:var(--blue-light);border:1px solid rgba(26,111,189,0.15);border-radius:8px;padding:8px 12px;font-size:12px;color:var(--blue);margin-bottom:12px"><strong>Agent notes:</strong> ' + escHtml(t.agent_notes) + '</div>' : '') +
+      '<div id="' + detailId + '" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid var(--border2)">' +
+        '<div style="font-size:12px;color:var(--text3);margin-bottom:8px"><strong>Problem:</strong> ' + escHtml(t.problem_detail||'—') + '</div>' +
+        '<div style="font-size:12px;color:var(--text3);margin-bottom:8px"><strong>Score:</strong> ' + (t.score||0) + ' pts · <strong>Days open:</strong> ' + (t.days_persisted||1) + '</div>' +
+        (t.first_action_at ? '<div style="font-size:12px;color:var(--text3);margin-bottom:8px"><strong>First action:</strong> ' + new Date(t.first_action_at).toLocaleString('en-GB') + '</div>' : '') +
+        (t.resolved_at ? '<div style="font-size:12px;color:var(--green);margin-bottom:8px"><strong>Resolved:</strong> ' + new Date(t.resolved_at).toLocaleString('en-GB') + '</div>' : '') +
+        (t.agent_notes ? '<div style="background:var(--blue-light);border:1px solid rgba(26,111,189,0.15);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--blue);margin-bottom:8px"><strong>Agent notes:</strong><br><span style="white-space:pre-wrap">' + escHtml(t.agent_notes) + '</span></div>' : '<div style="font-size:12px;color:#bbb;margin-bottom:8px;font-style:italic">No notes yet.</div>') +
+        (t.dismissed_reason ? '<div style="font-size:12px;color:var(--text3);margin-bottom:8px"><strong>Dismiss reason:</strong> ' + escHtml(t.dismissed_reason) + '</div>' : '') +
+        (t.paused_reason ? '<div style="font-size:12px;color:var(--text3);margin-bottom:8px"><strong>Pause reason:</strong> ' + escHtml(t.paused_reason) + '</div>' : '') +
+      '</div>' +
+
       (function() {
         if (t.status === 'complete') {
           const rt = t.resolved_at ? new Date(t.resolved_at).toLocaleTimeString('en-GB', {hour:'2-digit',minute:'2-digit'}) : '';
           return '<div style="font-size:12px;color:var(--green)">Resolved' + (rt ? ' at ' + rt : '') + '</div>';
         }
-        const wip = '<button class="btn btn-amber" style="font-size:12px" onclick="updateTask('+t.id+',\"in_progress\",\"\")">Working on it</button>';
-        const done = '<button class="btn btn-green" style="font-size:12px" onclick="promptTaskComplete('+t.id+')">Mark complete</button>';
-        const paused = '<button class="btn btn-red" style="font-size:12px" onclick="updateTask('+t.id+',\"complete\",\"Campaign paused\")">Paused campaign</button>';
-        return '<div class="ag">' + wip + done + paused + '</div>';
+        const wip = '<button class="btn btn-amber" style="font-size:12px" onclick="showTaskModal('+t.id+',\"in_progress\")">Working on it</button>';
+        const done = '<button class="btn btn-green" style="font-size:12px" onclick="showTaskModal('+t.id+',\"complete\")">Mark complete</button>';
+        const paused = '<button class="btn btn-red" style="font-size:12px" onclick="showTaskModal('+t.id+',\"paused\")">Paused campaign</button>';
+        const dismiss = '<button class="btn btn-ghost" style="font-size:12px" onclick="showTaskModal('+t.id+',\"dismissed\")">Dismiss</button>';
+        return '<div class="ag">' + wip + done + paused + dismiss + '</div>';
       }()) +
     '</div>';
   }).join('');
 }
 
-async function completeTask(taskId) {
-  await updateTask(taskId, 'complete', 'Done');
+// ── Toggle Task Detail Panel ─────────────────────────────────────────────
+function toggleTaskDetail(taskId) {
+  const detail = document.getElementById('task-detail-' + taskId);
+  if (!detail) return;
+  const isOpen = detail.style.display !== 'none';
+  detail.style.display = isOpen ? 'none' : 'block';
+  // flip arrow
+  const card = document.getElementById('task-card-' + taskId);
+  if (card) {
+    const arrow = card.querySelector('.ai-header span[style*="aaa"]');
+    if (arrow) arrow.textContent = isOpen ? '▼' : '▲';
+  }
 }
 
-function pauseTask(taskId) {
-  const reason = prompt('Reason for pausing this campaign:');
-  if (reason === null) return;
-  fetch('/api/tasks/' + taskId + '/status', {
-    method: 'POST', headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ status: 'paused', pausedReason: reason || 'Campaign paused', notes: reason || 'Campaign paused' })
-  }).then(function(){ loadTasks(); });
+// ── Unified Task Action Modal ─────────────────────────────────────────────
+function showTaskModal(taskId, action) {
+  // Remove any existing modal
+  const existing = document.getElementById('task-action-modal');
+  if (existing) existing.remove();
+
+  const titles = {
+    in_progress: '🔧 Working On It',
+    complete: '✅ Mark Complete',
+    paused: '⏸️ Pause Campaign',
+    dismissed: '🚫 Dismiss Task'
+  };
+  const placeholders = {
+    in_progress: 'What are you doing to fix this? (e.g. adjusted bids, changed targeting...)',
+    complete: 'What did you do to resolve this? Be specific so the team can learn.',
+    paused: 'Why are you pausing this campaign? (e.g. out of season, restructuring...)',
+    dismissed: 'Why are you dismissing this task? (e.g. main keyword, intentional spend...)'
+  };
+  const btnClass = { in_progress: 'btn-amber', complete: 'btn-green', paused: 'btn-red', dismissed: 'btn-ghost' };
+  const btnLabels = { in_progress: 'Confirm', complete: 'Mark Complete', paused: 'Pause Campaign', dismissed: 'Dismiss' };
+
+  const dismissReasonHtml = '';
+
+  const overlay = document.createElement('div');
+  overlay.id = 'task-action-modal';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9998;display:flex;align-items:center;justify-content:center';
+  overlay.innerHTML =
+    '<div style="background:white;padding:28px;border-radius:14px;box-shadow:0 8px 40px rgba(0,0,0,0.25);width:420px;max-width:95vw">' +
+      '<div style="font-size:16px;font-weight:700;margin-bottom:6px">' + (titles[action]||action) + '</div>' +
+      '<div style="font-size:12px;color:#888;margin-bottom:16px">Note is required — this helps the team learn and AI to improve.</div>' +
+      dismissReasonHtml +
+      '<textarea id="tm-notes" placeholder="' + (placeholders[action]||'Add your notes...') + '" style="width:100%;padding:10px;border:1.5px solid #ddd;border-radius:8px;font-size:13px;height:90px;resize:vertical;font-family:inherit;box-sizing:border-box" required></textarea>' +
+      '<div id="tm-error" style="color:#e53e3e;font-size:12px;margin-top:4px;display:none">Please add a note before continuing.</div>' +
+      '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">' +
+        '<button class="btn btn-ghost" style="font-size:13px" onclick="document.getElementById(&quot;task-action-modal&quot;).remove()">Cancel</button>' +
+        '<button class="btn ' + (btnClass[action]||'btn-primary') + '" style="font-size:13px" onclick="submitTaskModal(' + taskId + ',&quot;' + action + '&quot;)">' + (btnLabels[action]||'Confirm') + '</button>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(overlay);
+  // Focus textarea
+  setTimeout(function(){ const ta = document.getElementById('tm-notes'); if(ta) ta.focus(); }, 50);
+  // Close on overlay click
+  overlay.addEventListener('click', function(e){ if(e.target===overlay) overlay.remove(); });
+}
+
+async function submitTaskModal(taskId, action) {
+  const notes = (document.getElementById('tm-notes').value || '').trim();
+  if (!notes) {
+    document.getElementById('tm-error').style.display = '';
+    document.getElementById('tm-notes').style.border = '1.5px solid #e53e3e';
+    return;
+  }
+  const modal = document.getElementById('task-action-modal');
+  if (modal) modal.remove();
+
+  let body = { status: action, notes: notes };
+  if (action === 'dismissed') {
+    body.dismissedReason = notes;
+  }
+  if (action === 'paused') {
+    body.pausedReason = notes;
+  }
+
+  try {
+    await fetch('/api/tasks/' + taskId + '/status', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    await loadTasks();
+  } catch(e) { alert('Error updating task: ' + e.message); }
 }
 
 async function archiveTask(taskId) {
   if (!confirm('Archive this task? It will be removed from view but kept in records.')) return;
   try {
     await fetch('/api/tasks/' + taskId + '/archive', { method: 'POST' });
-    await loadTasks();
-  } catch(e) { alert('Error: ' + e.message); }
-}
-
-function dismissTask(taskId) {
-  const reasons = ['High ACOS', 'No CVR', 'Test Low Budget', 'Other'];
-  const sel = document.createElement('div');
-  sel.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:white;padding:24px;border-radius:12px;box-shadow:0 8px 40px rgba(0,0,0,0.2);z-index:9999;min-width:320px';
-  sel.setAttribute('data-task-id', taskId);
-  const optionsHtml = reasons.map(function(r){ return '<option>' + r + '</option>'; }).join('');
-  sel.innerHTML = '<div style="font-size:15px;font-weight:700;margin-bottom:16px">Why are you dismissing?</div>' +
-    '<select id="dismiss-reason-sel" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;margin-bottom:10px;font-size:13px">' + optionsHtml + '</select>' +
-    '<textarea id="dismiss-other-text" placeholder="Describe reason" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;font-size:13px;height:60px;display:none;margin-bottom:10px;resize:vertical"></textarea>' +
-    '<div style="display:flex;gap:8px;justify-content:flex-end">' +
-    '<button id="dismiss-cancel-btn" class="btn btn-ghost" style="font-size:12px">Cancel</button>' +
-    '<button id="dismiss-confirm-btn" class="btn btn-primary" style="font-size:12px">Confirm</button></div>';
-  sel.querySelector('#dismiss-reason-sel').onchange = function() {
-    sel.querySelector('#dismiss-other-text').style.display = this.value === 'Other' ? '' : 'none';
-  };
-  sel.querySelector('#dismiss-cancel-btn').onclick = function() { sel.remove(); };
-  sel.querySelector('#dismiss-confirm-btn').onclick = function() { confirmDismiss(taskId, sel); };
-  document.body.appendChild(sel);
-}
-
-async function confirmDismiss(taskId, popup) {
-  if (!popup) return;
-  const reasonSel = popup.querySelector('#dismiss-reason-sel');
-  const otherText = popup.querySelector('#dismiss-other-text');
-  const reason = reasonSel.value === 'Other' ? (otherText.value || 'Other') : reasonSel.value;
-  popup.remove();
-  try {
-    await fetch('/api/tasks/' + taskId + '/status', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: 'dismissed', dismissedReason: reason, notes: reason })
-    });
     await loadTasks();
   } catch(e) { alert('Error: ' + e.message); }
 }
@@ -1851,12 +1988,6 @@ async function updateTask(taskId, status, notes) {
     });
     await loadTasks();
   } catch(e) { alert('Error updating task: ' + e.message); }
-}
-
-function promptTaskComplete(taskId) {
-  const notes = prompt('What did you do to resolve this? (optional)');
-  if (notes === null) return;
-  updateTask(taskId, 'complete', notes);
 }
 
 async function runTasksNow() {
