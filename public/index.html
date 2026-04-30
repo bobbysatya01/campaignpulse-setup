@@ -1768,7 +1768,7 @@ function renderAgentTabs() {
     const active = dailyTasks.filter(function(t){ return t.agent_name===agent && ['open','in_progress','escalated','scaling'].indexOf(t.status) >= 0; }).length;
     const repeats = dailyTasks.filter(function(t){ return t.agent_name===agent && t.is_repeat_offender; }).length;
     const repeatBadge = repeats > 0 ? '<span style="position:absolute;top:-5px;right:-5px;background:#dc2626;color:white;font-size:9px;font-weight:700;padding:1px 5px;border-radius:8px">🔁' + repeats + '</span>' : '';
-    html += '<button style="' + btnStyle(selectedAgent===agent) + '" data-agent="' + escHtml(agent) + '" onclick="selectAgent(this,this.getAttribute('data-agent'))">' + escHtml(agent) + repeatBadge + '<br><span style="font-size:11px;font-weight:400;opacity:0.8">' + active + ' active</span></button>';
+    html += '<button style="' + btnStyle(selectedAgent===agent) + '" data-agent="' + escHtml(agent) + '" onclick="selectAgent(this,this.getAttribute(&quot;data-agent&quot;))">' + escHtml(agent) + repeatBadge + '<br><span style="font-size:11px;font-weight:400;opacity:0.8">' + active + ' active</span></button>';
   });
 
   container.innerHTML = html;
