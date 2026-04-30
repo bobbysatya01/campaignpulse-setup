@@ -142,6 +142,12 @@ async function loadHistoryDates() {
 }
 
 window.historyData = null;
+window.exhaustionSortState = {col:"time",dir:1};
+function sortExhaustion(col){
+  if(window.exhaustionSortState.col===col) window.exhaustionSortState.dir*=-1;
+  else{window.exhaustionSortState.col=col;window.exhaustionSortState.dir=1;}
+  if(window.historyData) filterHistoryByAgent();
+}
 window.historySortState = { col: 'spend', dir: -1 };
 
 function sortHistoryCol(col) {
@@ -281,7 +287,10 @@ async function loadHistoryDate() {
 
     // Exhaustion log table
     const exTbody = document.getElementById('history-exhaustion-table');
-    exTbody.innerHTML = (data.exhaustionLog||[]).map(function(e) {
+    const exLog = data.exhaustionLog||[];
+    const col=window.exhaustionSortState.col,dir=window.exhaustionSortState.dir;
+    const sortedEx=exLog.slice().sort(function(a,b){const va=col==="budget"?parseFloat((a.budget||"0").replace(/[^0-9.]/g,"")):col==="missed"?parseFloat((a.missed||"0").replace(/[^0-9.]/g,"")):col==="acos"?parseFloat(a.acos||0):col==="gap"?parseInt(a.gap||0):(a[col]||"");const vb=col==="budget"?parseFloat((b.budget||"0").replace(/[^0-9.]/g,"")):col==="missed"?parseFloat((b.missed||"0").replace(/[^0-9.]/g,"")):col==="acos"?parseFloat(b.acos||0):col==="gap"?parseInt(b.gap||0):(b[col]||"");return va<vb?dir:va>vb?-dir:0;});
+    exTbody.innerHTML = sortedEx.map(function(e) {
       return '<tr><td>' + (e.time||'—') + '</td><td><div class="camp-name">' + (e.campaign||'—') + '</div></td><td class="mono">£' + (e.budget||'0') + '</td><td class="mono">' + (e.acos||'0') + '</td><td class="mono">£' + (e.missed||'0') + '</td><td>' + (e.gap||'—') + '</td><td>' + (e.resolvedAt||'—') + '</td><td>' + (e.action||'Pending') + '</td></trd><td><div class="camp-name">' + escHtml(e.campaign||'—') + '</div></td><td style="font-size:12px">' + escHtml(e.portfolio||'—') + '</td><td style="font-size:12px">' + escHtml(e.agent||'—') + '</td><td class="mono">' + (e.budget||'—') + '</td><td class="mono">' + (e.acos||'—') + '</td><td class="mono" style="color:var(--red)">' + (e.missed||'—') + '</td><td class="mono" style="color:var(--green)">' + (e.resolvedAt||'—') + '</td><td class="mono" style="color:var(--amber);font-weight:600">' + (e.gap||'—') + '</td><td><span class="badge ' + (e.action==='Budget added'?'badge-green':e.action==='Dismissed'?'badge-red':'badge-amber') + '">' + (e.action||'—') + '</span></td></tr>';
     }).join('') || '<tr><td colspan="10"><div class="empty">No exhaustion events on this day</div></td></tr>';
     document.getElementById('history-metrics').style.display = '';
