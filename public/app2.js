@@ -154,7 +154,7 @@ function sortHistoryCol(col) {
 }
 
 function filterHistoryByAgent() {
-  if (!historyData) return;
+  if (!window.historyData) return;
   const agentFilter = document.getElementById('history-agent-filter')?.value || '';
   let camps = window.historyData.campaigns || [];
 
@@ -230,10 +230,12 @@ async function loadHistoryDate() {
     const res = await fetch('/api/snapshots/' + dateClean);
     if (!res.ok) {
       document.getElementById('history-empty').style.display = '';
-      document.getElementById('history-loading').textContent = '';
+      document.getElementById('history-metrics').style.display = '';
+    document.getElementById('history-loading').textContent = '';
       return;
     }
     const data = await res.json();
+    window.historyData = data;
     const m = data.metrics || {};
     document.getElementById('h-revenue').textContent = '£' + (m.totalRevenue||'0');
     document.getElementById('h-spend').textContent = '£' + (m.totalSpend||'0');
@@ -273,9 +275,11 @@ async function loadHistoryDate() {
       return '<tr><td class="mono" style="color:var(--red);font-weight:600">' + (e.time||'—') + '</td><td><div class="camp-name">' + escHtml(e.campaign||'—') + '</div></td><td style="font-size:12px">' + escHtml(e.portfolio||'—') + '</td><td style="font-size:12px">' + escHtml(e.agent||'—') + '</td><td class="mono">' + (e.budget||'—') + '</td><td class="mono">' + (e.acos||'—') + '</td><td class="mono" style="color:var(--red)">' + (e.missed||'—') + '</td><td class="mono" style="color:var(--green)">' + (e.resolvedAt||'—') + '</td><td class="mono" style="color:var(--amber);font-weight:600">' + (e.gap||'—') + '</td><td><span class="badge ' + (e.action==='Budget added'?'badge-green':e.action==='Dismissed'?'badge-red':'badge-amber') + '">' + (e.action||'—') + '</span></td></tr>';
     }).join('') || '<tr><td colspan="10"><div class="empty">No exhaustion events on this day</div></td></tr>';
     document.getElementById('history-metrics').style.display = '';
+    document.getElementById('history-metrics').style.display = '';
     document.getElementById('history-loading').textContent = '';
   } catch(e) {
     document.getElementById('history-empty').style.display = '';
+    document.getElementById('history-metrics').style.display = '';
     document.getElementById('history-loading').textContent = '';
   }
 }
