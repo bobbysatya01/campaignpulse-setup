@@ -1067,7 +1067,7 @@ app.post('/api/ai/analyse', async function(req, res) {
       const prompt = promptParts.join(' ');
       try {
         const aiRes = await axios.post('https://api.anthropic.com/v1/messages', {
-          model: 'claude-opus-4-7',
+          model: 'claude-opus-4-5-20251101',
           max_tokens: 500,
           messages: [{ role: 'user', content: prompt }]
         }, { headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' } });
@@ -1230,7 +1230,7 @@ async function analyseKeywords() {
 
     console.log('Calling Claude claude-opus-4-7 for keyword analysis...');
     const aiRes = await axios.post('https://api.anthropic.com/v1/messages', {
-      model: 'claude-opus-4-7',
+      model: 'claude-opus-4-5-20251101',
       max_tokens: 4000,
       messages: [{ role: 'user', content: prompt }]
     }, {
@@ -1403,7 +1403,7 @@ app.get('/api/agent-performance', async function(req, res) {
       'Be direct and honest. This is for a manager review. Keep each agent analysis to 4-5 sentences.';
 
     const response = await axios.post('https://api.anthropic.com/v1/messages', {
-      model: 'claude-opus-4-5',
+      model: 'claude-opus-4-5-20251101',
       max_tokens: 1500,
       messages: [{ role: 'user', content: prompt }]
     }, {
@@ -1626,7 +1626,7 @@ Provide:
 Be direct, specific, actionable. 3-4 sentences max per point.`;
 
     const response = await axios.post('https://api.anthropic.com/v1/messages', {
-      model: 'claude-opus-4-5',
+      model: 'claude-opus-4-5-20251101',
       max_tokens: 800,
       messages: [{ role: 'user', content: prompt }]
     }, {
@@ -1763,7 +1763,7 @@ app.get('/api/campaign-analysis/:campaignId', async function(req, res) {
     const campaignId = req.params.campaignId;
     // Get last 14 days of data for this campaign from snapshots
     const snapshots = await db.query(
-      "SELECT snapshot_date, campaigns FROM daily_snapshots WHERE snapshot_date > NOW() - INTERVAL '14 days' ORDER BY snapshot_date DESC LIMIT 14"
+      "SELECT TO_CHAR(snapshot_date, 'YYYY-MM-DD') as snapshot_date, campaigns FROM daily_snapshots WHERE snapshot_date >= CURRENT_DATE - INTERVAL '14 days' ORDER BY snapshot_date DESC LIMIT 14"
     );
     let history = [];
     snapshots.rows.forEach(function(snap) {
@@ -1799,7 +1799,7 @@ app.get('/api/campaign-analysis/:campaignId', async function(req, res) {
       'Be direct and specific. No generic advice.';
 
     const response = await axios.post('https://api.anthropic.com/v1/messages', {
-      model: 'claude-opus-4-5',
+      model: 'claude-opus-4-5-20251101',
       max_tokens: 400,
       messages: [{ role: 'user', content: prompt }]
     }, {
