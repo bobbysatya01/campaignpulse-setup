@@ -101,6 +101,7 @@ async function getGoogleAccessToken() {
 }
 
 async function syncGoogleCampaigns() {
+  console.log('Google vars check - CLIENT_ID:', !!process.env.GOOGLE_CLIENT_ID, 'REFRESH_TOKEN:', !!process.env.GOOGLE_REFRESH_TOKEN);
   if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_REFRESH_TOKEN) {
     console.log('Google Ads credentials not configured - skipping Google sync');
     return;
