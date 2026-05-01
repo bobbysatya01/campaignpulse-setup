@@ -311,6 +311,10 @@ tbody tr:hover { background: var(--surface2); }
       Activity log
     </button>
     <div class="nav-section">Admin</div>
+    <button class="nav-item" onclick="showPage('my-settings',this)">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="5" r="2.5"/><path d="M3 13c0-2.761 2.239-5 5-5s5 2.239 5 5"/></svg>
+      My Profile
+    </button>
     <button class="nav-item" id="nav-users" onclick="showPage('users',this)" style="display:none">
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M11 12c0-2.21-1.343-4-3-4S5 9.79 5 12"/><circle cx="8" cy="5" r="2.5"/><path d="M13.5 12c0-1.657-1.007-3-2.25-3M2.5 12c0-1.657 1.007-3 2.25-3"/><circle cx="12" cy="4.5" r="1.75"/><circle cx="4" cy="4.5" r="1.75"/></svg>
       User Management
@@ -626,6 +630,7 @@ tbody tr:hover { background: var(--surface2); }
 
     <!-- Task status tabs -->
     <div class="tabs" style="margin-bottom:16px">
+      <button class="tab-btn" id="ttab-all" onclick="showTaskTab('all',this)">All Tasks <span id="tab-all-count" style="background:#6b7280;color:white;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:4px">0</span></button>
       <button class="tab-btn active" id="ttab-due" onclick="showTaskTab('due',this)">Due <span id="tab-due-count" style="background:#e53e3e;color:white;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:4px">0</span></button>
       <button class="tab-btn" id="ttab-inprogress" onclick="showTaskTab('inprogress',this)">In Progress <span id="tab-inprogress-count" style="background:#d97706;color:white;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:4px">0</span></button>
       <button class="tab-btn" id="ttab-escalated" onclick="showTaskTab('escalated',this)">🚨 Escalated <span id="tab-escalated-count" style="background:#e53e3e;color:white;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:4px">0</span></button>
@@ -721,6 +726,34 @@ tbody tr:hover { background: var(--surface2); }
   </div>
 
   <!-- SETTINGS -->
+  <!-- MY PROFILE PAGE -->
+  <div class="page" id="page-my-settings">
+    <div class="settings-grid">
+      <div class="settings-card" style="max-width:500px">
+        <div class="settings-title">👤 My Profile</div>
+        <div id="my-profile-info" style="margin-bottom:20px;padding:16px;background:var(--surface2);border-radius:10px;font-size:14px">Loading...</div>
+        <div style="border-top:1px solid var(--border);padding-top:20px">
+          <div style="font-size:15px;font-weight:600;margin-bottom:14px">Change Password</div>
+          <div style="margin-bottom:12px">
+            <label style="font-size:12px;font-weight:600;color:#555;display:block;margin-bottom:4px">Current Password</label>
+            <input id="current-password" type="password" placeholder="Enter current password" style="width:100%;padding:9px 12px;border:1.5px solid #ddd;border-radius:8px;font-size:14px;box-sizing:border-box">
+          </div>
+          <div style="margin-bottom:12px">
+            <label style="font-size:12px;font-weight:600;color:#555;display:block;margin-bottom:4px">New Password</label>
+            <input id="new-pw" type="password" placeholder="Enter new password" style="width:100%;padding:9px 12px;border:1.5px solid #ddd;border-radius:8px;font-size:14px;box-sizing:border-box">
+          </div>
+          <div style="margin-bottom:16px">
+            <label style="font-size:12px;font-weight:600;color:#555;display:block;margin-bottom:4px">Confirm New Password</label>
+            <input id="confirm-pw" type="password" placeholder="Confirm new password" style="width:100%;padding:9px 12px;border:1.5px solid #ddd;border-radius:8px;font-size:14px;box-sizing:border-box">
+          </div>
+          <div id="pw-error" style="color:#e53e3e;font-size:13px;margin-bottom:10px;display:none"></div>
+          <div id="pw-success" style="color:var(--green);font-size:13px;margin-bottom:10px;display:none">✓ Password updated successfully</div>
+          <button class="btn btn-primary" style="font-size:14px" onclick="changeMyPassword()">Update Password</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- USER MANAGEMENT PAGE -->
   <div class="page" id="page-users">
     <div class="settings-grid">
@@ -815,10 +848,17 @@ async function checkAuth() {
     if (!data.name) { localStorage.removeItem('cp_token'); window.location.replace('/login.html'); return false; }
     currentUser = data;
     const userEl = document.getElementById('user-info');
+    // Format department label with proper capitalisation
+    const deptDisplayLabels = { amazon: 'Amazon Advertising', google: 'Google Advertising', supply_chain: 'Supply Chain & Procurement', logistics: 'Logistics & Fulfilment', manager: 'Director' };
+    const deptDisplay = deptDisplayLabels[data.department] || data.department.charAt(0).toUpperCase() + data.department.slice(1);
+    const roleDisplay = data.role === 'manager' ? 'Director' : data.department === 'amazon' ? 'Amazon Advertising' : data.department === 'google' ? 'Google Advertising' : data.department === 'supply_chain' ? 'Supply Chain & Procurement' : data.department === 'logistics' ? 'Logistics & Fulfilment' : data.role.charAt(0).toUpperCase() + data.role.slice(1);
+
     if (userEl) userEl.innerHTML =
-      '<span style="font-size:13px;color:var(--text3)">' + escHtml(data.name) + '</span>' +
-      '<span style="font-size:11px;padding:2px 8px;border-radius:10px;background:var(--surface2);color:var(--text3);margin-left:6px">' + escHtml(data.department) + '</span>' +
-      '<button onclick="doLogout()" style="background:none;border:none;cursor:pointer;font-size:12px;color:var(--text3);margin-left:10px;font-family:inherit">Sign out</button>';
+      '<div style="display:flex;flex-direction:column;align-items:flex-end;margin-right:8px">' +
+        '<span style="font-size:15px;font-weight:700;color:var(--text)">' + escHtml(data.name) + '</span>' +
+        '<span style="font-size:12px;font-weight:600;color:var(--accent)">' + escHtml(roleDisplay) + '</span>' +
+      '</div>' +
+      '<button onclick="doLogout()" style="background:var(--surface2);border:1px solid var(--border);cursor:pointer;font-size:13px;font-weight:600;color:var(--text2);padding:6px 14px;border-radius:8px;font-family:inherit">Sign Out</button>';
     return true;
   } catch(e) { window.location.href = '/login.html'; return false; }
 }
@@ -896,7 +936,7 @@ function sortReport(col) {
   if (ind) ind.textContent = reportSortState.dir === -1 ? ' ↓' : ' ↑';
   renderReport();
 }
-const pageTitles = { dashboard:'Dashboard', campaigns:'All campaigns', ai:'AI analysis', keywords:'Keyword Intelligence', report:'Budget exhaustion report', activity:'Activity log', settings:'Settings', tasks:'Campaign Tasks', 'agent-performance':'Agent Performance', stuck:'Underperforming', history:'Daily History', users:'User Management' };
+const pageTitles = { dashboard:'Dashboard', campaigns:'All campaigns', ai:'AI analysis', keywords:'Keyword Intelligence', report:'Budget exhaustion report', activity:'Activity log', settings:'Settings', tasks:'Campaign Tasks', 'agent-performance':'Agent Performance', stuck:'Underperforming', history:'Daily History', users:'User Management', 'my-settings':'My Profile' };
 
 // ── Navigation ─────────────────────────────────────────────────────────────
 function showPage(name, btn) {
@@ -912,6 +952,7 @@ function showPage(name, btn) {
   if (name === 'tasks') loadTasks();
   if (name === 'settings') loadSettings();
   if (name === 'users') loadUsers();
+  if (name === 'my-settings') loadMyProfile();
   if (name === 'activity') renderActivity();
   if (name === 'ai') {
     // Don't auto-run AI — show button only to save API credits
@@ -1754,13 +1795,63 @@ async function loadAgentPerformance(forceRefresh) {
       return;
     }
     const analysis = data.analysis || 'No analysis available yet. Tasks need to be created and actioned first.';
-    const cached = data.cached ? '<div style="font-size:12px;color:#aaa;margin-bottom:16px">📦 Cached analysis (refreshes hourly) · <button class="btn btn-ghost" style="font-size:11px" onclick="loadAgentPerformance(true)">Force refresh</button></div>' : '<div style="font-size:12px;color:#aaa;margin-bottom:16px">✨ Fresh analysis just generated</div>';
-    // Format the analysis text nicely
-    const formatted = escHtml(analysis)
-      .replace(/\n\n/g, '</p><p style="margin-bottom:14px">')
-      .replace(/\n/g, '<br>');
+    const cached = data.cached
+      ? '<div style="font-size:12px;color:#aaa;margin-bottom:20px">📦 Cached · <button class="btn btn-ghost" style="font-size:11px" onclick="loadAgentPerformance(true)">Force refresh</button></div>'
+      : '<div style="font-size:12px;color:#aaa;margin-bottom:20px">✨ Fresh analysis · ' + new Date().toLocaleString('en-GB', {day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) + '</div>';
 
-    container.innerHTML = cached + '<div class="ai-card" style="padding:20px"><p style="margin-bottom:14px">' + formatted + '</p></div>';
+    // Parse agent sections from Claude response — split by agent name headings
+    const agents = ['Aryan', 'Satyam', 'Kunal'];
+    const sections = [];
+    let remaining = analysis;
+
+    agents.forEach(function(agent) {
+      const idx = remaining.indexOf(agent);
+      if (idx >= 0) {
+        sections.push({ agent: agent, content: remaining.substring(idx) });
+        remaining = remaining.substring(0, idx);
+      }
+    });
+    sections.reverse();
+
+    // If we found agent sections, render as cards
+    let html = cached;
+    if (sections.length > 0) {
+      sections.forEach(function(s) {
+        // Extract rating if present
+        const ratingMatch = s.content.match(/(Strong|Average|Needs Improvement)/i);
+        const rating = ratingMatch ? ratingMatch[1] : null;
+        const ratingColor = rating === 'Strong' ? 'var(--green)' : rating === 'Average' ? 'var(--amber)' : rating === 'Needs Improvement' ? 'var(--red)' : '#888';
+
+        // Format content — split into paragraphs
+        const nextAgentIdx = Math.min(...agents.filter(a => a !== s.agent).map(a => { const i = s.content.indexOf(a, s.agent.length + 1); return i > 0 ? i : Infinity; }));
+        const agentContent = isFinite(nextAgentIdx) ? s.content.substring(0, nextAgentIdx) : s.content;
+
+        const formatted = escHtml(agentContent)
+          .replace(/[*][*]([^*]+)[*][*]/g, '<strong>$1</strong>')
+          .replace(/\n\n/g, '</p><p style="margin-bottom:10px">')
+          .replace(/\n/g, '<br>');
+
+        html += '<div class="ai-card" style="margin-bottom:16px;border-left:4px solid ' + ratingColor + '">' +
+          '<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">' +
+            '<div style="width:44px;height:44px;border-radius:50%;background:var(--accent);color:white;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700">' + s.agent[0] + '</div>' +
+            '<div>' +
+              '<div style="font-size:17px;font-weight:700">' + s.agent + '</div>' +
+              (rating ? '<div style="font-size:12px;font-weight:600;color:' + ratingColor + '">' + rating + '</div>' : '') +
+            '</div>' +
+          '</div>' +
+          '<div style="font-size:14px;line-height:1.7;color:var(--text2)"><p style="margin-bottom:10px">' + formatted + '</p></div>' +
+        '</div>';
+      });
+    } else {
+      // Fallback — plain formatted text
+      const formatted = escHtml(analysis)
+        .replace(/[*][*]([^*]+)[*][*]/g, '<strong>$1</strong>')
+        .replace(/\n\n/g, '</p><p style="margin-bottom:14px">')
+        .replace(/\n/g, '<br>');
+      html += '<div class="ai-card" style="padding:20px"><p style="margin-bottom:14px">' + formatted + '</p></div>';
+    }
+    container.innerHTML = html;
+    container.setAttribute('data-loaded', '1');
   } catch(e) {
     container.innerHTML = '<div class="empty">Failed to load: ' + escHtml(e.message) + '</div>';
   }
@@ -1858,7 +1949,10 @@ async function loadStuckCampaigns() {
         '<td class="mono">£' + c.totalSpend + '</td>' +
         '<td class="mono">£' + c.lastBudget + '</td>' +
         '<td style="font-size:12px;color:var(--text3)">Zero impressions — bid too low or targeting broken</td>' +
-        '<td><div class="ag"><button class="btn btn-red" style="font-size:11px">Pause</button><button class="btn btn-ghost" style="font-size:11px">Review</button></div></td>' +
+        '<td><div class="ag">' +
+          '<button class="btn btn-red" style="font-size:11px" data-cid="' + c.campaignId + '" data-cname="' + escHtml(c.name) + '" onclick="showStuckModal(this,&quot;pause&quot;)">Pause</button>' +
+          '<button class="btn btn-ghost" style="font-size:11px" data-cid="' + c.campaignId + '" data-cname="' + escHtml(c.name) + '" onclick="showStuckModal(this,&quot;review&quot;)">Work on it (1 week)</button>' +
+          '</div></td>' +
         '</tr>';
     }).join('') : '<tr><td colspan="8"><div class="empty">No campaigns with 3+ days zero activity</div></td></tr>';
 
@@ -1877,7 +1971,10 @@ async function loadStuckCampaigns() {
         '<td class="mono" style="color:var(--red);font-weight:600">£' + c.totalWastedSpend + '</td>' +
         '<td class="mono ' + (parseFloat(c.avgAcos)>35?'acos-high':parseFloat(c.avgAcos)>12?'acos-warn':'') + '">' + c.avgAcos + '%</td>' +
         '<td style="font-size:12px;color:var(--text3)">Spend with zero attributed revenue</td>' +
-        '<td><div class="ag"><button class="btn btn-red" style="font-size:11px">Pause</button><button class="btn btn-ghost" style="font-size:11px">Review</button></div></td>' +
+        '<td><div class="ag">' +
+          '<button class="btn btn-red" style="font-size:11px" data-cid="' + c.campaignId + '" data-cname="' + escHtml(c.name) + '" onclick="showStuckModal(this,&quot;pause&quot;)">Pause</button>' +
+          '<button class="btn btn-ghost" style="font-size:11px" data-cid="' + c.campaignId + '" data-cname="' + escHtml(c.name) + '" onclick="showStuckModal(this,&quot;review&quot;)">Work on it (1 week)</button>' +
+          '</div></td>' +
         '</tr>';
     }).join('') : '<tr><td colspan="8"><div class="empty">No campaigns with 7+ days spend and no revenue</div></td></tr>';
 
@@ -2165,6 +2262,7 @@ function updateTaskTabCounts() {
   const daily = allTasks.filter(function(t){ return (t.task_source||'daily') !== 'alert'; });
   const agentFiltered = selectedAgent ? daily.filter(function(t){ return t.agent_name === selectedAgent; }) : daily;
   const counts = {
+    all: agentFiltered.filter(function(t){ return !t.archived_at; }).length,
     due: agentFiltered.filter(function(t){ return t.status === 'open' && (t.days_persisted||1) < 3; }).length,
     inprogress: agentFiltered.filter(function(t){ return t.status === 'in_progress'; }).length,
     escalated: agentFiltered.filter(function(t){ return t.status === 'open' && (t.days_persisted||1) >= 3; }).length,
@@ -2192,7 +2290,8 @@ function renderTasks(tab) {
   const daily = agentTasks.filter(function(t){ return (t.task_source||'daily') !== 'alert'; });
 
   let filtered = [];
-  if (tab === 'due') filtered = daily.filter(function(t){ return t.status === 'open' && t.days_persisted < 3; });
+  if (tab === 'all') filtered = daily.filter(function(t){ return !t.archived_at; });
+  else if (tab === 'due') filtered = daily.filter(function(t){ return t.status === 'open' && t.days_persisted < 3; });
   else if (tab === 'inprogress') filtered = daily.filter(function(t){ return t.status === 'in_progress'; });
   else if (tab === 'escalated') filtered = daily.filter(function(t){ return t.status === 'open' && t.days_persisted >= 3; });
   else if (tab === 'scaling') filtered = daily.filter(function(t){ return t.status === 'scaling'; });
@@ -2274,10 +2373,11 @@ function renderTasks(tab) {
         '<button class="btn btn-ghost" style="font-size:12px;margin-top:8px" onclick="loadEscalationAnalysis(' + t.id + ',this)">🤖 Get AI analysis</button>' +
         '<div id="ai-analysis-' + t.id + '" style="display:none;margin-top:10px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:14px;font-size:14px;line-height:1.6;color:#0369a1"></div>';
     } else {
-      // Due or In Progress
-      actionButtons = '<div class="ag" style="margin-top:8px">' +
+      // Due or In Progress — include scaling button
+      actionButtons = '<div class="ag" style="margin-top:8px;flex-wrap:wrap">' +
         '<button class="btn btn-amber" style="font-size:12px" onclick="showTaskModal(' + t.id + ',&quot;in_progress&quot;)">Working on it</button>' +
         '<button class="btn btn-green" style="font-size:12px" onclick="showTaskModal(' + t.id + ',&quot;complete&quot;)">Mark complete</button>' +
+        '<button class="btn btn-ghost" style="font-size:12px;background:#f3e8ff;color:#7c3aed;border-color:#c4b5fd" onclick="showScalingModal(' + t.id + ')">⏱ Move to Scaling</button>' +
         '<button class="btn btn-red" style="font-size:12px" onclick="showTaskModal(' + t.id + ',&quot;paused&quot;)">Pause campaign</button>' +
         '<button class="btn btn-ghost" style="font-size:12px" onclick="showTaskModal(' + t.id + ',&quot;dismissed&quot;)">Dismiss</button>' +
         '</div>';
@@ -2304,6 +2404,10 @@ function renderTasks(tab) {
       '</div>' +
       '<div id="' + detailId + '" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid var(--border2)">' +
         '<div style="font-size:15px;color:var(--text);margin-bottom:12px"><strong>Problem:</strong> ' + escHtml(t.problem_detail||'—') + '</div>' +
+        '<div style="margin-bottom:12px">' +
+          '<button class="btn btn-ghost" style="font-size:12px" onclick="loadSpendBreakdown(' + JSON.stringify(t.campaign_id) + ',&quot;breakdown-' + t.id + '&quot;,this)">📊 Show daily spend breakdown</button>' +
+          '<div id="breakdown-' + t.id + '" style="display:none;margin-top:8px"></div>' +
+        '</div>' +
         '<div style="font-size:15px;color:var(--text);margin-bottom:12px"><strong>Score:</strong> ' + (t.score||0) + ' pts · <strong>Days open:</strong> ' + (t.days_persisted||1) + '</div>' +
         (t.first_action_at ? '<div style="font-size:15px;color:var(--text);margin-bottom:12px"><strong>First action:</strong> ' + new Date(t.first_action_at).toLocaleString('en-GB') + '</div>' : '') +
         (t.resolved_at ? '<div style="font-size:15px;color:var(--green);margin-bottom:12px"><strong>Resolved:</strong> ' + new Date(t.resolved_at).toLocaleString('en-GB') + '</div>' : '') +
@@ -2361,6 +2465,103 @@ async function loadEscalationAnalysis(taskId, btn) {
   } catch(e) {
     container.innerHTML = '<div style="color:#e53e3e">Error: ' + e.message + '</div>';
   }
+}
+
+// ── Underperforming Campaign Modal (Pause / Work on it 1 week) ───────────
+function showStuckModal(btn, action) {
+  const campaignId = btn.getAttribute('data-cid');
+  const campaignName = btn.getAttribute('data-cname');
+  const existing = document.getElementById('stuck-modal');
+  if (existing) existing.remove();
+
+  const isReview = action === 'review';
+  const overlay = document.createElement('div');
+  overlay.id = 'stuck-modal';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9998;display:flex;align-items:center;justify-content:center';
+  overlay.innerHTML =
+    '<div style="background:white;padding:28px;border-radius:14px;box-shadow:0 8px 40px rgba(0,0,0,0.25);width:440px;max-width:95vw">' +
+      '<div style="font-size:16px;font-weight:700;margin-bottom:4px">' + (isReview ? '⏱ Work on it for 1 week' : '⏸ Pause Campaign') + '</div>' +
+      '<div style="font-size:13px;color:#555;margin-bottom:4px">' + escHtml(campaignName) + '</div>' +
+      '<div style="font-size:12px;color:#888;margin-bottom:16px">' +
+        (isReview ? 'This campaign will be flagged for 1 week. If not resolved by then, a campaign task will be created automatically.' : 'Why are you pausing this campaign?') +
+      '</div>' +
+      '<textarea id="stuck-notes" placeholder="' + (isReview ? 'What is your plan to fix this? Be specific...' : 'Reason for pausing...') + '" style="width:100%;padding:10px;border:1.5px solid #ddd;border-radius:8px;font-size:13px;height:90px;resize:vertical;font-family:inherit;box-sizing:border-box"></textarea>' +
+      '<div id="stuck-error" style="color:#e53e3e;font-size:12px;margin-top:4px;display:none">Please add a note before continuing.</div>' +
+      '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">' +
+        '<button class="btn btn-ghost" style="font-size:13px" onclick="document.getElementById(&quot;stuck-modal&quot;).remove()">Cancel</button>' +
+        '<button class="btn ' + (isReview ? 'btn-amber' : 'btn-red') + '" style="font-size:13px" onclick="submitStuckAction(' + JSON.stringify(campaignId) + ',' + JSON.stringify(campaignName) + ',&quot;' + action + '&quot;)">' + (isReview ? 'Flag for 1 week' : 'Pause Campaign') + '</button>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(overlay);
+  setTimeout(function(){ const ta = document.getElementById('stuck-notes'); if(ta) ta.focus(); }, 50);
+  overlay.addEventListener('click', function(e){ if(e.target===overlay) overlay.remove(); });
+}
+
+async function submitStuckAction(campaignId, campaignName, action) {
+  const notes = (document.getElementById('stuck-notes').value || '').trim();
+  if (!notes) {
+    document.getElementById('stuck-error').style.display = '';
+    return;
+  }
+  document.getElementById('stuck-modal').remove();
+  try {
+    await fetch('/api/stuck-campaigns/action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ campaignId, campaignName, action, notes })
+    });
+    // Log to activity
+    await fetch('/api/activity/log', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        campaignId, campaignName,
+        action: action === 'review' ? 'stuck_flagged_1week' : 'stuck_paused',
+        notes
+      })
+    });
+    loadStuckCampaigns();
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+// ── Campaign Daily Spend Breakdown ───────────────────────────────────────
+async function loadSpendBreakdown(campaignId, containerId, btn) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  if (container.style.display !== 'none') {
+    container.style.display = 'none';
+    if (btn) btn.textContent = '📊 Show daily spend breakdown';
+    return;
+  }
+  container.style.display = 'block';
+  container.innerHTML = '<div style="font-size:13px;color:#888">Loading...</div>';
+  if (btn) btn.textContent = '📊 Hide breakdown';
+  try {
+    const res = await fetch('/api/campaigns/' + encodeURIComponent(campaignId) + '/spend-breakdown');
+    const data = await res.json();
+    const rows = data.breakdown || [];
+    if (!rows.length) { container.innerHTML = '<div style="font-size:13px;color:#aaa">No daily data available</div>'; return; }
+    container.innerHTML =
+      '<table style="width:100%;border-collapse:collapse;font-size:13px">' +
+      '<thead><tr style="background:var(--surface2)">' +
+        '<th style="text-align:left;padding:6px 10px;font-size:12px;color:#888">Date</th>' +
+        '<th style="text-align:right;padding:6px 10px;font-size:12px;color:#888">Spend</th>' +
+        '<th style="text-align:right;padding:6px 10px;font-size:12px;color:#888">Revenue</th>' +
+        '<th style="text-align:right;padding:6px 10px;font-size:12px;color:#888">ACOS</th>' +
+        '<th style="text-align:right;padding:6px 10px;font-size:12px;color:#888">Clicks</th>' +
+      '</tr></thead><tbody>' +
+      rows.map(function(r) {
+        const hasRevenue = parseFloat(r.sales) > 0;
+        return '<tr style="border-bottom:1px solid var(--border)">' +
+          '<td style="padding:7px 10px">' + r.date + '</td>' +
+          '<td style="padding:7px 10px;text-align:right;color:var(--red);font-weight:600">£' + r.spend + '</td>' +
+          '<td style="padding:7px 10px;text-align:right;color:' + (hasRevenue ? 'var(--green)' : '#aaa') + ';font-weight:600">' + (hasRevenue ? '£' + r.sales : '£0.00') + '</td>' +
+          '<td style="padding:7px 10px;text-align:right">' + (parseFloat(r.acos) > 0 ? r.acos + '%' : '—') + '</td>' +
+          '<td style="padding:7px 10px;text-align:right">' + r.clicks + '</td>' +
+        '</tr>';
+      }).join('') +
+      '</tbody></table>';
+  } catch(e) { container.innerHTML = '<div style="font-size:13px;color:#e53e3e">Error: ' + e.message + '</div>'; }
 }
 
 // ── Toggle Task Detail Panel ─────────────────────────────────────────────
@@ -2530,6 +2731,49 @@ function resetSettings() {
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────
+// ── My Profile ───────────────────────────────────────────────────────────
+function loadMyProfile() {
+  const infoEl = document.getElementById('my-profile-info');
+  if (!infoEl || !currentUser) return;
+  const deptLabels = { amazon: 'Amazon Advertising', google: 'Google Advertising', supply_chain: 'Supply Chain & Procurement', logistics: 'Logistics & Fulfilment', manager: 'Manager' };
+  infoEl.innerHTML =
+    '<div style="font-weight:600;font-size:15px;margin-bottom:6px">' + escHtml(currentUser.name) + '</div>' +
+    '<div style="color:#888;margin-bottom:4px">' + escHtml(currentUser.email) + '</div>' +
+    '<div style="color:#888">' + escHtml(deptLabels[currentUser.department]||currentUser.department) + ' · ' + escHtml(currentUser.role) + '</div>';
+}
+
+async function changeMyPassword() {
+  const current = document.getElementById('current-password').value;
+  const newPw = document.getElementById('new-pw').value;
+  const confirm = document.getElementById('confirm-pw').value;
+  const errEl = document.getElementById('pw-error');
+  const successEl = document.getElementById('pw-success');
+  errEl.style.display = 'none';
+  successEl.style.display = 'none';
+
+  if (!current || !newPw || !confirm) { errEl.textContent = 'Please fill in all fields.'; errEl.style.display = 'block'; return; }
+  if (newPw !== confirm) { errEl.textContent = 'New passwords do not match.'; errEl.style.display = 'block'; return; }
+  if (newPw.length < 6) { errEl.textContent = 'Password must be at least 6 characters.'; errEl.style.display = 'block'; return; }
+
+  try {
+    const res = await fetch('/api/auth/change-password', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ currentPassword: current, newPassword: newPw })
+    });
+    const data = await res.json();
+    if (data.success) {
+      successEl.style.display = 'block';
+      document.getElementById('current-password').value = '';
+      document.getElementById('new-pw').value = '';
+      document.getElementById('confirm-pw').value = '';
+    } else {
+      errEl.textContent = data.error || 'Failed to update password.';
+      errEl.style.display = 'block';
+    }
+  } catch(e) { errEl.textContent = 'Error: ' + e.message; errEl.style.display = 'block'; }
+}
+
 // ── User Management ──────────────────────────────────────────────────────
 async function loadUsers() {
   try {
@@ -2537,16 +2781,80 @@ async function loadUsers() {
     const data = await res.json();
     const container = document.getElementById('users-list');
     if (!container) return;
-    const deptLabels = { amazon: 'Amazon Advertising', google: 'Google Advertising', supply_chain: 'Supply Chain', logistics: 'Logistics', manager: 'Manager' };
+    const deptLabels = { amazon: 'Amazon Advertising', google: 'Google Advertising', supply_chain: 'Supply Chain & Procurement', logistics: 'Logistics & Fulfilment', manager: 'Manager' };
     container.innerHTML = (data.users||[]).map(function(u) {
-      return '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);font-size:13px">' +
-        '<div style="flex:1"><strong>' + escHtml(u.name) + '</strong> <span style="color:#888">' + escHtml(u.email) + '</span></div>' +
-        '<div style="font-size:11px;padding:2px 8px;border-radius:10px;background:var(--surface2);color:var(--text3)">' + escHtml(deptLabels[u.department]||u.department) + '</div>' +
-        '<div style="font-size:11px;color:' + (u.is_active ? 'var(--green)' : 'var(--red)') + '">' + (u.is_active ? 'Active' : 'Inactive') + '</div>' +
-        '<div style="font-size:11px;color:#aaa">' + (u.last_login ? new Date(u.last_login).toLocaleDateString('en-GB') : 'Never') + '</div>' +
+      return '<div style="padding:14px 0;border-bottom:1px solid var(--border)">' +
+        '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">' +
+          '<div style="width:36px;height:36px;border-radius:50%;background:var(--accent);color:white;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;flex-shrink:0">' + escHtml(u.name[0]||'?') + '</div>' +
+          '<div style="flex:1">' +
+            '<div style="font-size:14px;font-weight:600">' + escHtml(u.name) + ' <span style="font-size:12px;color:#888;font-weight:400">' + escHtml(u.email) + '</span></div>' +
+            '<div style="font-size:12px;color:#888;margin-top:2px">' + escHtml(deptLabels[u.department]||u.department) + ' · ' + (u.is_active ? '<span style="color:var(--green)">Active</span>' : '<span style="color:var(--red)">Inactive</span>') + ' · Last login: ' + (u.last_login ? new Date(u.last_login).toLocaleDateString('en-GB') : 'Never') + '</div>' +
+          '</div>' +
+          '<button class="btn btn-ghost" style="font-size:12px" onclick="showEditUser(' + u.id + ',&quot;' + escHtml(u.name) + '&quot;,&quot;' + escHtml(u.email) + '&quot;,&quot;' + u.department + '&quot;,' + u.is_active + ')">Edit</button>' +
+        '</div>' +
       '</div>';
-    }).join('') || '<div style="color:#aaa;font-size:13px">No users yet</div>';
+    }).join('') || '<div style="color:#aaa;font-size:13px;padding:16px 0">No users yet — add your first team member below.</div>';
   } catch(e) { console.error('Load users error:', e); }
+}
+
+function showEditUser(userId, name, email, department, isActive) {
+  const existing = document.getElementById('edit-user-modal');
+  if (existing) existing.remove();
+  const deptOptions = ['amazon','google','supply_chain','logistics','manager'];
+  const deptLabels = { amazon: 'Amazon Advertising', google: 'Google Advertising', supply_chain: 'Supply Chain & Procurement', logistics: 'Logistics & Fulfilment', manager: 'Manager' };
+  const overlay = document.createElement('div');
+  overlay.id = 'edit-user-modal';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9998;display:flex;align-items:center;justify-content:center';
+  overlay.innerHTML =
+    '<div style="background:white;padding:28px;border-radius:14px;box-shadow:0 8px 40px rgba(0,0,0,0.25);width:440px;max-width:95vw">' +
+      '<div style="font-size:16px;font-weight:700;margin-bottom:20px">✏️ Edit User</div>' +
+      '<div style="margin-bottom:12px"><label style="font-size:12px;font-weight:600;color:#555;display:block;margin-bottom:4px">Full Name</label>' +
+      '<input id="edit-name" value="' + escHtml(name) + '" style="width:100%;padding:9px 12px;border:1.5px solid #ddd;border-radius:8px;font-size:14px;box-sizing:border-box"></div>' +
+      '<div style="margin-bottom:12px"><label style="font-size:12px;font-weight:600;color:#555;display:block;margin-bottom:4px">Email</label>' +
+      '<input id="edit-email" value="' + escHtml(email) + '" type="email" style="width:100%;padding:9px 12px;border:1.5px solid #ddd;border-radius:8px;font-size:14px;box-sizing:border-box"></div>' +
+      '<div style="margin-bottom:12px"><label style="font-size:12px;font-weight:600;color:#555;display:block;margin-bottom:4px">Department</label>' +
+      '<select id="edit-dept" style="width:100%;padding:9px 12px;border:1.5px solid #ddd;border-radius:8px;font-size:14px;box-sizing:border-box">' +
+      deptOptions.map(function(d){ return '<option value="' + d + '"' + (d===department?' selected':'') + '>' + deptLabels[d] + '</option>'; }).join('') +
+      '</select></div>' +
+      '<div style="margin-bottom:12px"><label style="font-size:12px;font-weight:600;color:#555;display:block;margin-bottom:4px">New Password <span style="font-weight:400;color:#aaa">(leave blank to keep current)</span></label>' +
+      '<input id="edit-password" type="password" placeholder="Enter new password to change it" style="width:100%;padding:9px 12px;border:1.5px solid #ddd;border-radius:8px;font-size:14px;box-sizing:border-box"></div>' +
+      '<div style="margin-bottom:16px;display:flex;align-items:center;gap:8px">' +
+      '<input type="checkbox" id="edit-active"' + (isActive?' checked':'') + ' style="width:16px;height:16px">' +
+      '<label for="edit-active" style="font-size:14px">Account active</label></div>' +
+      '<div id="edit-user-error" style="color:#e53e3e;font-size:12px;margin-bottom:10px;display:none"></div>' +
+      '<div style="display:flex;gap:8px;justify-content:flex-end">' +
+        '<button class="btn btn-ghost" style="font-size:13px" onclick="document.getElementById(&quot;edit-user-modal&quot;).remove()">Cancel</button>' +
+        '<button class="btn btn-primary" style="font-size:13px" onclick="saveEditUser(' + userId + ')">Save Changes</button>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', function(e){ if(e.target===overlay) overlay.remove(); });
+}
+
+async function saveEditUser(userId) {
+  const name = document.getElementById('edit-name').value.trim();
+  const email = document.getElementById('edit-email').value.trim();
+  const department = document.getElementById('edit-dept').value;
+  const password = document.getElementById('edit-password').value;
+  const isActive = document.getElementById('edit-active').checked;
+  const errEl = document.getElementById('edit-user-error');
+  errEl.style.display = 'none';
+  if (!name || !email) { errEl.textContent = 'Name and email are required.'; errEl.style.display = 'block'; return; }
+  try {
+    const body = { name, email, department, role: department === 'manager' ? 'manager' : 'agent', is_active: isActive };
+    if (password) body.password = password;
+    const res = await fetch('/api/auth/users/' + userId, {
+      method: 'PUT', headers: getAuthHeaders(), body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    if (data.success) {
+      document.getElementById('edit-user-modal').remove();
+      await loadUsers();
+    } else {
+      errEl.textContent = data.error || 'Failed to save.';
+      errEl.style.display = 'block';
+    }
+  } catch(e) { errEl.textContent = 'Error: ' + e.message; errEl.style.display = 'block'; }
 }
 
 async function createUser() {

@@ -1493,6 +1493,27 @@ app.get('/api/auth/users', async function(req, res) {
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
+// Change own password
+app.post('/api/auth/change-password', async function(req, res) {
+  if (!db) return res.status(500).json({ error: 'No DB' });
+  const token = req.headers['x-auth-token'] || '';
+  const { currentPassword, newPassword } = req.body;
+  if (!currentPassword || !newPassword) return res.status(400).json({ error: 'Both passwords required' });
+  if (newPassword.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
+  try {
+    const sessionRes = await db.query('SELECT * FROM user_sessions WHERE token=$1 AND expires_at > NOW()', [token]);
+    if (!sessionRes.rows.length) return res.status(401).json({ error: 'Not authenticated' });
+    const userId = sessionRes.rows[0].user_id;
+    const userRes = await db.query('SELECT * FROM users WHERE id=$1', [userId]);
+    if (!userRes.rows.length) return res.status(404).json({ error: 'User not found' });
+    const valid = await bcrypt.compare(currentPassword, userRes.rows[0].password_hash);
+    if (!valid) return res.status(401).json({ error: 'Current password is incorrect' });
+    const hash = await bcrypt.hash(newPassword, 10);
+    await db.query('UPDATE users SET password_hash=$1 WHERE id=$2', [hash, userId]);
+    res.json({ success: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // Admin: Update user
 app.put('/api/auth/users/:id', async function(req, res) {
   if (!db) return res.status(500).json({ error: 'No DB' });
@@ -1627,6 +1648,73 @@ app.get('/api/snapshots', async function(req, res) {
     const d = typeof r.snapshot_date === 'string' ? r.snapshot_date : new Date(r.snapshot_date).toISOString().split('T')[0];
     return { date: d, metrics: r.metrics };
   })});
+});
+
+// ── Stuck Campaign Action (Flag 1 week / Pause) ─────────────────────────
+app.post('/api/stuck-campaigns/action', async function(req, res) {
+  if (!db) return res.status(500).json({ error: 'No DB' });
+  const { campaignId, campaignName, action, notes } = req.body;
+  if (!campaignId || !action || !notes) return res.status(400).json({ error: 'Missing fields' });
+  try {
+    const agentName = extractAgentFromCampaign(campaignName||'') || 'Unknown';
+    if (action === 'review') {
+      // Flag for 1 week — store in app_settings as a JSON list
+      const flagDeadline = new Date();
+      flagDeadline.setDate(flagDeadline.getDate() + 7);
+      await db.query(
+        'INSERT INTO activity_log (campaign_id, campaign_name, agent_name, action, notes) VALUES ($1,$2,$3,$4,$5)',
+        [String(campaignId), campaignName, agentName, 'stuck_flagged_1week', 'Agent will work on this for 1 week. Plan: ' + notes + '. Deadline: ' + flagDeadline.toLocaleDateString('en-GB')]
+      );
+      // Check again in 7 days — if still underperforming, task scheduler will pick it up
+    } else if (action === 'pause') {
+      await db.query(
+        'INSERT INTO activity_log (campaign_id, campaign_name, agent_name, action, notes) VALUES ($1,$2,$3,$4,$5)',
+        [String(campaignId), campaignName, agentName, 'stuck_paused', 'Campaign paused from underperforming page. Reason: ' + notes]
+      );
+    }
+    res.json({ success: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Manual Activity Log Entry ─────────────────────────────────────────────
+app.post('/api/activity/log', async function(req, res) {
+  if (!db) return res.status(500).json({ error: 'No DB' });
+  const { campaignId, campaignName, action, notes, agentName } = req.body;
+  try {
+    const agent = agentName || extractAgentFromCampaign(campaignName||'') || 'Unknown';
+    await db.query(
+      'INSERT INTO activity_log (campaign_id, campaign_name, agent_name, action, notes) VALUES ($1,$2,$3,$4,$5)',
+      [String(campaignId||''), campaignName||'', agent, action||'', notes||'']
+    );
+    res.json({ success: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Campaign Daily Spend Breakdown ──────────────────────────────────────
+app.get('/api/campaigns/:id/spend-breakdown', async function(req, res) {
+  if (!db) return res.status(500).json({ error: 'No DB' });
+  try {
+    const campaignId = req.params.id;
+    const snapshots = await db.query(
+      "SELECT snapshot_date, campaigns FROM daily_snapshots WHERE snapshot_date > NOW() - INTERVAL '14 days' ORDER BY snapshot_date DESC LIMIT 14"
+    );
+    const breakdown = [];
+    snapshots.rows.forEach(function(snap) {
+      const c = (snap.campaigns||[]).find(function(x){ return String(x.campaignId) === String(campaignId); });
+      if (c && (parseFloat(c.spend||0) > 0 || parseFloat(c.sales||0) > 0)) {
+        const d = typeof snap.snapshot_date === 'string' ? snap.snapshot_date : new Date(snap.snapshot_date).toISOString().split('T')[0];
+        breakdown.push({
+          date: d,
+          spend: parseFloat(c.spend||0).toFixed(2),
+          sales: parseFloat(c.sales||0).toFixed(2),
+          acos: c.acos||0,
+          impressions: c.impressions||0,
+          clicks: c.clicks||0
+        });
+      }
+    });
+    res.json({ breakdown });
+  } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
 // ── No-Revenue Campaign AI Analysis ─────────────────────────────────────
