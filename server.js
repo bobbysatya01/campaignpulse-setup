@@ -519,6 +519,11 @@ async function analyseCampaigns(campaigns) {
 
 // ── Main sync ─────────────────────────────────────────────────────────────
 async function syncCampaigns() {
+  // Skip Amazon sync if credentials not configured
+  if (!process.env.AMAZON_REFRESH_TOKEN || !process.env.AMAZON_CLIENT_ID) {
+    console.log('Amazon credentials not configured - skipping Amazon sync');
+    return;
+  }
   if (state.syncing) return;
   state.syncing = true;
   console.log('Syncing at ' + new Date().toTimeString().slice(0, 8));
