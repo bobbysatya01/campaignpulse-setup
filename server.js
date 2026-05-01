@@ -142,8 +142,8 @@ async function syncGoogleCampaigns() {
     console.log('Google API call - customer:', cleanCustomerId, 'login:', cleanLoginId);
 
     const res = await axios.post(
-      'https://googleads.googleapis.com/v16/customers/' + cleanCustomerId + '/googleAds:searchStream',
-      { query: query.trim() },
+      'https://googleads.googleapis.com/v15/customers/' + cleanCustomerId + '/googleAds:search',
+      { query: query.trim(), pageSize: 1000 },
       {
         headers: {
           'Authorization': 'Bearer ' + token,
@@ -154,15 +154,7 @@ async function syncGoogleCampaigns() {
       }
     );
 
-    // searchStream returns array of batches, each with results
-    let rows = [];
-    if (Array.isArray(res.data)) {
-      res.data.forEach(function(batch) {
-        if (batch.results) rows = rows.concat(batch.results);
-      });
-    } else {
-      rows = res.data.results || [];
-    }
+    const rows = res.data.results || [];
     console.log('Google campaigns fetched: ' + rows.length);
     const ACOS_WARN = parseFloat(process.env.ACOS_WARNING_THRESHOLD || 12);
     const ACOS_CRIT = parseFloat(process.env.ACOS_CRITICAL_THRESHOLD || 20);
