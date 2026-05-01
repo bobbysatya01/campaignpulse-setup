@@ -249,7 +249,7 @@ async function analyseCampaigns(campaigns) {
   const timeStr = now.toLocaleTimeString('en-GB', {timeZone:'Europe/London', hour:'2-digit', minute:'2-digit'});
   const dateStr = now.toDateString();
   let chatCount = 0;
-  const maxChats = 5;
+  // No cap on alerts — all campaigns get notified
 
   for (let i = 0; i < campaigns.length; i++) {
     const c = campaigns[i];
@@ -268,9 +268,19 @@ async function analyseCampaigns(campaigns) {
     const alertType = outOfBudget ? 'out_of_budget' : acosHigh ? 'acos_high' : budgetLow ? 'budget_low' : null;
     if (!alertType) continue;
 
-    const alreadyAlerted = state.alerts.find(function(a) {
+    // Check if already alerted today using DB (survives server restarts)
+    let alreadyAlerted = state.alerts.find(function(a) {
       return a.campaignId === c.campaignId && a.date === dateStr && a.type === alertType;
     });
+    if (!alreadyAlerted && db) {
+      try {
+        const dbAlert = await db.query(
+          "SELECT id FROM campaign_tasks WHERE campaign_id=$1 AND task_source='alert' AND problem_type=$2 AND DATE(created_at)=CURRENT_DATE",
+          [String(c.campaignId), alertType]
+        );
+        if (dbAlert.rows.length > 0) alreadyAlerted = true;
+      } catch(e) {}
+    }
     if (alreadyAlerted) continue;
     // Check if suppressed (dismissed today)
     if (db) {
@@ -291,7 +301,7 @@ async function analyseCampaigns(campaigns) {
 
     const dashUrl = process.env.DASHBOARD_URL || 'https://campaignpulse-setup-production.up.railway.app';
 
-    if (outOfBudget && chatCount < maxChats) {
+    if (outOfBudget) {
       const hoursLeft = (23 * 60 + 59 - now.getHours() * 60 - now.getMinutes()) / 60;
       const roas = spend > 0 ? sales / spend : 0;
       const hourly = spend / Math.max(now.getHours(), 1);
@@ -300,20 +310,17 @@ async function analyseCampaigns(campaigns) {
       const m1 = ['⚠ OUT OF BUDGET', name, 'Time: ' + timeStr, 'Budget: £' + budget.toFixed(2), 'ACOS: ' + acos.toFixed(1) + '%', 'Est. missed: ~£' + missed, dashUrl].join('\n');
       if (agent) { await sendToAgent(agent, m1); } else { await sendGoogleChat(m1); }
       createAlertTask(c.campaignId, name, agent, portfolioName, 'out_of_budget', 'Ran out at ' + timeStr + '. Budget £' + budget.toFixed(2) + ', ACOS ' + acos.toFixed(1) + '%');
-      chatCount++;
-    } else if (acosHigh && chatCount < maxChats) {
+    } else if (acosHigh) {
       const m2 = ['📈 HIGH ACOS', name, 'ACOS: ' + acos.toFixed(1) + '%', 'Spend: £' + spend.toFixed(2), dashUrl].join('\n');
       if (agent) { await sendToAgent(agent, m2); } else { await sendGoogleChat(m2); }
       createAlertTask(c.campaignId, name, agent, portfolioName, 'high_acos', 'ACOS ' + acos.toFixed(1) + '% with £' + spend.toFixed(2) + ' spend');
-      chatCount++;
-    } else if (budgetLow && chatCount < maxChats) {
+    } else if (budgetLow) {
       const m3 = ['⚡ BUDGET LOW', name, 'Remaining: £' + remaining.toFixed(2) + ' (' + remainingPct.toFixed(0) + '%)', dashUrl].join('\n');
       if (agent) { await sendToAgent(agent, m3); } else { await sendGoogleChat(m3); }
       createAlertTask(c.campaignId, name, agent, portfolioName, 'budget_low', 'Budget ' + remainingPct.toFixed(0) + '% used, £' + remaining.toFixed(2) + ' left');
-      chatCount++;
     }
   }
-  if (chatCount > 0) console.log('Sent ' + chatCount + ' alerts');
+  console.log('Alert analysis complete');
 }
 
 // ── Main sync ─────────────────────────────────────────────────────────────
