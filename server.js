@@ -102,8 +102,10 @@ async function getGoogleAccessToken() {
 
 async function syncGoogleCampaigns() {
   if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_REFRESH_TOKEN) {
-    return; // Google Ads not configured yet
+    console.log('Google Ads credentials not configured - skipping Google sync');
+    return;
   }
+  console.log('Starting Google Ads sync...');
   if (googleState.syncing) return;
   googleState.syncing = true;
 
@@ -469,7 +471,7 @@ async function analyseCampaigns(campaigns) {
     if (!alreadyAlerted && db) {
       try {
         const dbAlert = await db.query(
-          "SELECT id FROM campaign_tasks WHERE campaign_id=$1 AND task_source='alert' AND problem_type=$2 AND DATE(created_at)=CURRENT_DATE",
+          "SELECT id FROM campaign_tasks WHERE campaign_id=$1 AND task_source='alert' AND problem_type=$2 AND DATE(COALESCE(created_at, created_date))=CURRENT_DATE",
           [String(c.campaignId), alertType]
         );
         if (dbAlert.rows.length > 0) alreadyAlerted = true;
@@ -837,7 +839,7 @@ async function initTasksTable() {
     // Reload today's alerts from DB into state on startup
     try {
       const todayAlerts = await db.query(
-        "SELECT campaign_id, campaign_name, problem_type, problem_detail, created_at FROM campaign_tasks WHERE task_source='alert' AND DATE(created_at)=CURRENT_DATE"
+        "SELECT campaign_id, campaign_name, problem_type, problem_detail, COALESCE(created_at, created_date) as created_at FROM campaign_tasks WHERE task_source='alert' AND DATE(COALESCE(created_at, created_date))=CURRENT_DATE"
       );
       todayAlerts.rows.forEach(function(row) {
         const existing = state.alerts.find(function(a){ return String(a.campaignId) === String(row.campaign_id) && a.type === row.problem_type; });
