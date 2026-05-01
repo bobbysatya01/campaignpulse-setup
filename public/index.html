@@ -2356,11 +2356,17 @@ function renderTasks(tab) {
       const rt = t.resolved_at ? new Date(t.resolved_at).toLocaleString('en-GB',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : '';
       actionButtons = '<div style="font-size:14px;color:var(--green);margin-top:8px">✓ ' + (statusLabels[t.status]||t.status) + (rt ? ' · ' + rt : '') + '</div>';
       if (!t.archived_at && t.status !== 'archived') {
-        actionButtons += '<button class="btn btn-ghost" style="font-size:12px;margin-top:6px" onclick="archiveTask(' + t.id + ')">Archive now</button>';
+        actionButtons += '<div class="ag" style="margin-top:6px">' +
+          '<button class="btn btn-ghost" style="font-size:12px" onclick="archiveTask(' + t.id + ')">Archive now</button>' +
+          '<button class="btn btn-amber" style="font-size:12px" onclick="reopenTask(' + t.id + ')">↩ Reopen to Due</button>' +
+          '</div>';
       }
     } else if (t.status === 'paused') {
       actionButtons = '<div style="font-size:14px;color:var(--amber);margin-top:8px">⏸ Paused' + (t.paused_reason ? ' — ' + escHtml(t.paused_reason) : '') + '</div>';
-      if (!t.archived_at) actionButtons += '<button class="btn btn-ghost" style="font-size:12px;margin-top:6px" onclick="archiveTask(' + t.id + ')">Archive now</button>';
+      if (!t.archived_at) actionButtons += '<div class="ag" style="margin-top:6px">' +
+        '<button class="btn btn-ghost" style="font-size:12px" onclick="archiveTask(' + t.id + ')">Archive now</button>' +
+        '<button class="btn btn-amber" style="font-size:12px" onclick="reopenTask(' + t.id + ')">↩ Reopen to Due</button>' +
+        '</div>';
     } else if (isScaling) {
       const daysLeft = t.scaling_deadline ? Math.ceil((new Date(t.scaling_deadline) - new Date()) / (1000*60*60*24)) : 0;
       actionButtons = '<div class="ag" style="margin-top:8px">' +
@@ -2417,7 +2423,16 @@ function renderTasks(tab) {
         '<div style="font-size:15px;color:var(--text);margin-bottom:12px"><strong>Score:</strong> ' + (t.score||0) + ' pts · <strong>Days open:</strong> ' + (t.days_persisted||1) + '</div>' +
         (t.first_action_at ? '<div style="font-size:15px;color:var(--text);margin-bottom:12px"><strong>First action:</strong> ' + new Date(t.first_action_at).toLocaleString('en-GB') + '</div>' : '') +
         (t.resolved_at ? '<div style="font-size:15px;color:var(--green);margin-bottom:12px"><strong>Resolved:</strong> ' + new Date(t.resolved_at).toLocaleString('en-GB') + '</div>' : '') +
-        (t.agent_notes ? '<div style="background:var(--blue-light);border:1px solid rgba(26,111,189,0.15);border-radius:8px;padding:14px 18px;font-size:15px;color:var(--blue);margin-bottom:12px"><strong>Agent notes:</strong><br><span style="white-space:pre-wrap;line-height:1.7">' + escHtml(t.agent_notes) + '</span></div>' : '<div style="font-size:15px;color:#bbb;margin-bottom:12px;font-style:italic">No notes added yet.</div>') +
+        (t.agent_notes ?
+          '<div style="background:var(--blue-light);border:1px solid rgba(26,111,189,0.15);border-radius:8px;padding:14px 18px;font-size:15px;color:var(--blue);margin-bottom:12px">' +
+            '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">' +
+              '<strong>Agent Notes:</strong>' +
+              '<button class="btn btn-ghost" style="font-size:11px;padding:2px 8px" onclick="toggleNoteIgnored(' + t.id + ',this)">' + (t.notes_ignored ? '✓ Restore for AI' : '✗ Strike out') + '</button>' +
+            '</div>' +
+            '<span style="white-space:pre-wrap;line-height:1.7;' + (t.notes_ignored ? 'text-decoration:line-through;opacity:0.45;' : '') + '">' + escHtml(t.agent_notes) + '</span>' +
+            (t.notes_ignored ? '<div style="font-size:11px;color:#e53e3e;margin-top:6px">⚠ Struck out — AI will not use this note</div>' : '') +
+          '</div>'
+          : '<div style="font-size:15px;color:#bbb;margin-bottom:12px;font-style:italic">No notes added yet.</div>') +
         (t.dismissed_reason ? '<div style="font-size:15px;color:var(--text);margin-bottom:12px"><strong>Dismiss reason:</strong> ' + escHtml(t.dismissed_reason) + '</div>' : '') +
         (t.paused_reason ? '<div style="font-size:15px;color:var(--text);margin-bottom:12px"><strong>Pause reason:</strong> ' + escHtml(t.paused_reason) + '</div>' : '') +
         (t.escalation_reason ? '<div style="font-size:15px;color:#7c3aed;margin-bottom:12px"><strong>Scaling reason:</strong> ' + escHtml(t.escalation_reason) + '</div>' : '') +
@@ -2471,6 +2486,29 @@ async function loadEscalationAnalysis(taskId, btn) {
   } catch(e) {
     container.innerHTML = '<div style="color:#e53e3e">Error: ' + e.message + '</div>';
   }
+}
+
+// ── Reopen Task ───────────────────────────────────────────────────────────
+async function reopenTask(taskId) {
+  if (!confirm('Reopen this task and move it back to Due? The day count will stay the same.')) return;
+  try {
+    await fetch('/api/tasks/' + taskId + '/reopen', { method: 'POST' });
+    await loadTasks();
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+// ── Toggle Note Ignored (strike-through for AI) ────────────────────────
+async function toggleNoteIgnored(taskId, btn) {
+  try {
+    const res = await fetch('/api/tasks/' + taskId + '/toggle-note', { method: 'POST' });
+    const data = await res.json();
+    if (data.success) {
+      // Update button text
+      if (btn) btn.textContent = data.notes_ignored ? '✓ Restore for AI' : '✗ Strike out';
+      // Reload tasks to reflect change
+      await loadTasks();
+    }
+  } catch(e) { alert('Error: ' + e.message); }
 }
 
 // ── Underperforming Campaign Modal (Pause / Work on it 1 week) ───────────
@@ -2581,6 +2619,15 @@ function toggleTaskDetail(taskId) {
   if (card) {
     const arrow = card.querySelector('.ai-header span[style*="aaa"]');
     if (arrow) arrow.textContent = isOpen ? '▼' : '▲';
+  }
+  // Auto-load spend breakdown when detail opens
+  if (!isOpen) {
+    const breakdownBtn = detail.querySelector('[data-bid^="breakdown-"]');
+    if (breakdownBtn && !detail.querySelector('table')) {
+      const campaignId = breakdownBtn.getAttribute('data-cid');
+      const containerId = breakdownBtn.getAttribute('data-bid');
+      if (campaignId) loadSpendBreakdown(campaignId, containerId, breakdownBtn);
+    }
   }
 }
 

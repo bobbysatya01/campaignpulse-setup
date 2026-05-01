@@ -612,6 +612,7 @@ async function initTasksTable() {
     // Add department column to existing tables if not exists
     await db.query("ALTER TABLE campaign_tasks ADD COLUMN IF NOT EXISTS department TEXT DEFAULT 'amazon'");
     await db.query("ALTER TABLE activity_log ADD COLUMN IF NOT EXISTS department TEXT DEFAULT 'amazon'");
+    await db.query("ALTER TABLE campaign_tasks ADD COLUMN IF NOT EXISTS notes_ignored BOOLEAN DEFAULT FALSE");
 
     // Create default manager account if no users exist
     try {
@@ -1650,6 +1651,40 @@ app.get('/api/snapshots', async function(req, res) {
   })});
 });
 
+// ── Reopen Task (move back to Due/open) ──────────────────────────────────
+app.post('/api/tasks/:id/reopen', async function(req, res) {
+  if (!db) return res.status(500).json({ error: 'No DB' });
+  try {
+    const taskRes = await db.query('SELECT * FROM campaign_tasks WHERE id=$1', [req.params.id]);
+    if (!taskRes.rows.length) return res.status(404).json({ error: 'Task not found' });
+    const task = taskRes.rows[0];
+    await db.query(
+      'UPDATE campaign_tasks SET status=$1, resolved_at=NULL, updated_at=NOW() WHERE id=$2',
+      ['open', req.params.id]
+    );
+    // Log to activity
+    const agentName = (task.agent_name && ['Aryan','Satyam','Kunal'].includes(task.agent_name))
+      ? task.agent_name : extractAgentFromCampaign(task.campaign_name||'') || 'Unknown';
+    await db.query(
+      'INSERT INTO activity_log (campaign_id, campaign_name, agent_name, action, notes, status_before, status_after, task_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
+      [task.campaign_id||'', task.campaign_name||'', agentName, 'reopened', 'Task reopened — moved back to Due', task.status, 'open', parseInt(req.params.id)]
+    );
+    res.json({ success: true });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── Toggle Note Ignored (strike through for AI) ────────────────────────
+app.post('/api/tasks/:id/toggle-note', async function(req, res) {
+  if (!db) return res.status(500).json({ error: 'No DB' });
+  try {
+    const taskRes = await db.query('SELECT notes_ignored FROM campaign_tasks WHERE id=$1', [req.params.id]);
+    if (!taskRes.rows.length) return res.status(404).json({ error: 'Task not found' });
+    const currentIgnored = taskRes.rows[0].notes_ignored || false;
+    await db.query('UPDATE campaign_tasks SET notes_ignored=$1, updated_at=NOW() WHERE id=$2', [!currentIgnored, req.params.id]);
+    res.json({ success: true, notes_ignored: !currentIgnored });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── Stuck Campaign Action (Flag 1 week / Pause) ─────────────────────────
 app.post('/api/stuck-campaigns/action', async function(req, res) {
   if (!db) return res.status(500).json({ error: 'No DB' });
@@ -1702,7 +1737,10 @@ app.get('/api/campaigns/:id/spend-breakdown', async function(req, res) {
     snapshots.rows.forEach(function(snap) {
       const c = (snap.campaigns||[]).find(function(x){ return String(x.campaignId) === String(campaignId); });
       if (c && (parseFloat(c.spend||0) > 0 || parseFloat(c.sales||0) > 0)) {
-        const d = typeof snap.snapshot_date === 'string' ? snap.snapshot_date : new Date(snap.snapshot_date).toISOString().split('T')[0];
+        // Use UK timezone for date display to avoid UTC shift
+        const d = typeof snap.snapshot_date === 'string'
+          ? snap.snapshot_date
+          : new Date(snap.snapshot_date).toLocaleDateString('en-GB', {timeZone:'Europe/London', year:'numeric', month:'2-digit', day:'2-digit'}).split('/').reverse().join('-');
         breakdown.push({
           date: d,
           spend: parseFloat(c.spend||0).toFixed(2),
