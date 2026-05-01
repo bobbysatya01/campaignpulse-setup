@@ -135,20 +135,35 @@ async function syncGoogleCampaigns() {
       AND segments.date DURING TODAY
     `;
 
+    // Remove hyphens from customer IDs just in case
+    const cleanCustomerId = String(customerId).replace(/-/g, '');
+    const cleanLoginId = String(loginCustomerId).replace(/-/g, '');
+
+    console.log('Google API call - customer:', cleanCustomerId, 'login:', cleanLoginId);
+
     const res = await axios.post(
-      'https://googleads.googleapis.com/v17/customers/' + customerId + '/googleAds:search',
+      'https://googleads.googleapis.com/v16/customers/' + cleanCustomerId + '/googleAds:searchStream',
       { query: query.trim() },
       {
         headers: {
           'Authorization': 'Bearer ' + token,
           'developer-token': devToken,
-          'login-customer-id': loginCustomerId,
+          'login-customer-id': cleanLoginId,
           'Content-Type': 'application/json'
         }
       }
     );
 
-    const rows = res.data.results || [];
+    // searchStream returns array of batches, each with results
+    let rows = [];
+    if (Array.isArray(res.data)) {
+      res.data.forEach(function(batch) {
+        if (batch.results) rows = rows.concat(batch.results);
+      });
+    } else {
+      rows = res.data.results || [];
+    }
+    console.log('Google campaigns fetched: ' + rows.length);
     const ACOS_WARN = parseFloat(process.env.ACOS_WARNING_THRESHOLD || 12);
     const ACOS_CRIT = parseFloat(process.env.ACOS_CRITICAL_THRESHOLD || 20);
     const BUDGET_LOW = parseFloat(process.env.BUDGET_LOW_PERCENT || 20);
