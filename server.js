@@ -276,6 +276,10 @@ async function syncGoogleCampaigns() {
   } catch(e) {
     googleState.error = e.message;
     console.error('Google sync error: ' + e.message);
+    if (e.response) {
+      console.error('Google API response status: ' + e.response.status);
+      console.error('Google API response data: ' + JSON.stringify(e.response.data));
+    }
   } finally {
     googleState.syncing = false;
   }
