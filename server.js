@@ -1731,7 +1731,7 @@ app.get('/api/campaigns/:id/spend-breakdown', async function(req, res) {
   try {
     const campaignId = req.params.id;
     const snapshots = await db.query(
-      "SELECT snapshot_date, campaigns FROM daily_snapshots WHERE snapshot_date > NOW() - INTERVAL '14 days' ORDER BY snapshot_date DESC LIMIT 14"
+      "SELECT TO_CHAR(snapshot_date, 'YYYY-MM-DD') as snapshot_date, campaigns FROM daily_snapshots WHERE snapshot_date >= CURRENT_DATE - INTERVAL '14 days' ORDER BY snapshot_date DESC LIMIT 14"
     );
     const breakdown = [];
     snapshots.rows.forEach(function(snap) {
