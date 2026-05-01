@@ -1682,6 +1682,12 @@ function showKwTab(tab, btn) {
 
 // ── Keyword Button Handler (reads data attributes to avoid quote issues) ──
 function kwAction(btn, action) {
+  if (action === 'breakdown') {
+    const campaignId = btn.getAttribute('data-cid');
+    const containerId = btn.getAttribute('data-bid');
+    loadSpendBreakdown(campaignId, containerId, btn);
+    return;
+  }
   const term = btn.getAttribute('data-term');
   const camp = btn.getAttribute('data-camp');
   if (!term || !camp) return;
@@ -2404,8 +2410,8 @@ function renderTasks(tab) {
       '</div>' +
       '<div id="' + detailId + '" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid var(--border2)">' +
         '<div style="font-size:15px;color:var(--text);margin-bottom:12px"><strong>Problem:</strong> ' + escHtml(t.problem_detail||'—') + '</div>' +
-        '<div style="margin-bottom:12px">' +
-          '<button class="btn btn-ghost" style="font-size:12px" onclick="loadSpendBreakdown(' + JSON.stringify(t.campaign_id) + ',&quot;breakdown-' + t.id + '&quot;,this)">📊 Show daily spend breakdown</button>' +
+        '<div style="margin-bottom:12px" id="breakdown-wrap-' + t.id + '">' +
+          '<button class="btn btn-ghost" style="font-size:12px" data-cid="' + escHtml(String(t.campaign_id||'')) + '" data-bid="breakdown-' + t.id + '" onclick="kwAction(this,&quot;breakdown&quot;)">📊 Show daily spend breakdown</button>' +
           '<div id="breakdown-' + t.id + '" style="display:none;margin-top:8px"></div>' +
         '</div>' +
         '<div style="font-size:15px;color:var(--text);margin-bottom:12px"><strong>Score:</strong> ' + (t.score||0) + ' pts · <strong>Days open:</strong> ' + (t.days_persisted||1) + '</div>' +
