@@ -635,6 +635,29 @@ async function initTasksTable() {
     } catch(e) { console.error('User init error: ' + e.message); }
     console.log('Auth tables ready');
 
+    // Reload today's alerts from DB into state on startup
+    try {
+      const todayAlerts = await db.query(
+        "SELECT campaign_id, campaign_name, problem_type, problem_detail, created_at FROM campaign_tasks WHERE task_source='alert' AND DATE(created_at)=CURRENT_DATE"
+      );
+      todayAlerts.rows.forEach(function(row) {
+        const existing = state.alerts.find(function(a){ return String(a.campaignId) === String(row.campaign_id) && a.type === row.problem_type; });
+        if (!existing) {
+          const timeStr = new Date(row.created_at).toLocaleTimeString('en-GB', {timeZone:'Europe/London', hour:'2-digit', minute:'2-digit'});
+          state.alerts.push({
+            campaignId: row.campaign_id,
+            name: row.campaign_name || 'Unknown',
+            type: row.problem_type,
+            time: timeStr,
+            date: new Date().toDateString(),
+            acos: 0,
+            budget: 0
+          });
+        }
+      });
+      console.log('Reloaded ' + todayAlerts.rows.length + ' alerts from DB');
+    } catch(e) { console.error('Alert reload error: ' + e.message); }
+
     // Keyword dismissals table
     await db.query(`
       CREATE TABLE IF NOT EXISTS keyword_dismissals (

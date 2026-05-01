@@ -1201,9 +1201,9 @@ function renderCampaignTable(tableId, campaigns, showAction) {
     else if (budgetLow) statusBadge = '<span class="badge badge-amber"><span class="dot" style="background:var(--amber)"></span>Budget low</span>';
     let action = '<button class="btn btn-ghost" style="font-size:12px">View</button>';
     if (showAction) {
-      if (outOfBudget) action = '<div class="ag"><button class="btn btn-green" onclick="approveBudget(\''+c.campaignId+'\',\'\')">Add budget</button><button class="btn btn-ghost" style="font-size:12px">Skip</button></div>';
+      if (outOfBudget) action = '<div class="ag"><button class="btn btn-green" data-cid="' + c.campaignId + '" onclick="approveBudget(this.getAttribute(&quot;data-cid&quot;),&quot;&quot;)">Add budget</button></div>';
       else if (acosHigh) action = '<div class="ag"><button class="btn btn-amber" style="font-size:12px">Fix bids</button></div>';
-      else if (budgetLow) action = '<div class="ag"><button class="btn btn-green" onclick="approveBudget(\''+c.campaignId+'\',\'\')">Add budget</button></div>';
+      else if (budgetLow) action = '<div class="ag"><button class="btn btn-green" data-cid="' + c.campaignId + '" onclick="approveBudget(this.getAttribute(&quot;data-cid&quot;),&quot;&quot;)">Add budget</button></div>';
       else action = '<button class="btn btn-ghost" style="font-size:12px">Scale ↗</button>';
     }
     const typeBadge = isAuto ? '<span class="badge badge-blue" style="font-size:10px">Auto</span>' : '<span class="badge" style="background:var(--surface3);color:var(--text3);font-size:10px">Manual</span>';
