@@ -1595,20 +1595,53 @@ async function syncShopifyProducts() {
   }
 }
 
-// Match Google product name to Shopify product
-function matchShopifyProduct(googleProductName) {
-  if (!googleProductName || !shopifyState.products.length) return null;
-  const name = googleProductName.toLowerCase();
-  // Try exact title match first
+// Match a Google Ads row to a Shopify product.
+// Priority order:
+//   1. Exact match by Shopify item ID (deterministic — preferred for Shopping)
+//   2. Match by Shopify product_type (single product in that type only)
+//   3. Fuzzy name match (legacy fallback — last resort)
+function matchShopifyProduct(googleRow) {
+  if (!shopifyState.products.length) return null;
+  // Allow legacy callers that still pass a string
+  if (typeof googleRow === 'string') {
+    googleRow = { name: googleRow };
+  }
+  if (!googleRow) return null;
+
+  // 1. Match by Shopify item ID — format: "shopify_gb_<productId>_<variantId>"
+  if (googleRow.shopifyItemId) {
+    const parts = String(googleRow.shopifyItemId).split('_');
+    if (parts.length >= 4) {
+      const productId = parts[2];
+      const found = shopifyState.products.find(function(p) { return String(p.id) === productId; });
+      if (found) return found;
+    }
+  }
+
+  // 2. Match by product_type when exactly one Shopify product has that type
+  if (googleRow.productType) {
+    const pt = String(googleRow.productType).toLowerCase();
+    const candidates = shopifyState.products.filter(function(p) {
+      return String(p.productType || '').toLowerCase() === pt;
+    });
+    if (candidates.length === 1) return candidates[0];
+    // If multiple candidates, do not guess — leave unmatched and surface as a bucket
+  }
+
+  // 3. Fuzzy name match (legacy) — only use if nothing else worked
+  const rawName = googleRow.name || googleRow.productName;
+  if (!rawName) return null;
+  const name = String(rawName).toLowerCase();
+  // Skip useless fuzzy strings (Shopify item IDs as names, ad-group placeholders)
+  if (name.indexOf('shopify_gb_') === 0) return null;
+
   let match = shopifyState.products.find(function(p) { return p.title.toLowerCase() === name; });
   if (match) return match;
-  // Try partial match — Shopify title contains Google name or vice versa
   match = shopifyState.products.find(function(p) {
     const title = p.title.toLowerCase();
     return title.includes(name) || name.includes(title);
   });
   if (match) return match;
-  // Try word-by-word match
   const words = name.split(/\s+/).filter(function(w){ return w.length > 3; });
   match = shopifyState.products.find(function(p) {
     const title = p.title.toLowerCase();
@@ -1631,7 +1664,18 @@ app.post('/api/shopify/sync', async function(req, res) {
 app.get('/api/google/products-diagnostic', async function(req, res) {
   const googleProducts = googleState.products || [];
   const diagnostic = googleProducts.map(function(gp) {
-    const shopifyProduct = matchShopifyProduct(gp.productName);
+    // v8 sends `name`, `shopifyItemId`, `productType`. Older payloads sent `productName`.
+    const rawName = gp.name || gp.productName;
+    const shopifyProduct = matchShopifyProduct(gp);
+
+    // Display label — always populate something, never undefined
+    const displayName = (shopifyProduct && shopifyProduct.title)
+      || rawName
+      || gp.productType
+      || gp.adGroupName
+      || gp.campaignName
+      || '(unknown)';
+
     // Determine diagnosis
     let diagnosis = null;
     let diagnosisType = null;
@@ -1676,11 +1720,21 @@ app.get('/api/google/products-diagnostic', async function(req, res) {
     }
 
     return {
-      // Google data
-      productId: gp.productId,
-      productName: gp.productName,
+      // Identity
+      productId: gp.productId || gp.shopifyItemId || (gp.campaignId + ':' + (rawName || gp.adGroupName || '')),
+      productName: displayName,             // legacy field name kept for backwards compat with frontend
+      displayName: displayName,
       campaignId: gp.campaignId,
       campaignName: gp.campaignName,
+      campaignType: gp.campaignType || null,    // SEARCH | SHOPPING | PERFORMANCE_MAX
+      itemType: gp.itemType || null,            // keyword | product_group | pmax_campaign
+      adGroupName: gp.adGroupName || null,
+      shopifyItemId: gp.shopifyItemId || null,
+      productType: gp.productType || null,
+      productGroupPath: gp.productGroupPath || null,
+      partitionType: gp.partitionType || null,
+
+      // Performance
       spend: gp.spend,
       sales: gp.sales,
       impressions: gp.impressions,
@@ -1689,15 +1743,18 @@ app.get('/api/google/products-diagnostic', async function(req, res) {
       ctr: gp.ctr,
       acos: gp.acos,
       agentName: gp.agentName,
-      // Shopify data
+
+      // Shopify enrichment
       shopifyMatched: !!shopifyProduct,
       shopifyTitle: shopifyProduct ? shopifyProduct.title : null,
+      shopifyId: shopifyProduct ? shopifyProduct.id : null,
       shopifyPrice: shopifyProduct ? shopifyProduct.price : null,
       shopifyInventory: shopifyProduct ? shopifyProduct.inventory : null,
       shopifyRevenue30d: shopifyProduct ? shopifyProduct.revenue30d : null,
       shopifyUnitsSold30d: shopifyProduct ? shopifyProduct.unitsSold30d : null,
       shopifyUrl: shopifyProduct ? shopifyProduct.shopifyUrl : null,
       shopifyImageUrl: shopifyProduct ? shopifyProduct.imageUrl : null,
+
       // Diagnosis
       diagnosisType: diagnosisType,
       diagnosis: diagnosis,
