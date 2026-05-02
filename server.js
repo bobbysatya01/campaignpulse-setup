@@ -174,13 +174,15 @@ app.post('/api/google/ingest', async function(req, res) {
         else if (alertType === 'acos_high') msg = '📈 High ACoS (Google)\n' + c.name + '\nACoS: ' + acos + '%\n' + dashUrl;
 
         const agent = c.agentName;
-        if (agent) await sendToAgent(agent, msg);
+        if (agent) {
+          try { await sendToAgent(agent, msg); } catch(e) { console.error('Google alert send error: ' + e.message); }
+        }
 
         if (db) {
           try {
             await db.query(
-              'INSERT INTO activity_log (campaign_id, campaign_name, agent_name, action, notes, department) VALUES ($1,$2,$3,$4,$5,$6)',
-              [String(c.campaignId), c.name, agent||'Unknown', alertType, msg, 'google']
+              'INSERT INTO activity_log (campaign_id, campaign_name, agent_name, action, notes) VALUES ($1,$2,$3,$4,$5)',
+              [String(c.campaignId), c.name, agent||'Unknown', alertType, msg]
             );
           } catch(e) {}
         }
