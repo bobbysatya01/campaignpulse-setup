@@ -1532,7 +1532,7 @@ async function syncShopifyProducts() {
     console.log('Syncing Shopify products...');
 
     // Fetch products
-    const prodRes = await axios.get('https://' + store + '/admin/api/2023-10/products.json?limit=250&status=active', {
+    const prodRes = await axios.get('https://' + store + '/admin/api/2021-07/products.json?limit=250&status=active', {
       headers: { 'X-Shopify-Access-Token': token }
     });
     const rawProducts = prodRes.data.products || [];
@@ -1542,7 +1542,7 @@ async function syncShopifyProducts() {
     const salesMap = {};
     const unitsMap = {};
     try {
-      const orderRes = await axios.get('https://' + store + '/admin/api/2023-10/orders.json?limit=250&status=any&created_at_min=' + since, {
+      const orderRes = await axios.get('https://' + store + '/admin/api/2021-07/orders.json?limit=250&status=any&created_at_min=' + since, {
         headers: { 'X-Shopify-Access-Token': token }
       });
       const orders = orderRes.data.orders || [];
