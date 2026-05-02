@@ -2232,6 +2232,134 @@ async function autoArchiveTasks() {
   }
 }
 
+
+// ── Google Ads State ──────────────────────────────────────────────────────
+let googleState = {
+  campaigns: [],
+  alerts: [],
+  lastSync: null,
+  error: null
+};
+
+// ── Google Ads Ingest Endpoint ────────────────────────────────────────────
+app.post('/api/google/ingest', async function(req, res) {
+  const secret = req.headers['x-google-secret'] || req.body.secret;
+  const expectedSecret = process.env.GOOGLE_INGEST_SECRET || 'fksports-google-2024';
+  if (secret !== expectedSecret) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    const campaigns = req.body.campaigns || [];
+    const now = new Date();
+    const ukHour = parseInt(now.toLocaleString('en-GB', {timeZone:'Europe/London', hour:'2-digit', hour12:false}));
+    const alertsSuppressed = ukHour >= 22 || ukHour < 8;
+    const dateStr = now.toDateString();
+    const timeStr = now.toLocaleTimeString('en-GB', {timeZone:'Europe/London', hour:'2-digit', minute:'2-digit'});
+    const ACOS_CRIT = parseFloat(process.env.ACOS_CRITICAL_THRESHOLD || 20);
+    const BUDGET_LOW = parseFloat(process.env.BUDGET_LOW_PERCENT || 20);
+
+    googleState.campaigns = campaigns.map(function(c) {
+      const agentName = extractAgentFromCampaign(c.name || '');
+      return Object.assign({}, c, { agentName, department: 'google' });
+    });
+    googleState.lastSync = timeStr;
+    googleState.error = null;
+
+    console.log('Google ingest received: ' + campaigns.length + ' campaigns');
+
+    googleState.lastSnapshot = { campaigns, lastSync: timeStr };
+
+    if (!alertsSuppressed) {
+      for (const c of googleState.campaigns) {
+        if (c.state !== 'ENABLED' && c.state !== 'enabled') continue;
+        const spend = parseFloat(c.spend || 0);
+        const sales = parseFloat(c.sales || 0);
+        const budget = parseFloat(c.dailyBudget || 0);
+        const remaining = parseFloat(c.budgetRemaining || 0);
+        const acos = sales > 0 ? Math.round((spend/sales)*100*10)/10 : 0;
+
+        const outOfBudget = remaining <= 0.01 && budget > 0;
+        const budgetLow = !outOfBudget && budget > 0 && ((remaining/budget)*100) <= BUDGET_LOW;
+        const acosHigh = acos > ACOS_CRIT && spend > 1;
+
+        let alertType = null;
+        if (outOfBudget) alertType = 'out_of_budget';
+        else if (acosHigh) alertType = 'acos_high';
+        else if (budgetLow) alertType = 'budget_low';
+        if (!alertType) continue;
+
+        const already = googleState.alerts.find(function(a) {
+          return String(a.campaignId) === String(c.campaignId) && a.date === dateStr && a.type === alertType;
+        });
+        if (already) continue;
+
+        googleState.alerts.push({
+          campaignId: c.campaignId,
+          name: c.name,
+          type: alertType,
+          time: timeStr,
+          date: dateStr,
+          acos: acos,
+          budget: budget,
+          department: 'google'
+        });
+
+        const dashUrl = process.env.DASHBOARD_URL || 'https://app.fksports.co.uk';
+        let msg = '';
+        if (alertType === 'out_of_budget') msg = '🚨 Out of Budget (Google)\n' + c.name + '\nSpent £' + spend.toFixed(2) + ' of £' + budget.toFixed(2) + '\n' + dashUrl;
+        else if (alertType === 'budget_low') msg = '⚡ Budget Low (Google)\n' + c.name + '\n£' + remaining.toFixed(2) + ' remaining\n' + dashUrl;
+        else if (alertType === 'acos_high') msg = '📈 High ACoS (Google)\n' + c.name + '\nACoS: ' + acos + '%\n' + dashUrl;
+
+        const agent = c.agentName;
+        if (agent) {
+          try { await sendToAgent(agent, msg); } catch(e) { console.error('Google alert send error: ' + e.message); }
+        }
+
+        if (db) {
+          try {
+            await db.query(
+              'INSERT INTO activity_log (campaign_id, campaign_name, agent_name, action, notes) VALUES ($1,$2,$3,$4,$5)',
+              [String(c.campaignId), c.name, agent||'Unknown', alertType, msg]
+            );
+          } catch(e) {}
+        }
+      }
+    }
+
+    res.json({ success: true, campaignsReceived: campaigns.length });
+  } catch(e) {
+    console.error('Google ingest error: ' + e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── Google Ads Dashboard Endpoint ─────────────────────────────────────────
+app.get('/api/google/dashboard', async function(req, res) {
+  const camps = googleState.campaigns || [];
+  const alerts = googleState.alerts || [];
+  const totalSpend = camps.reduce(function(s,c){ return s+(parseFloat(c.spend)||0); }, 0);
+  const totalRevenue = camps.reduce(function(s,c){ return s+(parseFloat(c.sales)||0); }, 0);
+  const blendedAcos = totalRevenue > 0 ? Math.round((totalSpend/totalRevenue)*100*10)/10 : 0;
+  const outOfBudget = camps.filter(function(c){ return c.budgetRemaining <= 0.01 && c.dailyBudget > 0; }).length;
+  const spendNoRevenue = camps.filter(function(c){ return c.spend > 0 && (c.sales === 0 || c.sales === null); }).length;
+  res.json({
+    metrics: {
+      totalSpend: totalSpend.toFixed(2),
+      totalRevenue: totalRevenue.toFixed(2),
+      blendedAcos,
+      outOfBudget,
+      spendNoRevenue,
+      totalCampaigns: camps.length,
+      activeCampaigns: camps.filter(function(c){ return c.state === 'ENABLED' || c.state === 'enabled'; }).length
+    },
+    campaigns: camps,
+    alerts: alerts,
+    lastSync: googleState.lastSync,
+    error: googleState.error
+  });
+});
+
 const interval = process.env.POLL_INTERVAL_MINUTES || 15;
 cron.schedule('*/' + interval + ' * * * *', function() { syncCampaigns(); });
 
