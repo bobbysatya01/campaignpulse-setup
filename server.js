@@ -7,7 +7,7 @@ const { v4: uuidv4 } = require('uuid');
 require('dotenv').config();
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 
 // ── Auth middleware ───────────────────────────────────────────────────────
 const PUBLIC_PATHS = ['/auth/login', '/auth/logout', '/admin/create-manager', '/google/ingest', '/google/products-diagnostic', '/google/dashboard', '/shopify/products'];
