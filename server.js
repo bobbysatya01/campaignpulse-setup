@@ -1537,23 +1537,24 @@ async function syncShopifyProducts() {
     });
     const rawProducts = prodRes.data.products || [];
 
-    // Fetch orders from last 30 days for conversion data
+    // Fetch orders from last 30 days for conversion data (optional - skip if no permission)
     const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-    const orderRes = await axios.get('https://' + store + '/admin/api/2023-10/orders.json?limit=250&status=any&created_at_min=' + since, {
-      headers: { 'X-Shopify-Access-Token': token }
-    });
-    const orders = orderRes.data.orders || [];
-
-    // Build sales map per product
     const salesMap = {};
     const unitsMap = {};
-    orders.forEach(function(order) {
-      (order.line_items || []).forEach(function(item) {
-        const pid = String(item.product_id);
-        salesMap[pid] = (salesMap[pid] || 0) + parseFloat(item.price) * item.quantity;
-        unitsMap[pid] = (unitsMap[pid] || 0) + item.quantity;
+    try {
+      const orderRes = await axios.get('https://' + store + '/admin/api/2023-10/orders.json?limit=250&status=any&created_at_min=' + since, {
+        headers: { 'X-Shopify-Access-Token': token }
       });
-    });
+      const orders = orderRes.data.orders || [];
+      orders.forEach(function(order) {
+        (order.line_items || []).forEach(function(item) {
+          const pid = String(item.product_id);
+          salesMap[pid] = (salesMap[pid] || 0) + parseFloat(item.price) * item.quantity;
+          unitsMap[pid] = (unitsMap[pid] || 0) + item.quantity;
+        });
+      });
+      console.log('Shopify orders fetched: ' + orders.length);
+    } catch(e) { console.log('Shopify orders skipped (no permission): ' + e.message); }
 
     shopifyState.products = rawProducts.map(function(p) {
       const pid = String(p.id);
