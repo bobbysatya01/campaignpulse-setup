@@ -1453,14 +1453,20 @@ app.post('/api/google/ingest', async function(req, res) {
     const ACOS_CRIT = parseFloat(process.env.ACOS_CRITICAL_THRESHOLD || 20);
     const BUDGET_LOW = parseFloat(process.env.BUDGET_LOW_PERCENT || 20);
 
+    const products = req.body.products || [];
+
     googleState.campaigns = campaigns.map(function(c) {
-      const agentName = extractAgentFromCampaign(c.name || '');
+      const agentName = extractAgentFromCampaign(c.name || "");
       return Object.assign({}, c, { agentName, department: 'google' });
+    });
+    googleState.products = products.map(function(p) {
+      const agentName = extractAgentFromCampaign(p.campaignName || "");
+      return Object.assign({}, p, { agentName, department: 'google' });
     });
     googleState.lastSync = timeStr;
     googleState.error = null;
-    googleState.lastSnapshot = { campaigns, lastSync: timeStr };
-    console.log('Google ingest received: ' + campaigns.length + ' campaigns');
+    googleState.lastSnapshot = { campaigns, products, lastSync: timeStr };
+    console.log("Google ingest received: " + campaigns.length + " campaigns, " + products.length + " products");
 
     if (!alertsSuppressed) {
       for (const c of googleState.campaigns) {
@@ -1491,7 +1497,7 @@ app.post('/api/google/ingest', async function(req, res) {
         if (db) { try { await db.query('INSERT INTO activity_log (campaign_id, campaign_name, agent_name, action, notes) VALUES ($1,$2,$3,$4,$5)', [String(c.campaignId), c.name, agent||'Unknown', alertType, msg]); } catch(e) {} }
       }
     }
-    res.json({ success: true, campaignsReceived: campaigns.length });
+    res.json({ success: true, campaignsReceived: campaigns.length, productsReceived: products.length });
   } catch(e) {
     console.error('Google ingest error: ' + e.message);
     res.status(500).json({ error: e.message });
@@ -1507,7 +1513,7 @@ app.get('/api/google/dashboard', async function(req, res) {
   const blendedAcos = totalRevenue > 0 ? Math.round((totalSpend/totalRevenue)*100*10)/10 : 0;
   const outOfBudget = camps.filter(function(c){ return c.budgetRemaining <= 0.01 && c.dailyBudget > 0; }).length;
   const spendNoRevenue = camps.filter(function(c){ return c.spend > 0 && (c.sales === 0 || c.sales === null); }).length;
-  res.json({ metrics: { totalSpend: totalSpend.toFixed(2), totalRevenue: totalRevenue.toFixed(2), blendedAcos, outOfBudget, spendNoRevenue, totalCampaigns: camps.length, activeCampaigns: camps.filter(function(c){ return c.state === 'ENABLED' || c.state === 'enabled'; }).length }, campaigns: camps, alerts: alerts, lastSync: googleState.lastSync, error: googleState.error });
+  res.json({ metrics: { totalSpend: totalSpend.toFixed(2), totalRevenue: totalRevenue.toFixed(2), blendedAcos, outOfBudget, spendNoRevenue, totalCampaigns: camps.length, activeCampaigns: camps.filter(function(c){ return c.state === "ENABLED" || c.state === "enabled"; }).length }, campaigns: camps, products: googleState.products || [], alerts: alerts, lastSync: googleState.lastSync, error: googleState.error });
 });
 
 // ── Cron Jobs ─────────────────────────────────────────────────────────────
