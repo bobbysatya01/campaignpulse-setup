@@ -1,0 +1,1438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FK Sports — Google Dashboard</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #111118;
+    --surface2: #1a1a24;
+    --border: #2a2a3a;
+    --text: #e8e8f0;
+    --muted: #6b6b80;
+    --accent: #4f8ef7;
+    --green: #22c55e;
+    --red: #ef4444;
+    --amber: #f59e0b;
+    --purple: #a855f7;
+    --google-blue: #4285f4;
+    --google-red: #ea4335;
+    --google-yellow: #fbbc05;
+    --google-green: #34a853;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+  }
+
+  /* ── Sidebar ── */
+  .sidebar {
+    width: 240px;
+    min-height: 100vh;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    top: 0; left: 0; bottom: 0;
+    z-index: 100;
+  }
+
+  .logo {
+    padding: 24px 20px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .logo-title {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+
+  .logo-sub {
+    font-size: 11px;
+    color: var(--google-blue);
+    font-family: 'DM Mono', monospace;
+    margin-top: 2px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .g-dots {
+    display: flex;
+    gap: 3px;
+  }
+
+  .g-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+  }
+
+  .nav-section {
+    padding: 16px 12px 8px;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--muted);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 12px;
+    margin: 1px 8px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--muted);
+    transition: all 0.15s;
+    text-decoration: none;
+  }
+
+  .nav-item:hover { background: var(--surface2); color: var(--text); }
+  .nav-item.active { background: rgba(79,142,247,0.12); color: var(--accent); }
+  .nav-item .icon { font-size: 15px; width: 18px; text-align: center; }
+
+  .nav-badge {
+    margin-left: auto;
+    background: var(--red);
+    color: white;
+    font-size: 10px;
+    font-weight: 600;
+    padding: 1px 6px;
+    border-radius: 10px;
+    font-family: 'DM Mono', monospace;
+  }
+
+  .sidebar-footer {
+    margin-top: auto;
+    padding: 16px;
+    border-top: 1px solid var(--border);
+  }
+
+  .user-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .user-avatar {
+    width: 32px; height: 32px;
+    background: linear-gradient(135deg, var(--google-blue), var(--purple));
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  .user-name { font-size: 13px; font-weight: 500; }
+  .user-role { font-size: 11px; color: var(--muted); }
+
+  /* ── Main content ── */
+  .main {
+    margin-left: 240px;
+    flex: 1;
+    min-height: 100vh;
+  }
+
+  .topbar {
+    height: 60px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 24px;
+    gap: 16px;
+    position: sticky;
+    top: 0;
+    z-index: 50;
+  }
+
+  .topbar-title { font-size: 16px; font-weight: 600; flex: 1; }
+
+  .dept-switcher {
+    display: flex;
+    background: var(--surface2);
+    border-radius: 8px;
+    padding: 3px;
+    gap: 2px;
+  }
+
+  .dept-btn {
+    padding: 5px 14px;
+    border-radius: 6px;
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: 'DM Sans', sans-serif;
+    transition: all 0.15s;
+  }
+
+  .dept-btn.active {
+    background: var(--google-blue);
+    color: white;
+  }
+
+  .sync-status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--muted);
+    font-family: 'DM Mono', monospace;
+  }
+
+  .sync-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--green);
+    animation: pulse 2s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  .btn {
+    padding: 8px 16px;
+    border-radius: 8px;
+    border: none;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: 'DM Sans', sans-serif;
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .btn-primary { background: var(--accent); color: white; }
+  .btn-primary:hover { background: #3d7de8; }
+  .btn-ghost { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+  .btn-ghost:hover { background: var(--border); }
+
+  .content { padding: 24px; }
+
+  /* ── Metric cards ── */
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+
+  .metric-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .metric-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+  }
+
+  .metric-card.blue::before { background: var(--google-blue); }
+  .metric-card.green::before { background: var(--google-green); }
+  .metric-card.amber::before { background: var(--google-yellow); }
+  .metric-card.red::before { background: var(--google-red); }
+
+  .metric-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 8px;
+  }
+
+  .metric-value {
+    font-size: 28px;
+    font-weight: 700;
+    font-family: 'DM Mono', monospace;
+    line-height: 1;
+    margin-bottom: 4px;
+  }
+
+  .metric-sub {
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  /* ── Filters ── */
+  .filters-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+
+  .filter-tabs {
+    display: flex;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  .filter-tab {
+    padding: 7px 14px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    color: var(--muted);
+    border: none;
+    background: transparent;
+    font-family: 'DM Sans', sans-serif;
+    transition: all 0.15s;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .filter-tab.active { background: var(--surface2); color: var(--text); }
+  .filter-tab:hover:not(.active) { color: var(--text); }
+
+  .filter-count {
+    background: var(--surface2);
+    border-radius: 10px;
+    padding: 1px 6px;
+    font-size: 10px;
+    font-family: 'DM Mono', monospace;
+  }
+
+  .filter-tab.active .filter-count { background: var(--border); }
+
+  /* ── Product table ── */
+  .table-container {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
+  .table-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .table-title { font-size: 14px; font-weight: 600; }
+  .table-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  th {
+    padding: 10px 16px;
+    text-align: left;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+
+  td {
+    padding: 0;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(255,255,255,0.02); }
+
+  .td-inner {
+    padding: 14px 16px;
+  }
+
+  /* ── Product row ── */
+  .product-cell {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 220px;
+  }
+
+  .product-thumb {
+    width: 40px; height: 40px;
+    border-radius: 8px;
+    object-fit: cover;
+    background: var(--surface2);
+    flex-shrink: 0;
+  }
+
+  .product-thumb-placeholder {
+    width: 40px; height: 40px;
+    border-radius: 8px;
+    background: var(--surface2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    flex-shrink: 0;
+  }
+
+  .product-name {
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1.3;
+    margin-bottom: 2px;
+  }
+
+  .product-campaign {
+    font-size: 11px;
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 180px;
+  }
+
+  /* ── Diagnosis badge ── */
+  .diag-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .diag-badge.critical { background: rgba(239,68,68,0.12); color: #ef4444; border: 1px solid rgba(239,68,68,0.2); }
+  .diag-badge.warning { background: rgba(245,158,11,0.12); color: #f59e0b; border: 1px solid rgba(245,158,11,0.2); }
+  .diag-badge.info { background: rgba(79,142,247,0.12); color: #4f8ef7; border: 1px solid rgba(79,142,247,0.2); }
+  .diag-badge.success { background: rgba(34,197,94,0.12); color: #22c55e; border: 1px solid rgba(34,197,94,0.2); }
+  .diag-badge.neutral { background: var(--surface2); color: var(--muted); border: 1px solid var(--border); }
+
+  /* ── Metric pill ── */
+  .metric-pill {
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    font-weight: 500;
+  }
+
+  .metric-pill.zero { color: var(--muted); }
+  .metric-pill.low { color: var(--red); }
+  .metric-pill.mid { color: var(--amber); }
+  .metric-pill.good { color: var(--green); }
+
+  /* ── Shopify match ── */
+  .shopify-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .shopify-title {
+    font-size: 12px;
+    color: var(--text);
+    line-height: 1.3;
+    max-width: 180px;
+  }
+
+  .shopify-meta {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .shopify-price {
+    font-size: 11px;
+    font-family: 'DM Mono', monospace;
+    color: var(--green);
+  }
+
+  .shopify-inv {
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .shopify-inv.zero { color: var(--red); }
+
+  .no-match {
+    font-size: 11px;
+    color: var(--muted);
+    font-style: italic;
+  }
+
+  /* ── Action buttons ── */
+  .action-btn {
+    padding: 5px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: 'DM Sans', sans-serif;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+
+  .action-btn:hover { background: var(--surface2); color: var(--text); }
+  .action-btn.primary { border-color: var(--accent); color: var(--accent); }
+  .action-btn.primary:hover { background: rgba(79,142,247,0.1); }
+
+  /* ── Expand row ── */
+  .expand-row td {
+    padding: 0;
+    background: var(--surface2);
+  }
+
+  .expand-content {
+    padding: 20px 24px;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 20px;
+    border-top: 1px solid var(--border);
+  }
+
+  .expand-section { }
+  .expand-section-title {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .expand-row-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+  }
+
+  .expand-row-item:last-child { border-bottom: none; }
+  .expand-row-label { color: var(--muted); }
+  .expand-row-value { font-weight: 500; font-family: 'DM Mono', monospace; font-size: 12px; }
+
+  .diagnosis-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin-bottom: 10px;
+  }
+
+  .diagnosis-label {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 6px;
+  }
+
+  .diagnosis-text {
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text);
+  }
+
+  .action-text {
+    font-size: 12px;
+    color: var(--accent);
+    margin-top: 4px;
+    font-weight: 500;
+  }
+
+  /* ── AI Analysis ── */
+  .ai-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px;
+  }
+
+  .ai-box-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+  }
+
+  .ai-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--purple);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  .ai-text {
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.6;
+    font-style: italic;
+  }
+
+  .ai-text.loaded { color: var(--text); font-style: normal; }
+
+  /* ── Activity log ── */
+  .activity-input-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+  }
+
+  .activity-input {
+    flex: 1;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 7px 10px;
+    font-size: 12px;
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    outline: none;
+  }
+
+  .activity-input:focus { border-color: var(--accent); }
+
+  .activity-select {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 7px 10px;
+    font-size: 12px;
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    outline: none;
+    cursor: pointer;
+  }
+
+  /* ── Activity log page ── */
+  .log-item {
+    display: flex;
+    gap: 12px;
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--border);
+    align-items: flex-start;
+  }
+
+  .log-item:last-child { border-bottom: none; }
+
+  .log-icon {
+    width: 28px; height: 28px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+
+  .log-content { flex: 1; }
+  .log-action { font-size: 13px; font-weight: 500; }
+  .log-detail { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .log-time { font-size: 11px; color: var(--muted); font-family: 'DM Mono', monospace; white-space: nowrap; }
+
+  /* ── Modal ── */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .modal-overlay.open { display: flex; }
+
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 24px;
+    width: 480px;
+    max-width: 90vw;
+  }
+
+  .modal-title { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
+  .modal-sub { font-size: 13px; color: var(--muted); margin-bottom: 20px; }
+
+  .modal-label { font-size: 12px; font-weight: 500; color: var(--muted); margin-bottom: 6px; display: block; }
+
+  .modal-select, .modal-textarea {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 13px;
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    outline: none;
+    margin-bottom: 14px;
+  }
+
+  .modal-select:focus, .modal-textarea:focus { border-color: var(--accent); }
+  .modal-textarea { resize: vertical; min-height: 80px; }
+
+  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px; }
+
+  /* ── Empty state ── */
+  .empty-state {
+    padding: 60px 24px;
+    text-align: center;
+    color: var(--muted);
+  }
+
+  .empty-icon { font-size: 40px; margin-bottom: 12px; }
+  .empty-title { font-size: 15px; font-weight: 500; color: var(--text); margin-bottom: 6px; }
+  .empty-sub { font-size: 13px; }
+
+  /* ── Loading ── */
+  .loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 60px;
+    color: var(--muted);
+    gap: 10px;
+    font-size: 14px;
+  }
+
+  .spinner {
+    width: 20px; height: 20px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Page visibility ── */
+  .page { display: none; }
+  .page.active { display: block; }
+
+  /* ── Responsive ── */
+  @media (max-width: 1200px) {
+    .metrics-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<nav class="sidebar">
+  <div class="logo">
+    <div class="logo-title">FK Sports</div>
+    <div class="logo-sub">
+      <div class="g-dots">
+        <div class="g-dot" style="background:var(--google-blue)"></div>
+        <div class="g-dot" style="background:var(--google-red)"></div>
+        <div class="g-dot" style="background:var(--google-yellow)"></div>
+        <div class="g-dot" style="background:var(--google-green)"></div>
+      </div>
+      Google Ads
+    </div>
+  </div>
+
+  <div class="nav-section">Monitor</div>
+  <a class="nav-item active" onclick="showPage('dashboard')">
+    <span class="icon">📊</span> Live Dashboard
+  </a>
+  <a class="nav-item" onclick="showPage('products')">
+    <span class="icon">🛍️</span> All Products
+    <span class="nav-badge" id="nav-issues-count" style="display:none">0</span>
+  </a>
+  <a class="nav-item" onclick="showPage('diagnostics')">
+    <span class="icon">🔬</span> Diagnostics
+  </a>
+
+  <div class="nav-section">Actions</div>
+  <a class="nav-item" onclick="showPage('activity')">
+    <span class="icon">📋</span> Activity Log
+  </a>
+
+  <div class="nav-section">Switch</div>
+  <a class="nav-item" href="/index.html">
+    <span class="icon">🛒</span> Amazon
+  </a>
+
+  <div class="sidebar-footer">
+    <div class="user-info">
+      <div class="user-avatar" id="user-avatar">B</div>
+      <div>
+        <div class="user-name" id="user-name">Loading...</div>
+        <div class="user-role" id="user-role">Google</div>
+      </div>
+    </div>
+  </div>
+</nav>
+
+<!-- Main -->
+<div class="main">
+  <div class="topbar">
+    <div class="topbar-title" id="page-title">Live Dashboard</div>
+    <div class="sync-status">
+      <div class="sync-dot" id="sync-dot"></div>
+      <span id="sync-time">Syncing...</span>
+    </div>
+    <button class="btn btn-ghost" onclick="refreshAll()">↻ Refresh</button>
+    <button class="btn btn-primary" onclick="triggerGoogleSync()">▶ Run Script</button>
+  </div>
+
+  <div class="content">
+
+    <!-- ── Dashboard Page ── -->
+    <div class="page active" id="page-dashboard">
+      <div class="metrics-grid">
+        <div class="metric-card blue">
+          <div class="metric-label">Today's Revenue</div>
+          <div class="metric-value" id="m-revenue">£0.00</div>
+          <div class="metric-sub">From Google Ads</div>
+        </div>
+        <div class="metric-card green">
+          <div class="metric-label">Total Ad Spend</div>
+          <div class="metric-value" id="m-spend">£0.00</div>
+          <div class="metric-sub">Today</div>
+        </div>
+        <div class="metric-card amber">
+          <div class="metric-label">Blended ACoS</div>
+          <div class="metric-value" id="m-acos">0%</div>
+          <div class="metric-sub" id="m-acos-sub">No conversions yet</div>
+        </div>
+        <div class="metric-card red">
+          <div class="metric-label">Needs Action</div>
+          <div class="metric-value" id="m-action">0</div>
+          <div class="metric-sub">Products flagged</div>
+        </div>
+      </div>
+
+      <!-- Issues summary -->
+      <div class="table-container" style="margin-bottom:20px">
+        <div class="table-header">
+          <div>
+            <div class="table-title">🚨 Products Needing Action</div>
+            <div class="table-sub">Sorted by urgency — fix these first</div>
+          </div>
+          <button class="btn btn-ghost" onclick="showPage('products')">View all →</button>
+        </div>
+        <div id="dashboard-issues">
+          <div class="loading"><div class="spinner"></div> Loading diagnostics...</div>
+        </div>
+      </div>
+
+      <!-- Shopify sync status -->
+      <div class="table-container">
+        <div class="table-header">
+          <div>
+            <div class="table-title">🛍️ Shopify Connection</div>
+            <div class="table-sub" id="shopify-status">Checking...</div>
+          </div>
+          <button class="btn btn-ghost" onclick="triggerShopifySync()">↻ Sync Shopify</button>
+        </div>
+        <div id="shopify-summary" style="padding:16px 20px">
+          <div class="loading"><div class="spinner"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Products Page ── -->
+    <div class="page" id="page-products">
+      <div class="filters-bar">
+        <div class="filter-tabs" id="filter-tabs">
+          <button class="filter-tab active" onclick="filterProducts('all', this)">
+            All <span class="filter-count" id="fc-all">0</span>
+          </button>
+          <button class="filter-tab" onclick="filterProducts('critical', this)">
+            🔴 Critical <span class="filter-count" id="fc-critical">0</span>
+          </button>
+          <button class="filter-tab" onclick="filterProducts('warning', this)">
+            🟡 Warning <span class="filter-count" id="fc-warning">0</span>
+          </button>
+          <button class="filter-tab" onclick="filterProducts('scale', this)">
+            🚀 Scale <span class="filter-count" id="fc-scale">0</span>
+          </button>
+          <button class="filter-tab" onclick="filterProducts('healthy', this)">
+            ✅ Healthy <span class="filter-count" id="fc-healthy">0</span>
+          </button>
+        </div>
+        <button class="btn btn-ghost" onclick="refreshAll()" style="margin-left:auto">↻ Refresh</button>
+      </div>
+
+      <div class="table-container">
+        <div class="table-header">
+          <div>
+            <div class="table-title">Product Diagnostics</div>
+            <div class="table-sub" id="products-sub">Loading...</div>
+          </div>
+        </div>
+        <div id="products-table">
+          <div class="loading"><div class="spinner"></div> Loading products...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Diagnostics Page ── -->
+    <div class="page" id="page-diagnostics">
+      <div class="table-container">
+        <div class="table-header">
+          <div>
+            <div class="table-title">🔬 Deep Diagnostics</div>
+            <div class="table-sub">Full funnel analysis per product</div>
+          </div>
+        </div>
+        <div id="diagnostics-content">
+          <div class="loading"><div class="spinner"></div> Loading...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Activity Log Page ── -->
+    <div class="page" id="page-activity">
+      <div class="table-container">
+        <div class="table-header">
+          <div>
+            <div class="table-title">📋 Activity Log</div>
+            <div class="table-sub">All actions logged permanently</div>
+          </div>
+        </div>
+        <div id="activity-log-content">
+          <div class="loading"><div class="spinner"></div> Loading...</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Action Modal -->
+<div class="modal-overlay" id="action-modal">
+  <div class="modal">
+    <div class="modal-title" id="modal-title">Log Action</div>
+    <div class="modal-sub" id="modal-sub">What action did you take on this product?</div>
+    <label class="modal-label">Action Type</label>
+    <select class="modal-select" id="modal-action-type">
+      <option value="bid_changed">Changed bid</option>
+      <option value="budget_increased">Increased budget</option>
+      <option value="budget_decreased">Decreased budget</option>
+      <option value="keyword_added">Added keyword</option>
+      <option value="negative_added">Added negative keyword</option>
+      <option value="ad_paused">Paused ad/product</option>
+      <option value="ad_enabled">Enabled ad/product</option>
+      <option value="page_fixed">Fixed product page</option>
+      <option value="images_updated">Updated product images</option>
+      <option value="price_changed">Changed price</option>
+      <option value="reviewed_performance">Reviewed performance</option>
+      <option value="other">Other</option>
+    </select>
+    <label class="modal-label">Notes (required)</label>
+    <textarea class="modal-textarea" id="modal-notes" placeholder="Describe what you did and why..."></textarea>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitAction()">Log Action</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+const token = localStorage.getItem('cp_token');
+let allProducts = [];
+let currentFilter = 'all';
+let currentActionProduct = null;
+let expandedRows = new Set();
+
+// ── Auth check ────────────────────────────────────────────────────────────
+if (!token) { window.location.href = '/login.html'; }
+
+// ── Fetch helper ─────────────────────────────────────────────────────────
+async function apiFetch(url, opts = {}) {
+  const res = await fetch(url, {
+    ...opts,
+    headers: { 'x-auth-token': token, 'Content-Type': 'application/json', ...(opts.headers || {}) }
+  });
+  if (res.status === 401) { window.location.href = '/login.html'; return null; }
+  return res.json();
+}
+
+// ── Page navigation ───────────────────────────────────────────────────────
+function showPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  const titles = { dashboard: 'Live Dashboard', products: 'All Products', diagnostics: 'Diagnostics', activity: 'Activity Log' };
+  document.getElementById('page-title').textContent = titles[name] || name;
+  if (name === 'activity') loadActivity();
+  if (name === 'diagnostics') loadDiagnostics();
+}
+
+// ── Load user ─────────────────────────────────────────────────────────────
+async function loadUser() {
+  const data = await apiFetch('/api/auth/me');
+  if (!data) return;
+  document.getElementById('user-name').textContent = data.name;
+  document.getElementById('user-avatar').textContent = data.name[0];
+  document.getElementById('user-role').textContent = data.role === 'manager' ? 'Director' : 'Agent';
+}
+
+// ── Diagnosis helpers ─────────────────────────────────────────────────────
+function diagClass(type) {
+  const map = { out_of_stock: 'critical', no_impressions: 'critical', spend_no_revenue: 'critical', no_conversions: 'warning', landing_page: 'warning', high_acos: 'warning', low_ctr: 'info', scale: 'success' };
+  return map[type] || 'neutral';
+}
+
+function diagEmoji(type) {
+  const map = { out_of_stock: '📦', no_impressions: '👻', spend_no_revenue: '💸', no_conversions: '🚫', landing_page: '🔗', high_acos: '📈', low_ctr: '👁️', scale: '🚀' };
+  return map[type] || '⚪';
+}
+
+function filterClass(type) {
+  const critical = ['out_of_stock','no_impressions','spend_no_revenue'];
+  const warning = ['no_conversions','landing_page','high_acos','low_ctr'];
+  if (critical.includes(type)) return 'critical';
+  if (warning.includes(type)) return 'warning';
+  if (type === 'scale') return 'scale';
+  return 'healthy';
+}
+
+// ── Load all data ─────────────────────────────────────────────────────────
+async function loadAll() {
+  const data = await apiFetch('/api/google/products-diagnostic');
+  if (!data) return;
+
+  allProducts = data.products || [];
+
+  // Update sync time
+  const syncTime = data.lastGoogleSync || 'No data yet';
+  document.getElementById('sync-time').textContent = 'Google: ' + syncTime;
+
+  // Update metrics
+  const totalSpend = allProducts.reduce((s,p) => s + (p.spend||0), 0);
+  const totalSales = allProducts.reduce((s,p) => s + (p.sales||0), 0);
+  const acos = totalSales > 0 ? Math.round((totalSpend/totalSales)*1000)/10 : 0;
+  const needsAction = allProducts.filter(p => ['critical','warning'].includes(filterClass(p.diagnosisType))).length;
+
+  document.getElementById('m-revenue').textContent = '£' + totalSales.toFixed(2);
+  document.getElementById('m-spend').textContent = '£' + totalSpend.toFixed(2);
+  document.getElementById('m-acos').textContent = acos + '%';
+  document.getElementById('m-acos-sub').textContent = acos === 0 ? 'No conversions yet' : acos < 15 ? '✅ Within target' : '⚠ Above target';
+  document.getElementById('m-action').textContent = needsAction;
+
+  // Update nav badge
+  if (needsAction > 0) {
+    const badge = document.getElementById('nav-issues-count');
+    badge.style.display = 'inline';
+    badge.textContent = needsAction;
+  }
+
+  // Filter counts
+  const counts = { all: allProducts.length, critical: 0, warning: 0, scale: 0, healthy: 0 };
+  allProducts.forEach(p => { counts[filterClass(p.diagnosisType)]++; });
+  document.getElementById('fc-all').textContent = counts.all;
+  document.getElementById('fc-critical').textContent = counts.critical;
+  document.getElementById('fc-warning').textContent = counts.warning;
+  document.getElementById('fc-scale').textContent = counts.scale;
+  document.getElementById('fc-healthy').textContent = counts.healthy;
+
+  // Dashboard issues
+  renderDashboardIssues();
+
+  // Products table
+  renderProductsTable(currentFilter);
+
+  // Shopify status
+  document.getElementById('shopify-status').textContent = data.lastShopifySync ? 'Last synced: ' + data.lastShopifySync + ' · ' + data.shopifyMatched + ' of ' + data.totalProducts + ' products matched' : 'Not synced yet';
+  loadShopifySummary();
+}
+
+// ── Dashboard issues ──────────────────────────────────────────────────────
+function renderDashboardIssues() {
+  const issues = allProducts.filter(p => ['critical','warning'].includes(filterClass(p.diagnosisType)));
+  const el = document.getElementById('dashboard-issues');
+  if (!issues.length) {
+    el.innerHTML = '<div class="empty-state"><div class="empty-icon">✅</div><div class="empty-title">All products healthy</div><div class="empty-sub">No issues detected right now</div></div>';
+    return;
+  }
+  el.innerHTML = '<table><thead><tr><th>Product</th><th>Diagnosis</th><th>Spend</th><th>Revenue</th><th>Action Needed</th><th></th></tr></thead><tbody>' +
+    issues.slice(0,5).map(p => `
+      <tr>
+        <td><div class="td-inner"><div class="product-cell">
+          ${p.shopifyImageUrl ? `<img class="product-thumb" src="${p.shopifyImageUrl}" onerror="this.style.display='none'">` : '<div class="product-thumb-placeholder">🛍️</div>'}
+          <div><div class="product-name">${p.productName}</div><div class="product-campaign">${p.campaignName}</div></div>
+        </div></div></td>
+        <td><div class="td-inner"><span class="diag-badge ${diagClass(p.diagnosisType)}">${diagEmoji(p.diagnosisType)} ${p.diagnosisType ? p.diagnosisType.replace(/_/g,' ') : 'OK'}</span></div></td>
+        <td><div class="td-inner"><span class="metric-pill ${p.spend > 0 ? 'low' : 'zero'}">£${(p.spend||0).toFixed(2)}</span></div></td>
+        <td><div class="td-inner"><span class="metric-pill ${p.sales > 0 ? 'good' : 'zero'}">£${(p.sales||0).toFixed(2)}</span></div></td>
+        <td><div class="td-inner" style="font-size:12px;color:var(--accent)">${p.action || '—'}</div></td>
+        <td><div class="td-inner"><button class="action-btn primary" onclick="openActionModal('${p.productId}','${escHtml(p.productName)}')">Log Action</button></div></td>
+      </tr>`).join('') +
+  '</tbody></table>';
+}
+
+// ── Products table ────────────────────────────────────────────────────────
+function filterProducts(filter, btn) {
+  currentFilter = filter;
+  document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  renderProductsTable(filter);
+}
+
+function renderProductsTable(filter) {
+  const filtered = filter === 'all' ? allProducts : allProducts.filter(p => filterClass(p.diagnosisType) === filter);
+  const el = document.getElementById('products-table');
+  document.getElementById('products-sub').textContent = filtered.length + ' products · click row to expand';
+
+  if (!filtered.length) {
+    el.innerHTML = '<div class="empty-state"><div class="empty-icon">🔍</div><div class="empty-title">No products in this category</div></div>';
+    return;
+  }
+
+  el.innerHTML = '<table><thead><tr>' +
+    '<th>Product / Ad Group</th><th>Diagnosis</th><th>Impressions</th><th>Clicks</th><th>Conversions</th>' +
+    '<th>Spend</th><th>Revenue</th><th>Shopify Match</th><th>Actions</th>' +
+    '</tr></thead><tbody id="products-tbody"></tbody></table>';
+
+  const tbody = document.getElementById('products-tbody');
+  filtered.forEach(p => {
+    const row = document.createElement('tr');
+    row.style.cursor = 'pointer';
+    row.id = 'row-' + p.productId;
+    row.innerHTML = `
+      <td><div class="td-inner"><div class="product-cell">
+        ${p.shopifyImageUrl ? `<img class="product-thumb" src="${p.shopifyImageUrl}" onerror="this.style.display='none'">` : '<div class="product-thumb-placeholder">🛍️</div>'}
+        <div><div class="product-name">${p.productName}</div><div class="product-campaign">${p.campaignName}</div></div>
+      </div></div></td>
+      <td><div class="td-inner">
+        ${p.diagnosisType ? `<span class="diag-badge ${diagClass(p.diagnosisType)}">${diagEmoji(p.diagnosisType)} ${p.diagnosisType.replace(/_/g,' ')}</span>` : '<span class="diag-badge neutral">No data</span>'}
+      </div></td>
+      <td><div class="td-inner"><span class="metric-pill ${p.impressions > 0 ? 'good' : 'zero'}">${p.impressions||0}</span></div></td>
+      <td><div class="td-inner"><span class="metric-pill ${p.clicks > 0 ? 'mid' : 'zero'}">${p.clicks||0}</span></div></td>
+      <td><div class="td-inner"><span class="metric-pill ${p.conversions > 0 ? 'good' : 'zero'}">${p.conversions||0}</span></div></td>
+      <td><div class="td-inner"><span class="metric-pill ${p.spend > 0 ? 'mid' : 'zero'}">£${(p.spend||0).toFixed(2)}</span></div></td>
+      <td><div class="td-inner"><span class="metric-pill ${p.sales > 0 ? 'good' : 'zero'}">£${(p.sales||0).toFixed(2)}</span></div></td>
+      <td><div class="td-inner">
+        ${p.shopifyMatched ? `<div class="shopify-cell">
+          <div class="shopify-title">${p.shopifyTitle||''}</div>
+          <div class="shopify-meta">
+            <span class="shopify-price">£${p.shopifyPrice||0}</span>
+            <span class="shopify-inv ${p.shopifyInventory === 0 ? 'zero' : ''}">${p.shopifyInventory === 0 ? '⚠ Out of stock' : p.shopifyInventory + ' in stock'}</span>
+          </div>
+        </div>` : '<span class="no-match">Not matched</span>'}
+      </div></td>
+      <td><div class="td-inner" style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="action-btn primary" onclick="event.stopPropagation();openActionModal('${p.productId}','${escHtml(p.productName)}')">Log Action</button>
+        <button class="action-btn" onclick="event.stopPropagation();loadAI('${p.productId}')">🤖 AI</button>
+      </div></div></td>`;
+    row.onclick = () => toggleExpand(p, row);
+    tbody.appendChild(row);
+  });
+}
+
+// ── Expand row ────────────────────────────────────────────────────────────
+function toggleExpand(p, row) {
+  const existing = document.getElementById('expand-' + p.productId);
+  if (existing) { existing.remove(); expandedRows.delete(p.productId); return; }
+  expandedRows.add(p.productId);
+  const expandRow = document.createElement('tr');
+  expandRow.className = 'expand-row';
+  expandRow.id = 'expand-' + p.productId;
+  expandRow.innerHTML = `<td colspan="9">
+    <div class="expand-content">
+      <div class="expand-section">
+        <div class="expand-section-title">📊 Ad Performance</div>
+        ${[
+          ['Impressions', p.impressions||0],
+          ['Clicks', p.clicks||0],
+          ['CTR', (p.ctr||0) + '%'],
+          ['Conversions', p.conversions||0],
+          ['Ad Spend', '£'+(p.spend||0).toFixed(2)],
+          ['Revenue', '£'+(p.sales||0).toFixed(2)],
+          ['ACoS', p.acos > 0 ? p.acos + '%' : '—'],
+          ['Campaign', p.campaignName]
+        ].map(([l,v]) => `<div class="expand-row-item"><span class="expand-row-label">${l}</span><span class="expand-row-value">${v}</span></div>`).join('')}
+      </div>
+      <div class="expand-section">
+        <div class="expand-section-title">🛍️ Shopify Data</div>
+        ${p.shopifyMatched ? [
+          ['Product', p.shopifyTitle||'—'],
+          ['Price', '£'+(p.shopifyPrice||0)],
+          ['Inventory', p.shopifyInventory === 0 ? '⚠ OUT OF STOCK' : p.shopifyInventory + ' units'],
+          ['Revenue (30d)', '£'+(p.shopifyRevenue30d||0)],
+          ['Units Sold (30d)', p.shopifyUnitsSold30d||0]
+        ].map(([l,v]) => `<div class="expand-row-item"><span class="expand-row-label">${l}</span><span class="expand-row-value">${v}</span></div>`).join('') +
+        `<div style="margin-top:10px"><a href="${p.shopifyUrl}" target="_blank" class="action-btn" style="display:inline-flex;text-decoration:none">Open in Shopify ↗</a></div>`
+        : '<div style="color:var(--muted);font-size:13px;padding:10px 0">No Shopify match found for this product name.<br><small>Tip: name your Google ad groups to match your Shopify product titles.</small></div>'}
+
+        <div class="expand-section-title" style="margin-top:16px">🔬 Diagnosis</div>
+        ${p.diagnosis ? `<div class="diagnosis-box">
+          <div class="diagnosis-text">${p.diagnosis}</div>
+          <div class="action-text">→ ${p.action}</div>
+        </div>` : '<div style="color:var(--muted);font-size:13px">No diagnosis available yet</div>'}
+      </div>
+      <div class="expand-section">
+        <div class="expand-section-title">🤖 AI Analysis</div>
+        <div class="ai-box">
+          <div class="ai-box-header">
+            <span class="ai-label">✦ Claude Analysis</span>
+            <button class="action-btn primary" onclick="loadAI('${p.productId}')">Analyse</button>
+          </div>
+          <div class="ai-text" id="ai-${p.productId}">Click Analyse to get AI diagnosis of this product's performance issues.</div>
+        </div>
+
+        <div class="expand-section-title" style="margin-top:16px">📝 Log Action</div>
+        <div class="activity-input-row">
+          <select class="activity-select" id="quick-action-${p.productId}">
+            <option value="bid_changed">Changed bid</option>
+            <option value="budget_increased">Increased budget</option>
+            <option value="keyword_added">Added keyword</option>
+            <option value="negative_added">Added negative</option>
+            <option value="ad_paused">Paused ad</option>
+            <option value="page_fixed">Fixed page</option>
+            <option value="reviewed_performance">Reviewed</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+        <div class="activity-input-row" style="margin-top:8px">
+          <input class="activity-input" id="quick-notes-${p.productId}" placeholder="Notes (required)...">
+          <button class="btn btn-primary" style="padding:7px 12px" onclick="quickLog('${p.productId}','${escHtml(p.productName)}','${escHtml(p.campaignName)}')">Log</button>
+        </div>
+      </div>
+    </div>
+  </td>`;
+  row.after(expandRow);
+}
+
+// ── AI Analysis ───────────────────────────────────────────────────────────
+async function loadAI(productId) {
+  const el = document.getElementById('ai-' + productId);
+  if (!el) return;
+  el.className = 'ai-text';
+  el.textContent = 'Analysing with Claude...';
+
+  const product = allProducts.find(p => p.productId === productId);
+  if (!product) return;
+
+  try {
+    const response = await fetch('/api/google/ai-analyse', {
+      method: 'POST',
+      headers: { 'x-auth-token': token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ product })
+    });
+    const data = await response.json();
+    if (data.analysis) {
+      el.className = 'ai-text loaded';
+      el.textContent = data.analysis;
+    } else {
+      el.textContent = 'Analysis failed: ' + (data.error || 'Unknown error');
+    }
+  } catch(e) {
+    el.textContent = 'Error: ' + e.message;
+  }
+}
+
+// ── Activity log ──────────────────────────────────────────────────────────
+async function loadActivity() {
+  const el = document.getElementById('activity-log-content');
+  const data = await apiFetch('/api/activity?limit=100');
+  if (!data || !data.logs.length) {
+    el.innerHTML = '<div class="empty-state"><div class="empty-icon">📋</div><div class="empty-title">No activity yet</div><div class="empty-sub">Actions logged here will appear here</div></div>';
+    return;
+  }
+
+  const actionLabels = {
+    bid_changed: '📊 Changed bid', budget_increased: '💰 Increased budget', budget_decreased: '💰 Decreased budget',
+    keyword_added: '🔑 Added keyword', negative_added: '🚫 Added negative', ad_paused: '⏸ Paused ad',
+    ad_enabled: '▶ Enabled ad', page_fixed: '🔧 Fixed page', images_updated: '🖼 Updated images',
+    price_changed: '💲 Changed price', reviewed_performance: '🔍 Reviewed performance', other: '📝 Other',
+    task_created: '📋 Task created', alert_dismissed: '✓ Alert dismissed', budget_added: '💰 Budget added'
+  };
+
+  el.innerHTML = data.logs.filter(l => l.campaign_name).slice(0,50).map(log => `
+    <div class="log-item">
+      <div class="log-icon" style="background:var(--surface2)">📝</div>
+      <div class="log-content">
+        <div class="log-action">${actionLabels[log.action] || log.action}</div>
+        <div class="log-detail">${log.campaign_name}${log.notes ? ' · ' + log.notes : ''}</div>
+      </div>
+      <div class="log-time">${new Date(log.logged_at).toLocaleString('en-GB', {timeZone:'Europe/London', day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit'})}</div>
+    </div>`).join('');
+}
+
+// ── Diagnostics page ──────────────────────────────────────────────────────
+function loadDiagnostics() {
+  const el = document.getElementById('diagnostics-content');
+  if (!allProducts.length) { el.innerHTML = '<div class="empty-state"><div class="empty-icon">🔬</div><div class="empty-title">No data yet</div><div class="empty-sub">Run the Google Ads Script first</div></div>'; return; }
+
+  el.innerHTML = allProducts.map(p => `
+    <div style="padding:20px;border-bottom:1px solid var(--border)">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+        ${p.shopifyImageUrl ? `<img class="product-thumb" src="${p.shopifyImageUrl}" style="width:48px;height:48px" onerror="this.style.display='none'">` : '<div class="product-thumb-placeholder" style="width:48px;height:48px">🛍️</div>'}
+        <div style="flex:1">
+          <div style="font-size:15px;font-weight:600">${p.productName}</div>
+          <div style="font-size:12px;color:var(--muted)">${p.campaignName}</div>
+        </div>
+        ${p.diagnosisType ? `<span class="diag-badge ${diagClass(p.diagnosisType)}">${diagEmoji(p.diagnosisType)} ${p.diagnosisType.replace(/_/g,' ')}</span>` : ''}
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:14px">
+        ${[['Impressions',p.impressions||0,''],['Clicks',p.clicks||0,''],['CTR',(p.ctr||0)+'%',''],['Spend','£'+(p.spend||0).toFixed(2),''],['Revenue','£'+(p.sales||0).toFixed(2),'']].map(([l,v]) => `
+          <div style="background:var(--surface2);border-radius:8px;padding:10px">
+            <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px">${l}</div>
+            <div style="font-size:16px;font-weight:600;font-family:'DM Mono',monospace">${v}</div>
+          </div>`).join('')}
+      </div>
+
+      ${p.diagnosis ? `<div style="background:rgba(79,142,247,0.08);border:1px solid rgba(79,142,247,0.2);border-radius:8px;padding:12px">
+        <div style="font-size:12px;color:var(--accent);font-weight:600;margin-bottom:4px">DIAGNOSIS</div>
+        <div style="font-size:13px">${p.diagnosis}</div>
+        <div style="font-size:12px;color:var(--accent);margin-top:6px;font-weight:500">→ ${p.action}</div>
+      </div>` : ''}
+    </div>`).join('');
+}
+
+// ── Shopify summary ───────────────────────────────────────────────────────
+async function loadShopifySummary() {
+  const data = await apiFetch('/api/shopify/products');
+  if (!data || !data.products) return;
+  const products = data.products;
+  const outOfStock = products.filter(p => p.inventory === 0).length;
+  const topSellers = products.sort((a,b) => b.revenue30d - a.revenue30d).slice(0,3);
+
+  document.getElementById('shopify-summary').innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px">
+      <div><div style="font-size:11px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.06em">Total Products</div><div style="font-size:22px;font-weight:700;font-family:'DM Mono',monospace">${products.length}</div></div>
+      <div><div style="font-size:11px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.06em">Out of Stock</div><div style="font-size:22px;font-weight:700;font-family:'DM Mono',monospace;color:${outOfStock > 0 ? 'var(--red)' : 'var(--green)'}">${outOfStock}</div></div>
+      <div><div style="font-size:11px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.06em">Top Seller (30d)</div><div style="font-size:13px;font-weight:500">${topSellers[0] ? topSellers[0].title.substring(0,40)+'...' : '—'}</div></div>
+    </div>`;
+}
+
+// ── Action modal ──────────────────────────────────────────────────────────
+function openActionModal(productId, productName) {
+  currentActionProduct = { productId, productName };
+  document.getElementById('modal-title').textContent = 'Log Action';
+  document.getElementById('modal-sub').textContent = productName;
+  document.getElementById('modal-notes').value = '';
+  document.getElementById('action-modal').classList.add('open');
+}
+
+function closeModal() {
+  document.getElementById('action-modal').classList.remove('open');
+  currentActionProduct = null;
+}
+
+async function submitAction() {
+  const notes = document.getElementById('modal-notes').value.trim();
+  const action = document.getElementById('modal-action-type').value;
+  if (!notes) { alert('Please add notes'); return; }
+  if (!currentActionProduct) return;
+
+  await apiFetch('/api/activity/log', {
+    method: 'POST',
+    body: JSON.stringify({
+      campaignId: currentActionProduct.productId,
+      campaignName: currentActionProduct.productName,
+      action: action,
+      notes: notes,
+      agentName: document.getElementById('user-name').textContent
+    })
+  });
+
+  closeModal();
+  alert('Action logged successfully');
+}
+
+// ── Quick log (inline) ────────────────────────────────────────────────────
+async function quickLog(productId, productName, campaignName) {
+  const notes = document.getElementById('quick-notes-' + productId)?.value.trim();
+  const action = document.getElementById('quick-action-' + productId)?.value;
+  if (!notes) { alert('Please add notes'); return; }
+
+  await apiFetch('/api/activity/log', {
+    method: 'POST',
+    body: JSON.stringify({
+      campaignId: productId,
+      campaignName: productName,
+      action: action,
+      notes: notes,
+      agentName: document.getElementById('user-name').textContent
+    })
+  });
+
+  document.getElementById('quick-notes-' + productId).value = '';
+  alert('✓ Action logged');
+}
+
+// ── Refresh ───────────────────────────────────────────────────────────────
+async function refreshAll() {
+  document.getElementById('sync-dot').style.background = 'var(--amber)';
+  await loadAll();
+  document.getElementById('sync-dot').style.background = 'var(--green)';
+}
+
+async function triggerShopifySync() {
+  await apiFetch('/api/shopify/sync', { method: 'POST' });
+  setTimeout(refreshAll, 3000);
+}
+
+async function triggerGoogleSync() {
+  alert('Run the Google Ads Script manually from Google Ads → Tools → Scripts to push fresh data.');
+}
+
+// ── Escape HTML ───────────────────────────────────────────────────────────
+function escHtml(str) {
+  return (str||'').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────
+loadUser();
+loadAll();
+setInterval(loadAll, 5 * 60 * 1000); // refresh every 5 min
+</script>
+</body>
+</html>

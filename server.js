@@ -1787,3 +1787,54 @@ app.listen(PORT, '0.0.0.0', async function() {
     syncShopifyProducts().catch(function(err) { console.error('Initial Shopify sync failed:', err.message); });
   }, 30000);
 });
+
+// ── Google Product AI Analysis ────────────────────────────────────────────
+app.post('/api/google/ai-analyse', async function(req, res) {
+  if (!process.env.ANTHROPIC_API_KEY) return res.status(500).json({ error: 'No API key' });
+  const { product } = req.body;
+  if (!product) return res.status(400).json({ error: 'No product data' });
+  try {
+    const prompt = `You are a Google Ads and e-commerce expert for FK Sports UK (fitness equipment).
+
+PRODUCT: ${product.productName}
+CAMPAIGN: ${product.campaignName}
+
+TODAY'S GOOGLE ADS PERFORMANCE:
+- Impressions: ${product.impressions}
+- Clicks: ${product.clicks}
+- CTR: ${product.ctr}%
+- Conversions: ${product.conversions}
+- Ad Spend: £${product.spend}
+- Revenue: £${product.sales}
+- ACoS: ${product.acos}%
+
+SHOPIFY DATA:
+${product.shopifyMatched ? `- Product: ${product.shopifyTitle}
+- Price: £${product.shopifyPrice}
+- Inventory: ${product.shopifyInventory === 0 ? 'OUT OF STOCK' : product.shopifyInventory + ' units'}
+- Revenue last 30 days: £${product.shopifyRevenue30d}
+- Units sold last 30 days: ${product.shopifyUnitsSold30d}` : '- No Shopify match found for this product'}
+
+CURRENT DIAGNOSIS: ${product.diagnosis || 'None'}
+
+Provide a concise analysis (3-4 sentences max):
+1. What is the root cause of this product's performance issue?
+2. One specific action to take RIGHT NOW
+3. What result to expect if the action is taken
+
+Be direct, specific, actionable. No generic advice.`;
+
+    const response = await axios.post('https://api.anthropic.com/v1/messages', {
+      model: 'claude-opus-4-5-20251101',
+      max_tokens: 400,
+      messages: [{ role: 'user', content: prompt }]
+    }, {
+      headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' }
+    });
+
+    res.json({ analysis: response.data.content[0].text });
+  } catch(e) {
+    console.error('Google AI analyse error: ' + e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
