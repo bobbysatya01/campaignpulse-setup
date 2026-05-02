@@ -1516,6 +1516,209 @@ app.get('/api/google/dashboard', async function(req, res) {
   res.json({ metrics: { totalSpend: totalSpend.toFixed(2), totalRevenue: totalRevenue.toFixed(2), blendedAcos, outOfBudget, spendNoRevenue, totalCampaigns: camps.length, activeCampaigns: camps.filter(function(c){ return c.state === "ENABLED" || c.state === "enabled"; }).length }, campaigns: camps, products: googleState.products || [], alerts: alerts, lastSync: googleState.lastSync, error: googleState.error });
 });
 
+// ── Shopify Integration ───────────────────────────────────────────────────
+let shopifyState = {
+  products: [],
+  lastSync: null,
+  error: null
+};
+
+async function syncShopifyProducts() {
+  const token = process.env.SHOPIFY_ACCESS_TOKEN;
+  const store = process.env.SHOPIFY_STORE;
+  if (!token || !store) { console.log('Shopify credentials not configured'); return; }
+
+  try {
+    console.log('Syncing Shopify products...');
+
+    // Fetch products
+    const prodRes = await axios.get('https://' + store + '/admin/api/2023-10/products.json?limit=250&status=active', {
+      headers: { 'X-Shopify-Access-Token': token }
+    });
+    const rawProducts = prodRes.data.products || [];
+
+    // Fetch orders from last 30 days for conversion data
+    const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const orderRes = await axios.get('https://' + store + '/admin/api/2023-10/orders.json?limit=250&status=any&created_at_min=' + since, {
+      headers: { 'X-Shopify-Access-Token': token }
+    });
+    const orders = orderRes.data.orders || [];
+
+    // Build sales map per product
+    const salesMap = {};
+    const unitsMap = {};
+    orders.forEach(function(order) {
+      (order.line_items || []).forEach(function(item) {
+        const pid = String(item.product_id);
+        salesMap[pid] = (salesMap[pid] || 0) + parseFloat(item.price) * item.quantity;
+        unitsMap[pid] = (unitsMap[pid] || 0) + item.quantity;
+      });
+    });
+
+    shopifyState.products = rawProducts.map(function(p) {
+      const pid = String(p.id);
+      const totalRevenue = salesMap[pid] || 0;
+      const totalUnits = unitsMap[pid] || 0;
+      const price = parseFloat((p.variants && p.variants[0] && p.variants[0].price) || 0);
+      const inventory = (p.variants || []).reduce(function(s, v) { return s + (v.inventory_quantity || 0); }, 0);
+      const imageUrl = p.images && p.images[0] ? p.images[0].src : null;
+      const reviewCount = 0; // Shopify basic doesn't expose reviews via API
+      const tags = (p.tags || '').split(',').map(function(t){ return t.trim(); });
+
+      return {
+        id: pid,
+        title: p.title,
+        handle: p.handle,
+        url: 'https://' + store.replace('.myshopify.com', '') + '.com/products/' + p.handle,
+        shopifyUrl: 'https://' + store + '/admin/products/' + pid,
+        price: price,
+        inventory: inventory,
+        imageUrl: imageUrl,
+        tags: tags,
+        vendor: p.vendor || '',
+        productType: p.product_type || '',
+        status: p.status,
+        revenue30d: Math.round(totalRevenue * 100) / 100,
+        unitsSold30d: totalUnits,
+        variantCount: (p.variants || []).length,
+        createdAt: p.created_at
+      };
+    });
+
+    shopifyState.lastSync = new Date().toLocaleTimeString('en-GB', {timeZone:'Europe/London', hour:'2-digit', minute:'2-digit'});
+    shopifyState.error = null;
+    console.log('Shopify sync complete: ' + shopifyState.products.length + ' products');
+  } catch(e) {
+    console.error('Shopify sync error: ' + e.message);
+    shopifyState.error = e.message;
+  }
+}
+
+// Match Google product name to Shopify product
+function matchShopifyProduct(googleProductName) {
+  if (!googleProductName || !shopifyState.products.length) return null;
+  const name = googleProductName.toLowerCase();
+  // Try exact title match first
+  let match = shopifyState.products.find(function(p) { return p.title.toLowerCase() === name; });
+  if (match) return match;
+  // Try partial match — Shopify title contains Google name or vice versa
+  match = shopifyState.products.find(function(p) {
+    const title = p.title.toLowerCase();
+    return title.includes(name) || name.includes(title);
+  });
+  if (match) return match;
+  // Try word-by-word match
+  const words = name.split(/\s+/).filter(function(w){ return w.length > 3; });
+  match = shopifyState.products.find(function(p) {
+    const title = p.title.toLowerCase();
+    return words.some(function(w){ return title.includes(w); });
+  });
+  return match || null;
+}
+
+// ── Shopify API endpoints ─────────────────────────────────────────────────
+app.get('/api/shopify/products', async function(req, res) {
+  res.json({ products: shopifyState.products, lastSync: shopifyState.lastSync, error: shopifyState.error });
+});
+
+app.post('/api/shopify/sync', async function(req, res) {
+  syncShopifyProducts().catch(function(e){ console.error('Manual Shopify sync error: ' + e.message); });
+  res.json({ success: true, message: 'Shopify sync triggered' });
+});
+
+// ── Google + Shopify Combined Dashboard ───────────────────────────────────
+app.get('/api/google/products-diagnostic', async function(req, res) {
+  const googleProducts = googleState.products || [];
+  const diagnostic = googleProducts.map(function(gp) {
+    const shopifyProduct = matchShopifyProduct(gp.productName);
+    // Determine diagnosis
+    let diagnosis = null;
+    let diagnosisType = null;
+    let action = null;
+
+    if (gp.impressions === 0) {
+      diagnosisType = 'no_impressions';
+      diagnosis = 'Ads not showing — check bidding, budget, or targeting';
+      action = 'Review bid strategy and daily budget';
+    } else if (gp.clicks === 0 && gp.impressions > 50) {
+      diagnosisType = 'low_ctr';
+      diagnosis = 'Getting impressions but no clicks — ad copy or images are weak';
+      action = 'Improve ad headlines and images';
+    } else if (gp.clicks > 20 && gp.conversions === 0) {
+      diagnosisType = 'no_conversions';
+      if (shopifyProduct) {
+        if (shopifyProduct.inventory === 0) {
+          diagnosisType = 'out_of_stock';
+          diagnosis = 'Product is OUT OF STOCK — ads running but nothing to sell';
+          action = 'Pause ads immediately and restock';
+        } else {
+          diagnosisType = 'landing_page';
+          diagnosis = 'People clicking but not buying — landing page or price issue';
+          action = 'Review product page, pricing, and images';
+        }
+      } else {
+        diagnosis = 'Clicks with zero conversions — check product page quality';
+        action = 'Review landing page and checkout flow';
+      }
+    } else if (gp.conversions > 0 && gp.acos > 0 && gp.acos < 15) {
+      diagnosisType = 'scale';
+      diagnosis = 'Strong performance — ACOS is healthy, scale this product';
+      action = 'Increase daily budget by 50%';
+    } else if (gp.acos > 50) {
+      diagnosisType = 'high_acos';
+      diagnosis = 'Very high ACOS — spending too much to generate sales';
+      action = 'Reduce bids or tighten keyword targeting';
+    } else if (gp.spend > 0 && gp.sales === 0) {
+      diagnosisType = 'spend_no_revenue';
+      diagnosis = 'Spending money with zero revenue';
+      action = 'Check product page, reviews, and targeting';
+    }
+
+    return {
+      // Google data
+      productId: gp.productId,
+      productName: gp.productName,
+      campaignId: gp.campaignId,
+      campaignName: gp.campaignName,
+      spend: gp.spend,
+      sales: gp.sales,
+      impressions: gp.impressions,
+      clicks: gp.clicks,
+      conversions: gp.conversions,
+      ctr: gp.ctr,
+      acos: gp.acos,
+      agentName: gp.agentName,
+      // Shopify data
+      shopifyMatched: !!shopifyProduct,
+      shopifyTitle: shopifyProduct ? shopifyProduct.title : null,
+      shopifyPrice: shopifyProduct ? shopifyProduct.price : null,
+      shopifyInventory: shopifyProduct ? shopifyProduct.inventory : null,
+      shopifyRevenue30d: shopifyProduct ? shopifyProduct.revenue30d : null,
+      shopifyUnitsSold30d: shopifyProduct ? shopifyProduct.unitsSold30d : null,
+      shopifyUrl: shopifyProduct ? shopifyProduct.shopifyUrl : null,
+      shopifyImageUrl: shopifyProduct ? shopifyProduct.imageUrl : null,
+      // Diagnosis
+      diagnosisType: diagnosisType,
+      diagnosis: diagnosis,
+      action: action
+    };
+  });
+
+  // Sort: problems first, then scale opportunities, then healthy
+  const order = { 'out_of_stock': 0, 'no_impressions': 1, 'spend_no_revenue': 2, 'no_conversions': 3, 'landing_page': 3, 'high_acos': 4, 'low_ctr': 5, 'scale': 6 };
+  diagnostic.sort(function(a, b) {
+    return (order[a.diagnosisType] || 9) - (order[b.diagnosisType] || 9);
+  });
+
+  res.json({
+    products: diagnostic,
+    totalProducts: diagnostic.length,
+    shopifyMatched: diagnostic.filter(function(p){ return p.shopifyMatched; }).length,
+    lastGoogleSync: googleState.lastSync,
+    lastShopifySync: shopifyState.lastSync
+  });
+});
+
 // ── Cron Jobs ─────────────────────────────────────────────────────────────
 cron.schedule('0 8,13,18 * * *', function() {
   console.log('Scheduled keyword report fetch...');
@@ -1562,6 +1765,7 @@ async function autoArchiveTasks() {
 
 const interval = process.env.POLL_INTERVAL_MINUTES || 15;
 cron.schedule('*/' + interval + ' * * * *', function() { syncCampaigns(); });
+cron.schedule('0 */2 * * *', function() { syncShopifyProducts().catch(function(e){ console.error('Shopify cron error: ' + e.message); }); }, { timezone: 'Europe/London' });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', async function() {
@@ -1579,5 +1783,6 @@ app.listen(PORT, '0.0.0.0', async function() {
   }
   setTimeout(function() {
     syncCampaigns().catch(function(err) { console.error('Initial sync failed:', err.message); });
+    syncShopifyProducts().catch(function(err) { console.error('Initial Shopify sync failed:', err.message); });
   }, 30000);
 });
