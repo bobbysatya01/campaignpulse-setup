@@ -125,11 +125,8 @@ app.post('/api/google/ingest', async function(req, res) {
           totalCampaigns: campaigns.length,
           department: 'google'
         };
-        // Use a separate key for Google snapshots to avoid conflict with Amazon
-        await db.query(
-          "INSERT INTO app_settings (key, value) VALUES ('google_snapshot_' || TO_CHAR(CURRENT_DATE, 'YYYY-MM-DD'), $1) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value",
-          [JSON.stringify({ metrics, campaigns, lastSync: timeStr })]
-        );
+        // Store Google snapshot in memory only
+        googleState.lastSnapshot = { metrics, campaigns, lastSync: timeStr };
       } catch(e) { console.error('Google snapshot error: ' + e.message); }
     }
 
