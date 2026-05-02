@@ -1031,10 +1031,14 @@ app.get('/api/activity', async function(req, res) {
   if (!db) return res.json({ logs: [] });
   try {
     const agent = req.query.agent || '';
+    const department = req.query.department || '';
     const limit = parseInt(req.query.limit) || 100;
+    const conditions = [];
+    const params = [];
+    if (agent) { params.push(agent); conditions.push('agent_name=$' + params.length); }
+    if (department) { params.push(department); conditions.push('department=$' + params.length); }
     let query = 'SELECT * FROM activity_log';
-    let params = [];
-    if (agent) { query += ' WHERE agent_name=$1'; params.push(agent); }
+    if (conditions.length) query += ' WHERE ' + conditions.join(' AND ');
     query += ' ORDER BY logged_at DESC LIMIT ' + limit;
     const result = await db.query(query, params);
     res.json({ logs: result.rows });
@@ -1531,28 +1535,43 @@ async function syncShopifyProducts() {
   try {
     console.log('Syncing Shopify products...');
 
-    // Fetch products
-    // Fetch all products including draft/archived — needed so we can flag
-    // when a Google ad targets an inactive Shopify product
+    // Fetch all products including draft/archived (needed to flag inactive products in ads)
     const prodRes = await axios.get('https://' + store + '/admin/api/2021-07/products.json?limit=250', {
       headers: { 'X-Shopify-Access-Token': token }
     });
     const rawProducts = prodRes.data.products || [];
 
-    // Fetch orders from last 30 days for conversion data (optional - skip if no permission)
-    const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-    const salesMap = {};
-    const unitsMap = {};
+    // Fetch last 30 days of orders. We compute both 7-day and 30-day metrics from this.
+    const now = Date.now();
+    const since30 = new Date(now - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const cutoff7 = now - 7 * 24 * 60 * 60 * 1000;
+
+    const sales30 = {};
+    const units30 = {};
+    const sales7 = {};
+    const units7 = {};
+    const dailySalesByPid = {};   // pid -> { 'YYYY-MM-DD': revenue }
+
     try {
-      const orderRes = await axios.get('https://' + store + '/admin/api/2021-07/orders.json?limit=250&status=any&created_at_min=' + since, {
+      const orderRes = await axios.get('https://' + store + '/admin/api/2021-07/orders.json?limit=250&status=any&created_at_min=' + since30, {
         headers: { 'X-Shopify-Access-Token': token }
       });
       const orders = orderRes.data.orders || [];
       orders.forEach(function(order) {
+        const orderTime = new Date(order.created_at).getTime();
+        const dayKey = order.created_at.slice(0, 10); // 'YYYY-MM-DD'
+        const isWithin7 = orderTime >= cutoff7;
         (order.line_items || []).forEach(function(item) {
           const pid = String(item.product_id);
-          salesMap[pid] = (salesMap[pid] || 0) + parseFloat(item.price) * item.quantity;
-          unitsMap[pid] = (unitsMap[pid] || 0) + item.quantity;
+          const lineRevenue = parseFloat(item.price) * item.quantity;
+          sales30[pid] = (sales30[pid] || 0) + lineRevenue;
+          units30[pid] = (units30[pid] || 0) + item.quantity;
+          if (isWithin7) {
+            sales7[pid] = (sales7[pid] || 0) + lineRevenue;
+            units7[pid] = (units7[pid] || 0) + item.quantity;
+          }
+          if (!dailySalesByPid[pid]) dailySalesByPid[pid] = {};
+          dailySalesByPid[pid][dayKey] = (dailySalesByPid[pid][dayKey] || 0) + lineRevenue;
         });
       });
       console.log('Shopify orders fetched: ' + orders.length);
@@ -1560,13 +1579,19 @@ async function syncShopifyProducts() {
 
     shopifyState.products = rawProducts.map(function(p) {
       const pid = String(p.id);
-      const totalRevenue = salesMap[pid] || 0;
-      const totalUnits = unitsMap[pid] || 0;
       const price = parseFloat((p.variants && p.variants[0] && p.variants[0].price) || 0);
       const inventory = (p.variants || []).reduce(function(s, v) { return s + (v.inventory_quantity || 0); }, 0);
       const imageUrl = p.images && p.images[0] ? p.images[0].src : null;
-      const reviewCount = 0; // Shopify basic doesn't expose reviews via API
       const tags = (p.tags || '').split(',').map(function(t){ return t.trim(); });
+
+      // Build 7-day daily sparkline (oldest → newest)
+      const daily = dailySalesByPid[pid] || {};
+      const sparkline = [];
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(now - i * 24 * 60 * 60 * 1000);
+        const k = d.toISOString().slice(0, 10);
+        sparkline.push(Math.round((daily[k] || 0) * 100) / 100);
+      }
 
       return {
         id: pid,
@@ -1581,8 +1606,11 @@ async function syncShopifyProducts() {
         vendor: p.vendor || '',
         productType: p.product_type || '',
         status: p.status,
-        revenue30d: Math.round(totalRevenue * 100) / 100,
-        unitsSold30d: totalUnits,
+        revenue7d: Math.round((sales7[pid] || 0) * 100) / 100,
+        unitsSold7d: units7[pid] || 0,
+        revenue30d: Math.round((sales30[pid] || 0) * 100) / 100,
+        unitsSold30d: units30[pid] || 0,
+        dailySales7d: sparkline,
         variantCount: (p.variants || []).length,
         createdAt: p.created_at
       };
@@ -1604,10 +1632,7 @@ async function syncShopifyProducts() {
 //   3. Fuzzy name match (legacy fallback — last resort)
 function matchShopifyProduct(googleRow) {
   if (!shopifyState.products.length) return null;
-  // Allow legacy callers that still pass a string
-  if (typeof googleRow === 'string') {
-    googleRow = { name: googleRow };
-  }
+  if (typeof googleRow === 'string') googleRow = { name: googleRow };
   if (!googleRow) return null;
 
   // 1. Match by Shopify item ID — format: "shopify_gb_<productId>_<variantId>"
@@ -1687,14 +1712,9 @@ function aggregateGoogleMetrics(rows) {
   };
 }
 
-// The unified diagnosis decision tree — used by both /all-products and /products-diagnostic
-// Returns { diagnosisType, diagnosis, action, priority }
-//   priority: 1 = urgent (red), 2 = needs attention (amber), 3 = scale (green), 4 = healthy/info (grey)
+// The unified diagnosis decision tree.
+// priority: 1 = urgent (red), 2 = needs attention (amber), 3 = scale (green), 4 = healthy/info (grey)
 function diagnoseProduct(ctx) {
-  // ctx = { shopify: {status, inventory, revenue30d, ...}|null,
-  //         google: {impressions, clicks, conversions, spend, sales, acos, ctr},
-  //         hasGoogleData: bool,
-  //         itemType: 'product_group'|'keyword'|'pmax_campaign'|'catchall' }
   const s = ctx.shopify;
   const g = ctx.google;
 
@@ -1703,9 +1723,12 @@ function diagnoseProduct(ctx) {
     return { diagnosisType: 'catchall_bucket', diagnosis: 'Catch-all bucket — products in this ad group not individually targeted', action: 'Review whether these products should be individually bid', priority: 4 };
   }
 
-  // 1. Shopify product is draft/archived but ads are running
-  if (s && s.status && s.status !== 'active' && g.impressions > 0) {
-    return { diagnosisType: 'shopify_inactive', diagnosis: 'Customers cannot buy this — product is ' + s.status.toUpperCase() + ' in Shopify', action: 'Activate the product in Shopify or remove from Google feed', priority: 1 };
+  // 1. Shopify product is draft/archived — diagnose this BEFORE any ad-related rules
+  if (s && s.status && s.status !== 'active') {
+    if (g.impressions > 0) {
+      return { diagnosisType: 'shopify_inactive', diagnosis: 'Customers cannot buy this — product is ' + s.status.toUpperCase() + ' in Shopify', action: 'Activate the product in Shopify or remove from Google feed', priority: 1 };
+    }
+    return { diagnosisType: 'shopify_' + s.status, diagnosis: 'Product is ' + s.status.toUpperCase() + ' in Shopify — not sellable', action: s.status === 'draft' ? 'Publish the product or remove from inventory' : 'Restore from archive or de-list', priority: 4 };
   }
 
   // 2. Out of stock + ads running
@@ -1713,20 +1736,20 @@ function diagnoseProduct(ctx) {
     return { diagnosisType: 'out_of_stock', diagnosis: 'Out of stock — ads running but nothing to sell', action: 'Pause ads immediately and restock', priority: 1 };
   }
 
-  // 3. Active product with NO ads at all (only relevant when called from all-products view)
+  // 3. Active product with NO ads at all
   if (s && s.status === 'active' && !ctx.hasGoogleData) {
-    if (s.revenue30d > 500) {
-      return { diagnosisType: 'organic_winner', diagnosis: 'Strong organic seller (£' + s.revenue30d.toFixed(0) + ' in 30d) but no Google ads', action: 'Add to a Shopping campaign — likely big revenue uplift', priority: 3 };
+    if (s.revenue7d > 100 || s.revenue30d > 500) {
+      return { diagnosisType: 'organic_winner', diagnosis: 'Strong organic seller (£' + (s.revenue30d || 0).toFixed(0) + ' in 30d) but no Google ads', action: 'Add to a Shopping campaign — likely big revenue uplift', priority: 3 };
     }
-    if (s.revenue30d === 0) {
-      return { diagnosisType: 'no_ads_no_sales', diagnosis: 'No ads and no organic sales in 30d', action: 'Investigate listing quality, then either fix listing or de-prioritise', priority: 2 };
+    if ((s.revenue30d || 0) === 0) {
+      return { diagnosisType: 'no_ads_no_sales', diagnosis: 'No ads and no organic sales in 30d', action: 'Investigate listing quality, then either fix listing or de-prioritise', priority: 4 };
     }
     return { diagnosisType: 'no_ads', diagnosis: 'No Google ads running for this product', action: 'Consider adding to a Shopping campaign', priority: 4 };
   }
 
   // 4. Active product with sales but zero advertising spend (organic only)
-  if (s && s.revenue30d > 0 && g.spend === 0) {
-    return { diagnosisType: 'organic_only', diagnosis: 'Selling organically (£' + s.revenue30d.toFixed(0) + ' in 30d), no ad spend', action: 'Could scale faster with Google ads', priority: 3 };
+  if (s && (s.revenue7d || 0) > 0 && g.spend === 0) {
+    return { diagnosisType: 'organic_only', diagnosis: 'Selling organically (£' + (s.revenue7d || 0).toFixed(0) + ' in 7d), no ad spend', action: 'Could scale faster with Google ads', priority: 3 };
   }
 
   // 5. Google: no impressions despite enabled
@@ -1744,27 +1767,31 @@ function diagnoseProduct(ctx) {
     return { diagnosisType: 'landing_page', diagnosis: 'People clicking but not buying — landing page, price, or reviews issue', action: 'Review product page, pricing, images, and reviews', priority: 1 };
   }
 
-  // 8. Spending with no revenue
+  // 8. Conversions recorded but Google attributes no value — tracking issue
+  if (g.conversions > 0 && g.sales === 0) {
+    return { diagnosisType: 'conv_tracking', diagnosis: 'Google records ' + g.conversions + ' conversions but no value — tracking is broken', action: 'Check conversion tracking pixel sends purchase value', priority: 2 };
+  }
+
+  // 9. Spending with no revenue
   if (g.spend > 5 && g.sales === 0) {
     return { diagnosisType: 'spend_no_revenue', diagnosis: 'Spending money with zero revenue', action: 'Pause and investigate listing quality', priority: 1 };
   }
 
-  // 9. High ACOS
+  // 10. High ACOS
   if (g.acos > 50 && g.spend > 1) {
     return { diagnosisType: 'high_acos', diagnosis: 'Very high ACOS (' + g.acos + '%) — burning money to make sales', action: 'Reduce bids or tighten targeting', priority: 2 };
   }
 
-  // 10. Healthy — scale
+  // 11. Healthy — scale
   if (g.conversions > 0 && g.acos > 0 && g.acos < 15) {
     return { diagnosisType: 'scale', diagnosis: 'Strong performance — ACOS ' + g.acos + '%, scale this', action: 'Increase daily budget by 50%', priority: 3 };
   }
 
-  // 11. OK but unremarkable
+  // 12. OK but unremarkable
   if (g.conversions > 0) {
     return { diagnosisType: 'healthy', diagnosis: 'Performing OK — ACOS ' + g.acos + '%', action: 'Monitor', priority: 4 };
   }
 
-  // Default
   return { diagnosisType: 'unknown', diagnosis: 'Insufficient data to diagnose', action: 'Wait for more data', priority: 4 };
 }
 
@@ -1779,11 +1806,9 @@ app.post('/api/shopify/sync', async function(req, res) {
 });
 
 // ── Google Advertised View — grouped by campaign ──────────────────────────
-// Returns the 868 Google Ads rows organised by campaign (drill-down friendly)
 app.get('/api/google/products-diagnostic', async function(req, res) {
   const googleProducts = googleState.products || [];
 
-  // Build per-row diagnostics
   const rows = googleProducts.map(function(gp) {
     const shopifyProduct = matchShopifyProduct(gp);
     const rawName = gp.name || gp.productName;
@@ -1798,6 +1823,7 @@ app.get('/api/google/products-diagnostic', async function(req, res) {
       shopify: shopifyProduct ? {
         status: shopifyProduct.status,
         inventory: shopifyProduct.inventory,
+        revenue7d: shopifyProduct.revenue7d || 0,
         revenue30d: shopifyProduct.revenue30d || 0
       } : null,
       google: {
@@ -1835,6 +1861,8 @@ app.get('/api/google/products-diagnostic', async function(req, res) {
       shopifyStatus: shopifyProduct ? shopifyProduct.status : null,
       shopifyPrice: shopifyProduct ? shopifyProduct.price : null,
       shopifyInventory: shopifyProduct ? shopifyProduct.inventory : null,
+      shopifyRevenue7d: shopifyProduct ? (shopifyProduct.revenue7d || 0) : null,
+      shopifyUnitsSold7d: shopifyProduct ? (shopifyProduct.unitsSold7d || 0) : null,
       shopifyRevenue30d: shopifyProduct ? shopifyProduct.revenue30d : null,
       shopifyUnitsSold30d: shopifyProduct ? shopifyProduct.unitsSold30d : null,
       shopifyUrl: shopifyProduct ? shopifyProduct.shopifyUrl : null,
@@ -1870,7 +1898,6 @@ app.get('/api/google/products-diagnostic', async function(req, res) {
     c.products.push(r);
   });
 
-  // Sort each campaign's products: priority asc (1=urgent first), then spend desc
   Object.values(byCampaign).forEach(function(c) {
     c.totalSpend = Math.round(c.totalSpend * 100) / 100;
     c.totalSales = Math.round(c.totalSales * 100) / 100;
@@ -1881,7 +1908,6 @@ app.get('/api/google/products-diagnostic', async function(req, res) {
     });
   });
 
-  // Sort campaigns: those with urgent issues first, then by spend desc
   const campaignList = Object.values(byCampaign).sort(function(a, b) {
     if (a.urgentCount !== b.urgentCount) return b.urgentCount - a.urgentCount;
     return b.totalSpend - a.totalSpend;
@@ -1897,9 +1923,7 @@ app.get('/api/google/products-diagnostic', async function(req, res) {
   });
 });
 
-// ── All Products View — Shopify-led (every Shopify product as a row) ──────
-// Returns all Shopify products with Google Ads data joined by Shopify product ID.
-// Products advertised under multiple variants/campaigns get aggregated metrics.
+// ── All Products View — Shopify-led ───────────────────────────────────────
 app.get('/api/google/all-products', async function(req, res) {
   const shopifyProducts = shopifyState.products || [];
 
@@ -1912,6 +1936,7 @@ app.get('/api/google/all-products', async function(req, res) {
       shopify: {
         status: sp.status,
         inventory: sp.inventory,
+        revenue7d: sp.revenue7d || 0,
         revenue30d: sp.revenue30d || 0
       },
       google: agg,
@@ -1920,23 +1945,21 @@ app.get('/api/google/all-products', async function(req, res) {
     });
 
     return {
-      // Identity
       shopifyId: sp.id,
       title: sp.title,
       handle: sp.handle,
       imageUrl: sp.imageUrl,
       shopifyUrl: sp.shopifyUrl,
       url: sp.url,
-      status: sp.status,                    // 'active' | 'draft' | 'archived'
+      status: sp.status,
       productType: sp.productType,
-
-      // Shopify metrics
       price: sp.price,
       inventory: sp.inventory,
+      revenue7d: sp.revenue7d || 0,
+      unitsSold7d: sp.unitsSold7d || 0,
       revenue30d: sp.revenue30d || 0,
       unitsSold30d: sp.unitsSold30d || 0,
-
-      // Google metrics (aggregated)
+      dailySales7d: sp.dailySales7d || [],
       googleImpressions: agg.impressions,
       googleClicks: agg.clicks,
       googleSpend: agg.spend,
@@ -1946,8 +1969,6 @@ app.get('/api/google/all-products', async function(req, res) {
       googleAcos: agg.acos,
       campaignsAdvertisedIn: agg.campaignsAdvertisedIn,
       hasGoogleData: hasGoogleData,
-
-      // Diagnosis
       diagnosisType: dx.diagnosisType,
       diagnosis: dx.diagnosis,
       action: dx.action,
@@ -1955,13 +1976,11 @@ app.get('/api/google/all-products', async function(req, res) {
     };
   });
 
-  // Sort: priority asc (urgent first), then 30d revenue desc (biggest products first within each priority)
   rows.sort(function(a, b) {
     if ((a.priority || 9) !== (b.priority || 9)) return (a.priority || 9) - (b.priority || 9);
     return (b.revenue30d || 0) - (a.revenue30d || 0);
   });
 
-  // Top-line summary
   const summary = {
     totalProducts: rows.length,
     activeProducts: rows.filter(function(r){ return r.status === 'active'; }).length,
@@ -1972,6 +1991,7 @@ app.get('/api/google/all-products', async function(req, res) {
     scaleCount: rows.filter(function(r){ return r.priority === 3; }).length,
     totalGoogleSpend: Math.round(rows.reduce(function(s, r){ return s + (r.googleSpend || 0); }, 0) * 100) / 100,
     totalGoogleSales: Math.round(rows.reduce(function(s, r){ return s + (r.googleSales || 0); }, 0) * 100) / 100,
+    totalShopifyRevenue7d: Math.round(rows.reduce(function(s, r){ return s + (r.revenue7d || 0); }, 0) * 100) / 100,
     totalShopifyRevenue30d: Math.round(rows.reduce(function(s, r){ return s + (r.revenue30d || 0); }, 0) * 100) / 100
   };
 
@@ -2052,44 +2072,93 @@ app.listen(PORT, '0.0.0.0', async function() {
 });
 
 // ── Google Product AI Analysis ────────────────────────────────────────────
+// Accepts a product (Shopify-led row OR campaign-grouped row) and returns a
+// concise actionable analysis. Optionally fetches the product page to give
+// listing-quality feedback (image, title length, description, price).
 app.post('/api/google/ai-analyse', async function(req, res) {
   if (!process.env.ANTHROPIC_API_KEY) return res.status(500).json({ error: 'No API key' });
-  const { product } = req.body;
+  const { product, includePageContent } = req.body;
   if (!product) return res.status(400).json({ error: 'No product data' });
   try {
+    // Normalise: works for both shapes (Shopify-led `all-products` rows
+    // and Google-led `products-diagnostic` rows)
+    const name = product.title || product.displayName || product.productName || product.shopifyTitle || '(unknown)';
+    const price = product.price != null ? product.price : product.shopifyPrice;
+    const inventory = product.inventory != null ? product.inventory : product.shopifyInventory;
+    const status = product.status || product.shopifyStatus;
+    const rev7d = product.revenue7d != null ? product.revenue7d : product.shopifyRevenue7d;
+    const units7d = product.unitsSold7d != null ? product.unitsSold7d : product.shopifyUnitsSold7d;
+    const rev30d = product.revenue30d != null ? product.revenue30d : product.shopifyRevenue30d;
+    const units30d = product.unitsSold30d != null ? product.unitsSold30d : product.shopifyUnitsSold30d;
+    const productUrl = product.url || null;
+
+    // Google metrics may live on either `googleX` (all-products view) or top-level (advertised view)
+    const gImp = product.googleImpressions != null ? product.googleImpressions : (product.impressions || 0);
+    const gClk = product.googleClicks != null ? product.googleClicks : (product.clicks || 0);
+    const gCtr = product.googleCtr != null ? product.googleCtr : (product.ctr || 0);
+    const gConv = product.googleConversions != null ? product.googleConversions : (product.conversions || 0);
+    const gSpend = product.googleSpend != null ? product.googleSpend : (product.spend || 0);
+    const gSales = product.googleSales != null ? product.googleSales : (product.sales || 0);
+    const gAcos = product.googleAcos != null ? product.googleAcos : (product.acos || 0);
+
+    // Optionally fetch the product page so the AI can give listing-quality feedback
+    let pageSnippet = '';
+    if (includePageContent && productUrl) {
+      try {
+        const pageRes = await axios.get(productUrl, { timeout: 8000, headers: { 'User-Agent': 'Mozilla/5.0 CampaignPulse' } });
+        const html = String(pageRes.data || '');
+        // Extract title, meta description, h1, and first paragraph of body
+        const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+        const descMatch = html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i);
+        const h1Match = html.match(/<h1[^>]*>([^<]+)<\/h1>/i);
+        const ogImageMatch = html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i);
+        pageSnippet = '\nLIVE PAGE CONTENT:\n'
+          + '- Page title: ' + (titleMatch ? titleMatch[1].trim().slice(0, 200) : '(missing)') + ' (' + (titleMatch ? titleMatch[1].length : 0) + ' chars)\n'
+          + '- Meta description: ' + (descMatch ? descMatch[1].slice(0, 200) : '(missing)') + '\n'
+          + '- H1: ' + (h1Match ? h1Match[1].trim().slice(0, 200) : '(missing)') + '\n'
+          + '- OG image: ' + (ogImageMatch ? 'present' : 'MISSING (hurts social/SEO sharing)');
+      } catch(e) {
+        pageSnippet = '\nLIVE PAGE CONTENT: could not fetch (' + e.message + ')';
+      }
+    }
+
     const prompt = `You are a Google Ads and e-commerce expert for FK Sports UK (fitness equipment).
 
-PRODUCT: ${product.productName}
-CAMPAIGN: ${product.campaignName}
+PRODUCT: ${name}${product.campaignName ? '\nCAMPAIGN: ' + product.campaignName : ''}${product.campaignType ? ' (' + product.campaignType + ')' : ''}
 
-TODAY'S GOOGLE ADS PERFORMANCE:
-- Impressions: ${product.impressions}
-- Clicks: ${product.clicks}
-- CTR: ${product.ctr}%
-- Conversions: ${product.conversions}
-- Ad Spend: £${product.spend}
-- Revenue: £${product.sales}
-- ACoS: ${product.acos}%
+GOOGLE ADS PERFORMANCE (LAST 7 DAYS):
+- Impressions: ${gImp}
+- Clicks: ${gClk}
+- CTR: ${gCtr}%
+- Conversions: ${gConv}
+- Ad Spend: £${gSpend}
+- Revenue (Google-attributed): £${gSales}
+- ACoS: ${gAcos}%
 
 SHOPIFY DATA:
-${product.shopifyMatched ? `- Product: ${product.shopifyTitle}
-- Price: £${product.shopifyPrice}
-- Inventory: ${product.shopifyInventory === 0 ? 'OUT OF STOCK' : product.shopifyInventory + ' units'}
-- Revenue last 30 days: £${product.shopifyRevenue30d}
-- Units sold last 30 days: ${product.shopifyUnitsSold30d}` : '- No Shopify match found for this product'}
+${(price != null) ? `- Price: £${price}` : ''}
+${(inventory != null) ? `- Inventory: ${inventory === 0 ? 'OUT OF STOCK' : inventory + ' units'}` : ''}
+${status ? '- Status: ' + status.toUpperCase() : ''}
+${rev7d != null ? `- Last 7 days: £${rev7d} / ${units7d || 0} units (Shopify total — includes organic + ads)` : ''}
+${rev30d != null ? `- Last 30 days: £${rev30d} / ${units30d || 0} units (Shopify total)` : ''}
+${pageSnippet}
 
 CURRENT DIAGNOSIS: ${product.diagnosis || 'None'}
+SUGGESTED ACTION: ${product.action || 'None'}
 
-Provide a concise analysis (3-4 sentences max):
-1. What is the root cause of this product's performance issue?
-2. One specific action to take RIGHT NOW
-3. What result to expect if the action is taken
+Note: Google "Revenue" lags by hours and may show £0 even with conversions. The Shopify revenue is the source of truth for actual sales.
 
-Be direct, specific, actionable. No generic advice.`;
+Provide a concise analysis (4-6 sentences max):
+1. What's the real root cause? (compare Google vs Shopify numbers — is it a ads problem, a listing problem, or a tracking problem?)
+2. One specific action to take this week
+3. Expected impact if action is taken
+${includePageContent && productUrl ? '4. Any specific listing-quality issues you can see (title length, image, description, etc.)' : ''}
+
+Be direct, specific, and actionable. No generic advice.`;
 
     const response = await axios.post('https://api.anthropic.com/v1/messages', {
       model: 'claude-opus-4-5-20251101',
-      max_tokens: 400,
+      max_tokens: 600,
       messages: [{ role: 'user', content: prompt }]
     }, {
       headers: { 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' }
