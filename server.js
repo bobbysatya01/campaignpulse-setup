@@ -69,6 +69,9 @@ let googleState = {
 };
 
 async function getAccessToken() {
+  if (!process.env.AMAZON_REFRESH_TOKEN || !process.env.AMAZON_CLIENT_ID || !process.env.AMAZON_CLIENT_SECRET) {
+    throw new Error('Amazon credentials not configured');
+  }
   if (state.accessToken && state.tokenExpiry && Date.now() < state.tokenExpiry - 60000) {
     return state.accessToken;
   }
