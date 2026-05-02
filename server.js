@@ -74,29 +74,8 @@ let googleState = {
   campaigns: [],
   alerts: [],
   lastSync: null,
-  syncing: false,
   error: null
 };
-
-async function getGoogleAccessToken() {
-  if (googleState.accessToken && googleState.tokenExpiry && Date.now() < googleState.tokenExpiry - 60000) {
-    return googleState.accessToken;
-  }
-  try {
-    const res = await axios.post('https://oauth2.googleapis.com/token', {
-      client_id: process.env.GOOGLE_CLIENT_ID,
-      client_secret: process.env.GOOGLE_CLIENT_SECRET,
-      refresh_token: process.env.GOOGLE_REFRESH_TOKEN,
-      grant_type: 'refresh_token'
-    });
-    googleState.accessToken = res.data.access_token;
-    googleState.tokenExpiry = Date.now() + (res.data.expires_in * 1000);
-    return googleState.accessToken;
-  } catch(e) {
-    console.error('Google token error: ' + e.message);
-    throw e;
-  }
-}
 
 async function syncGoogleCampaigns() {
   // Google sync now handled via ingest endpoint (Google Ads Script pushes data)
