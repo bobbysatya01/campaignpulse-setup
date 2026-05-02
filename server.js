@@ -10,7 +10,7 @@ const app = express();
 app.use(express.json());
 
 // ── Auth middleware ───────────────────────────────────────────────────────
-const PUBLIC_PATHS = ['/auth/login', '/auth/logout', '/admin/create-manager'];
+const PUBLIC_PATHS = ['/auth/login', '/auth/logout', '/admin/create-manager', '/google/ingest'];
 
 async function requireAuth(req, res, next) {
   if (PUBLIC_PATHS.some(function(p){ return req.path.startsWith(p); })) return next();
